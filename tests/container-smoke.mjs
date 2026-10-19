@@ -28,7 +28,7 @@ async function request(path, method = 'GET', body) {
   return { response, data };
 }
 async function start() {
-  docker('run', '--rm', '-d', '--name', container,
+  docker('run', '-d', '--name', container,
     '-e', 'RAILWAY_ENVIRONMENT_ID=smoke-test',
     '-e', 'RAILWAY_VOLUME_MOUNT_PATH=/data',
     '-e', 'RAILWAY_PUBLIC_DOMAIN=gatherly-test.up.railway.app',
@@ -66,6 +66,7 @@ try {
   assert.ok(keyBefore);
   assert.equal((await request(`/files/${fileId}`)).data, 'Survives a Railway redeploy.');
   docker('stop', container);
+  docker('rm', container);
   await start();
   assert.equal((await request('/me')).data.user.username, 'railway_smoke');
   assert.equal((await request('/me')).data.user.last_community_id, cid);
