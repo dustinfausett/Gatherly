@@ -6,7 +6,7 @@ COPY package.json package-lock.json ./
 # Railway builds normally use the system trust store.
 RUN --mount=type=secret,id=build_ca \
     if [ -s /run/secrets/build_ca ]; then export NODE_EXTRA_CA_CERTS=/run/secrets/build_ca; fi; \
-    npm ci --no-audit --no-fund
+    npm ci --no-audit --no-fund --fetch-timeout=30000 --fetch-retries=1
 COPY index.html vite.config.js ./
 COPY src ./src
 COPY public ./public
