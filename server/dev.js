@@ -1,0 +1,11 @@
+import { createServer } from 'node:http';
+import { createServer as createViteServer } from 'vite';
+import { createApp } from './app.js';
+const { app } = createApp();
+const server = createServer(app);
+const vite = await createViteServer({ server: { middlewareMode: true, hmr: { server } }, appType: 'spa' });
+app.use(vite.middlewares);
+server.listen(Number(process.env.PORT || 3000), '0.0.0.0', () => console.log('Gatherly development server running'));
+const close = async () => { await vite.close(); server.close(); process.exit(0); };
+process.on('SIGTERM', close);
+process.on('SIGINT', close);

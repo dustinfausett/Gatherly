@@ -1,0 +1,91 @@
+import { test, expect } from '@playwright/test';
+import { randomUUID } from 'node:crypto';
+
+test('create a Community, invite a member, chat live, share files, and manage Group posting', async ({ page, browser }, testInfo) => {
+  const errors = [];
+  page.on('pageerror', error => errors.push(error.message));
+  const suffix = randomUUID().slice(0,8);
+  await page.goto('/');
+  await expect(page.getByRole('heading', { name: 'Welcome home.' })).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath('sign-in.png'), fullPage: true });
+  await page.getByRole('button', { name: 'Create an account', exact: true }).click();
+  await page.getByLabel('Your name', { exact: true }).fill('Alex Morgan');
+  await page.getByLabel('Username', { exact: true }).fill(`alex_${suffix}`);
+  await page.getByLabel('Password', { exact: true }).fill('gatherly test password');
+  await page.getByRole('button', { name: 'Create your account', exact: true }).click();
+  await expect(page.getByRole('heading', { name: /find your kind of together/i })).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath('welcome.png'), fullPage: true });
+  await page.getByRole('button', { name: /Start a Community/ }).click();
+  await page.getByLabel('Community name', { exact: true }).fill('The Neighborhood');
+  await page.getByLabel('Description', { exact: true }).fill('Familiar faces. Fresh conversations. A place for all of us.');
+  await page.getByRole('dialog').getByRole('button', { name: 'Create Community', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'The Neighborhood', exact: true })).toBeVisible();
+  if (testInfo.project.name === 'mobile') {
+    await page.getByRole('button', { name: 'Switch Community', exact: true }).click();
+    await expect(page.locator('.mobile-community-switcher .switcher-menu')).toBeVisible();
+  } else {
+    await page.locator('.community-switch').click();
+    await expect(page.locator('.community-switcher .switcher-menu')).toBeVisible();
+  }
+  await page.keyboard.press('Escape');
+  await page.getByRole('button', { name: 'New Subcommunity', exact: true }).click();
+  await page.getByLabel('Subcommunity name', { exact: true }).fill('Community life');
+  await page.getByLabel('Description', { exact: true }).fill('The everyday things that bring us together.');
+  await page.getByRole('dialog').getByRole('button', { name: 'Create Subcommunity', exact: true }).click();
+  await page.getByRole('button', { name: 'Add Group', exact: true }).click();
+  await page.getByLabel('Group name', { exact: true }).fill('The daily catch-up');
+  await page.getByLabel('Description', { exact: true }).fill('A little hello. A good story. Whatever is on your mind.');
+  await page.getByRole('dialog').getByRole('button', { name: 'Create Group', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'The daily catch-up', exact: true })).toBeVisible();
+  await page.getByRole('textbox', { name: 'Write a message', exact: true }).fill('Hello, neighbors! So happy to have a place for all of us. 🌿');
+  await page.getByRole('button', { name: 'Send message', exact: true }).click();
+  await expect(page.getByText('Hello, neighbors! So happy to have a place for all of us. 🌿', { exact: true })).toBeVisible();
+  await page.locator('.composer input[type=file]').first().setInputFiles({ name: 'welcome.txt', mimeType: 'text/plain', buffer: Buffer.from('Welcome to the neighborhood!') });
+  await expect(page.locator('.pending-files')).toContainText('welcome.txt');
+  await page.getByRole('button', { name: 'Send message', exact: true }).click();
+  await expect(page.locator('a.file-attachment')).toContainText('welcome.txt');
+
+  // A second browser gets a real account and accepts the invitation through the UI.
+  const communities = await (await page.request.get('/api/communities')).json();
+  const cid = communities.communities[0].id;
+  const invite = await (await page.request.post('/api/invitations', { data: { community_id: cid } })).json();
+  const other = await browser.newContext({ viewport: testInfo.project.use.viewport || { width: 390, height: 844 } });
+  const bob = await other.newPage();
+  await bob.goto(`http://127.0.0.1:3100${invite.path}`);
+  await bob.getByRole('button', { name: 'Create an account', exact: true }).click();
+  await bob.getByLabel('Your name', { exact: true }).fill('Jamie Lee');
+  await bob.getByLabel('Username', { exact: true }).fill(`jamie_${suffix}`);
+  await bob.getByLabel('Password', { exact: true }).fill('gatherly test password');
+  await bob.getByRole('button', { name: 'Create your account', exact: true }).click();
+  await expect(bob.getByRole('dialog')).toBeVisible();
+  await bob.getByRole('button', { name: 'Accept invitation', exact: true }).click();
+  await expect(bob.getByRole('heading', { name: 'The Neighborhood', exact: true })).toBeVisible();
+  await bob.locator('.group-card').filter({ hasText: 'The daily catch-up' }).click();
+  await expect(bob.getByText('There’s room for you here.', { exact: true })).toBeVisible();
+  await bob.getByRole('button', { name: 'Join Group', exact: true }).click();
+  await bob.getByRole('textbox', { name: 'Write a message', exact: true }).fill('Hey everyone! Love this little corner of the internet.');
+  await bob.getByRole('button', { name: 'Send message', exact: true }).click();
+  await expect(page.getByText('Hey everyone! Love this little corner of the internet.', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Reply to Jamie Lee', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Write a message', exact: true }).fill('Glad you are here, Jamie!');
+  await page.getByRole('button', { name: 'Send message', exact: true }).click();
+  await expect(bob.getByText('Glad you are here, Jamie!', { exact: true })).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath('conversation.png'), fullPage: true });
+
+  await page.getByRole('button', { name: 'Group information', exact: true }).click();
+  await page.getByRole('button', { name: 'Group settings', exact: true }).click();
+  await page.getByText('Only admins can post', { exact: true }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Save changes', exact: true }).click();
+  await expect(bob.locator('.read-only')).toContainText('Only admins can post and reply in this Group.');
+  await expect(bob.getByRole('textbox', { name: 'Write a message', exact: true })).toHaveCount(0);
+  await bob.getByRole('button', { name: 'Mute Group', exact: true }).click();
+  await expect(bob.getByRole('button', { name: 'Unmute Group', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Close Group information', exact: true }).click();
+  await page.reload();
+  await expect(page.getByRole('heading', { name: 'The Neighborhood', exact: true })).toBeVisible();
+  await expect(page.getByText('Good to see you, Alex', { exact: false })).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath('community.png'), fullPage: true });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy();
+  expect(errors).toEqual([]);
+  await other.close();
+});
