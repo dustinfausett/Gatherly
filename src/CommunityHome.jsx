@@ -1,5 +1,5 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { ArrowDown, ArrowLeft, ArrowUp, Bell, BellOff, CheckCheck, ChevronRight, LockKeyhole, MessageCircle, MoreHorizontal, Pin, PinOff, Plus, Search, Settings2, Users } from 'lucide-react';
+import React, { useRef, useState } from 'react';
+import { ArrowDown, ArrowUp, Bell, BellOff, CheckCheck, ChevronRight, LockKeyhole, MessageCircle, MoreHorizontal, Pin, PinOff, Plus, Search, Settings2, Users } from 'lucide-react';
 import { api, patch } from './api';
 import { Avatar, Modal } from './components';
 
@@ -53,40 +53,37 @@ function CircleRow({ circle: c, onOpen, onOptions, onChange }) {
 }
 
 
-function GroupRow({ group: g, onOpen }) {
+function GroupRow({ group: g, expanded, onToggle }) {
   return <div className={`circle-row group-row ${unread(g) ? 'is-unread' : ''} ${g.urgent_unread > 0 ? 'is-urgent' : ''}`} data-group-id={g.id} data-unread={unread(g)} data-urgent={g.urgent_unread > 0}>
     <div className="circle-row-content">
-      <button className="circle-open" aria-label={`Open Group ${g.name}`} aria-describedby={unread(g) ? `group-state-${g.id}` : undefined} onClick={() => onOpen(g.id)}>
+      <button className="circle-open" aria-label={`Open Group ${g.name}`} aria-expanded={expanded} aria-controls={`group-circles-${g.id}`} aria-describedby={unread(g) ? `group-state-${g.id}` : undefined} onClick={() => onToggle(g.id)}>
         <span className="row-avatar"><Avatar name={g.name} id={g.avatar_id} size={50} /><span className="group-avatar-symbol" aria-hidden="true"><Users size={11} /></span>{unread(g) && <span className={`avatar-status-dot ${g.urgent_unread > 0 ? 'urgent' : ''}`} aria-hidden="true" />}</span>
-        <span className="circle-copy"><span className="circle-name">{g.name}</span></span><ChevronRight size={20} className="group-row-chevron" />
+        <span className="circle-copy"><span className="circle-name">{g.name}</span></span><ChevronRight size={20} className={`group-row-chevron ${expanded ? 'expanded' : ''}`} />
         {unread(g) && <span id={`group-state-${g.id}`} className="visually-hidden">{g.urgent_unread > 0 ? 'Urgent and unread' : 'Unread'} Circles in this Group</span>}
       </button>
     </div>
   </div>;
 }
 
-export default function CommunityHome({ community: c, search, onModal, onCircle, onRefresh, notify, selectedGroupId, onGroup, onHome }) {
+export default function CommunityHome({ community: c, search, onModal, onCircle, onRefresh, notify, expandedGroups, onToggleGroup }) {
   const [localSearch, setSearch] = useState(''), [searchOpen, setSearchOpen] = useState(false), [optionsId, setOptionsId] = useState(null), [busy, setBusy] = useState(false), [confirmLeave, setConfirmLeave] = useState(false);
-  useEffect(() => { setSearch(''); setSearchOpen(false); setOptionsId(null); }, [selectedGroupId]);
-  const activeGroup = c.subcommunities.find(g => g.id === selectedGroupId);
   const query = (localSearch || search).trim().toLowerCase();
   const matches = item => !query || item.name.toLowerCase().includes(query);
   const joined = c.circles.filter(g => g.joined);
   const pinned = joined.filter(g => g.pin_position !== null).sort((a,b) => a.pin_position - b.pin_position || alphabetic(a,b));
   const options = c.circles.find(g => g.id === optionsId);
-  const scopeCircles = activeGroup ? activeGroup.groups : c.circles;
-  const joinedGroups = activeGroup ? [] : c.subcommunities.filter(g => g.joined);
-  const joinedCircles = scopeCircles.filter(g => g.joined && g.pin_position === null && (activeGroup || !g.subcommunity_id || !joinedGroups.some(s => s.id === g.subcommunity_id)));
-  const publicGroups = activeGroup ? [] : c.subcommunities.filter(g => !g.joined);
-  const publicCircles = scopeCircles.filter(g => !g.joined && (!g.private || g.is_admin) && (activeGroup || !g.subcommunity_id));
+  const joinedGroups = c.subcommunities.filter(g => g.joined);
+  const joinedCircles = c.circles.filter(g => g.joined && g.pin_position === null && (!g.subcommunity_id || (!joinedGroups.some(s => s.id === g.subcommunity_id) && !expandedGroups[g.subcommunity_id])));
+  const publicGroups = c.subcommunities.filter(g => !g.joined);
+  const publicCircles = c.circles.filter(g => !g.joined && (!g.private || g.is_admin) && !g.subcommunity_id);
   const entries = (groups, circles, unreadFirst) => [
     ...groups.map(g => ({ ...g, rowType:'group' })), ...circles.map(g => ({ ...g, rowType:'circle' })),
   ].filter(item => matches(item) || (item.rowType === 'group' && item.groups.some(matches)))
     .sort((a,b) => (unreadFirst ? Number(unread(b)) - Number(unread(a)) : 0) || alphabetic(a,b));
   const yourEntries = entries(joinedGroups,joinedCircles,true);
   const exploreEntries = entries(publicGroups,publicCircles,false);
-  const scopePins = pinned.filter(g => (!activeGroup || g.subcommunity_id === activeGroup.id) && matches(g));
-  const canCreate = activeGroup ? activeGroup.is_admin : c.is_admin || c.subcommunities.some(g => g.is_admin);
+  const scopePins = pinned.filter(matches);
+  const canCreate = c.is_admin || c.subcommunities.some(g => g.is_admin);
   async function change(circle, body) {
     try { await patch(`/groups/${circle.id}/membership`, body); await onRefresh(); return true; }
     catch (err) { notify(err.message, true); return false; }
@@ -97,28 +94,41 @@ export default function CommunityHome({ community: c, search, onModal, onCircle,
     setBusy(true);
     try { if (await change(options, body)) setOptionsId(null); } finally { setBusy(false); }
   }
-  async function groupMembership() {
+  async function groupMembership(group) {
     if (busy) return;
     setBusy(true);
-    try { await api(`/subcommunities/${activeGroup.id}/join`,{method:activeGroup.joined ? 'DELETE' : 'POST'}); await onRefresh(); }
+    try { await api(`/subcommunities/${group.id}/join`,{method:group.joined ? 'DELETE' : 'POST'}); await onRefresh(); }
     catch (err) { notify(err.message,true); } finally { setBusy(false); }
   }
   const circleRow = circle => <CircleRow key={`circle-${circle.id}`} circle={circle} onOpen={onCircle} onOptions={showOptions} onChange={change} />;
-  const list = items => items.map(item => item.rowType === 'group' ? <GroupRow key={`group-${item.id}`} group={item} onOpen={onGroup} /> : circleRow(item));
-  const createCircle = () => onModal({kind:'space',type:'group',parent:activeGroup || (!c.is_admin ? c.subcommunities.find(s => s.is_admin) : undefined)});
-  const banner = activeGroup || c;
+  const createCircle = parent => onModal({kind:'space',type:'group',parent:parent || (!c.is_admin ? c.subcommunities.find(s => s.is_admin) : undefined)});
+  const list = items => items.map(item => {
+    if (item.rowType !== 'group') return circleRow(item);
+    const expanded = !!expandedGroups[item.id];
+    const children = item.groups.filter(g => g.pin_position === null && (matches(item) || matches(g)))
+      .sort((a,b) => Number(unread(b)) - Number(unread(a)) || alphabetic(a,b));
+    return <div className="group-branch" key={`group-${item.id}`}>
+      <GroupRow group={item} expanded={expanded} onToggle={onToggleGroup} />
+      {expanded && <div className="group-children" id={`group-circles-${item.id}`} role="group" aria-label={`Circles in ${item.name}`}>
+        <div className="circle-list">{children.map(circleRow)}</div>
+        {!children.length && <p className="list-empty">{item.groups.some(g => g.pin_position !== null) ? 'Your pinned Circles from this Group are shown above.' : query ? 'No Circles match your search.' : 'No Circles here yet.'}</p>}
+        <div className="inline-group-actions">
+          <button className="text-button" disabled={busy} onClick={() => groupMembership(item)}>{item.joined ? 'Leave Group' : 'Join Group'}</button>
+          {item.is_admin && <><button className="text-button" aria-label={`Add Circle to ${item.name}`} onClick={() => createCircle(item)}><Plus size={15} />Add Circle</button><button className="icon-button" aria-label={`Group settings for ${item.name}`} onClick={() => onModal({kind:'space',type:'subcommunity',entity:item})}><Settings2 size={16} /></button></>}
+        </div>
+      </div>}
+    </div>;
+  });
   return <div className="community-home circle-home compact-home">
-    {activeGroup && <button className="group-back" onClick={onHome}><ArrowLeft size={17} />Back to Community</button>}
-    <header className="community-banner"><Avatar name={banner.name} id={banner.avatar_id} size={56} /><h1>{banner.name}</h1><div className="banner-actions">
+    <header className="community-banner"><Avatar name={c.name} id={c.avatar_id} size={56} /><h1>{c.name}</h1><div className="banner-actions">
       <button className="icon-button" aria-label="Search Groups and Circles" aria-expanded={searchOpen} onClick={() => { if (searchOpen) setSearch(''); setSearchOpen(!searchOpen); }}><Search size={19} /></button>
-      {(activeGroup ? activeGroup.is_admin : c.is_admin) && <button className="icon-button" aria-label={activeGroup ? 'Group settings' : 'Community settings'} onClick={() => onModal({kind:'space',type:activeGroup ? 'subcommunity' : 'community',entity:banner})}><Settings2 size={19} /></button>}
+      {c.is_admin && <button className="icon-button" aria-label="Community settings" onClick={() => onModal({kind:'space',type:'community',entity:c})}><Settings2 size={19} /></button>}
     </div></header>
     {searchOpen && <label className="circle-search compact-search"><Search size={18} /><input autoFocus aria-label="Search Groups and Circles" placeholder="Search Groups and Circles…" value={localSearch} onChange={e => setSearch(e.target.value)} /></label>}
     <section className="circle-section pinned-circles" aria-label="Pinned Circles"><h2><Pin size={14} />Pinned Circles</h2><div className="circle-list">{scopePins.map(circleRow)}</div>{!scopePins.length && <p className="list-empty">{query ? 'No pinned Circles match your search.' : 'Pin your favorite Circles from Options.'}</p>}</section>
-    <section className="circle-section joined-circles" aria-label={activeGroup ? 'Joined Circles' : 'Joined Groups and Circles'}><h2>{activeGroup ? 'Circles you’ve joined' : 'Groups & Circles you’ve joined'}</h2><div className="circle-list">{list(yourEntries)}</div>{!yourEntries.length && <p className="list-empty">{query ? 'No matches here.' : 'Join a Group or Circle from Explore below.'}</p>}</section>
-    <section className="circle-section explore-circles" aria-label={activeGroup ? 'Explore Circles' : 'Explore Groups and Circles'}><h2>{activeGroup ? 'Explore Circles' : 'Explore Groups & Circles'}</h2><div className="circle-list">{list(exploreEntries)}</div>{!exploreEntries.length && <p className="list-empty">{query ? 'No matches here.' : 'You’re all caught up. More spaces can be added as your Community grows.'}</p>}</section>
-    {activeGroup && <div className="group-membership"><button className={`button ${activeGroup.joined ? 'secondary' : 'primary'}`} disabled={busy} onClick={groupMembership}>{activeGroup.joined ? 'Leave Group' : 'Join Group'}</button><p>{activeGroup.joined ? 'Leaving the Group keeps your Circle memberships, pins, and notifications.' : 'Join this Group to add it to your list. Join individual Circles to chat and receive notifications.'}</p></div>}
-    {(canCreate || (!activeGroup && c.is_admin)) && <div className="space-create-actions">{canCreate && <button className="button primary" onClick={createCircle} aria-label={activeGroup ? `Add Circle to ${activeGroup.name}` : 'New Circle'}><Plus size={17} />{activeGroup ? 'Add Circle' : 'New Circle'}</button>}{!activeGroup && c.is_admin && <button className="button secondary" onClick={() => onModal({kind:'space',type:'subcommunity'})}><Users size={17} />New Group</button>}</div>}
+    <section className="circle-section joined-circles" aria-label="Joined Groups and Circles"><h2>Groups &amp; Circles you’ve joined</h2><div className="circle-list">{list(yourEntries)}</div>{!yourEntries.length && <p className="list-empty">{query ? 'No matches here.' : 'Join a Group or Circle from Explore below.'}</p>}</section>
+    <section className="circle-section explore-circles" aria-label="Explore Groups and Circles"><h2>Explore Groups &amp; Circles</h2><div className="circle-list">{list(exploreEntries)}</div>{!exploreEntries.length && <p className="list-empty">{query ? 'No matches here.' : 'You’re all caught up. More spaces can be added as your Community grows.'}</p>}</section>
+    {(canCreate || c.is_admin) && <div className="space-create-actions">{canCreate && <button className="button primary" onClick={() => createCircle()}><Plus size={17} />New Circle</button>}{c.is_admin && <button className="button secondary" onClick={() => onModal({kind:'space',type:'subcommunity'})}><Users size={17} />New Group</button>}</div>}
     {options && <Modal title={options.name} subtitle="Circle options · your preferences are saved across devices." onClose={() => setOptionsId(null)}>
       <div className="circle-options">
         <button disabled={busy} onClick={() => { setOptionsId(null); onCircle(options.id); }}><MessageCircle size={18} />Open Circle</button>
