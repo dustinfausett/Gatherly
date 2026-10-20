@@ -69,21 +69,21 @@ export function createApp(options = {}) {
   function communityAdmin(userId, id) {
     return ['owner', 'admin'].includes(membership(userId, id).role);
   }
-  function sub(id) { return one('SELECT * FROM subcommunities WHERE id=?', id) || fail(404, 'Subcommunity not found.'); }
+  function sub(id) { return one('SELECT * FROM subcommunities WHERE id=?', id) || fail(404, 'Group not found.'); }
   function group(id) {
-    return one('SELECT g.*,s.community_id FROM groups g JOIN subcommunities s ON s.id=g.subcommunity_id WHERE g.id=?', id) || fail(404, 'Group not found.');
+    return one('SELECT * FROM groups WHERE id=?', id) || fail(404, 'Circle not found.');
   }
   function subAdmin(userId, s) {
     return communityAdmin(userId, s.community_id) || !!one("SELECT 1 FROM scoped_admins WHERE user_id=? AND scope_type='subcommunity' AND scope_id=?", userId, s.id);
   }
   function groupAdmin(userId, g) {
-    return subAdmin(userId, sub(g.subcommunity_id)) || !!one("SELECT 1 FROM scoped_admins WHERE user_id=? AND scope_type='group' AND scope_id=?", userId, g.id);
+    return communityAdmin(userId, g.community_id) || (g.subcommunity_id && subAdmin(userId, sub(g.subcommunity_id))) || !!one("SELECT 1 FROM scoped_admins WHERE user_id=? AND scope_type='group' AND scope_id=?", userId, g.id);
   }
   const joined = (userId, id) => one('SELECT * FROM group_members WHERE user_id=? AND group_id=?', userId, id);
-  function visibleGroup(userId, id) {
+  function visibleCircle(userId, id) {
     const g = group(id);
     membership(userId, g.community_id);
-    if (g.private && !joined(userId, id) && !groupAdmin(userId, g)) fail(404, 'Group not found.');
+    if (g.private && !joined(userId, id) && !groupAdmin(userId, g)) fail(404, 'Circle not found.');
     return g;
   }
   function avatar(userId, id) {
@@ -214,19 +214,20 @@ export function createApp(options = {}) {
   app.get('/api/communities/:id', (req, res) => {
     const c = community(req.params.id);
     const m = membership(req.user.id, c.id);
-    const subs = all('SELECT * FROM subcommunities WHERE community_id=? ORDER BY name', c.id).map(s => ({
-      ...s, is_admin: subAdmin(req.user.id, s), groups: all(`SELECT g.*,
-        (SELECT COUNT(*) FROM group_members WHERE group_id=g.id) AS member_count
-        FROM groups g WHERE subcommunity_id=? ORDER BY name`, s.id).map(g => {
-        const gm = joined(req.user.id, g.id);
-        const admin = groupAdmin(req.user.id, { ...g, community_id: c.id });
-        if (g.private && !gm && !admin) return null;
-        return { ...g, is_admin: admin, joined: !!gm, muted: !!gm?.muted,
-          unread: gm ? one('SELECT COUNT(*) AS count FROM messages WHERE group_id=? AND id>? AND user_id<>? AND deleted=0', g.id, gm.last_read, req.user.id).count : 0 };
-      }).filter(Boolean),
-    }));
+    const circles = all(`SELECT g.*,(SELECT COUNT(*) FROM group_members WHERE group_id=g.id) AS member_count
+      FROM groups g WHERE community_id=? ORDER BY name COLLATE NOCASE`, c.id).map(g => {
+      const gm = joined(req.user.id, g.id), admin = groupAdmin(req.user.id, g);
+      if (g.private && !gm && !admin) return null;
+      const counts = gm ? one(`SELECT COUNT(*) AS unread,COALESCE(SUM(urgent),0) AS urgent_unread FROM messages
+        WHERE group_id=? AND id>? AND user_id<>? AND deleted=0`, g.id, gm.last_read, req.user.id) : { unread: 0, urgent_unread: 0 };
+      return { ...g, is_admin: !!admin, joined: !!gm, muted: !!gm?.muted, pin_position: gm?.pin_position ?? null,
+        marked_unread: !!gm?.marked_unread, ...counts };
+    }).filter(Boolean);
+    const subs = all('SELECT * FROM subcommunities WHERE community_id=? ORDER BY name COLLATE NOCASE', c.id)
+      .map(s => ({ ...s, is_admin: subAdmin(req.user.id, s), groups: circles.filter(g => g.subcommunity_id === s.id) }));
     res.json({ community: { ...c, role: m.role, is_admin: ['owner','admin'].includes(m.role),
-      member_count: one('SELECT COUNT(*) AS n FROM community_members WHERE community_id=?', c.id).n, subcommunities: subs } });
+      member_count: one('SELECT COUNT(*) AS n FROM community_members WHERE community_id=?', c.id).n,
+      subcommunities: subs, circles } });
   });
   function updateSpace(req, res, type) {
     const table = { community: 'communities', subcommunity: 'subcommunities', group: 'groups' }[type];
@@ -241,9 +242,15 @@ export function createApp(options = {}) {
       priv = req.body.private === undefined ? entity.private : boolean(req.body.private, 'Private');
       adminOnly = req.body.admin_only === undefined ? entity.admin_only : boolean(req.body.admin_only, 'Admin-only posting');
     }
+    let parentId = entity.subcommunity_id;
+    if (type === 'group' && req.body.subcommunity_id !== undefined && req.body.subcommunity_id !== parentId) {
+      if (!communityAdmin(req.user.id, entity.community_id)) fail(403, 'Only Community admins can move Circles.');
+      parentId = req.body.subcommunity_id;
+      if (parentId !== null && (typeof parentId !== 'string' || sub(parentId).community_id !== entity.community_id)) fail(400, 'Choose a Group in this Community.');
+    }
     transaction(() => {
       run(`UPDATE ${table} SET name=?,description=?,avatar_id=? WHERE id=?`, name, desc, pic, entity.id);
-      if (type === 'group') run('UPDATE groups SET private=?,admin_only=? WHERE id=?', priv, adminOnly, entity.id);
+      if (type === 'group') run('UPDATE groups SET private=?,admin_only=?,subcommunity_id=? WHERE id=?', priv, adminOnly, parentId, entity.id);
     });
     refresh(type === 'community' ? entity.id : entity.community_id);
     res.json({ ok: true });
@@ -252,20 +259,28 @@ export function createApp(options = {}) {
   app.patch('/api/subcommunities/:id', (req, res) => updateSpace(req, res, 'subcommunity'));
   app.patch('/api/groups/:id', (req, res) => updateSpace(req, res, 'group'));
   app.post('/api/communities/:id/subcommunities', (req, res) => {
-    if (!communityAdmin(req.user.id, req.params.id)) fail(403, 'Only Community admins can create Subcommunities.');
+    if (!communityAdmin(req.user.id, req.params.id)) fail(403, 'Only Community admins can create Groups.');
     const id = randomUUID();
-    run('INSERT INTO subcommunities(id,community_id,name,description) VALUES (?,?,?,?)', id, req.params.id, text(req.body.name, 'Subcommunity name'), description(req.body.description));
+    run('INSERT INTO subcommunities(id,community_id,name,description) VALUES (?,?,?,?)', id, req.params.id, text(req.body.name, 'Group name'), description(req.body.description));
     refresh(req.params.id);
     res.status(201).json({ subcommunity: sub(id) });
   });
-  app.post('/api/subcommunities/:id/groups', (req, res) => {
-    const s = sub(req.params.id);
-    if (!subAdmin(req.user.id, s)) fail(403, 'Only admins of this Subcommunity can create Groups.');
+  function createCircle(req, res, cid, parentId = null) {
+    if (parentId ? !subAdmin(req.user.id, sub(parentId)) : !communityAdmin(req.user.id, cid)) fail(403, 'Only admins of the parent space can create Circles.');
     const id = randomUUID();
-    run('INSERT INTO groups(id,subcommunity_id,name,description,private,admin_only) VALUES (?,?,?,?,?,?)', id, s.id, text(req.body.name, 'Group name'), description(req.body.description), boolean(req.body.private ?? false, 'Private'), boolean(req.body.admin_only ?? false, 'Admin-only posting'));
-    run('INSERT INTO group_members(group_id,user_id) VALUES (?,?)', id, req.user.id);
-    refresh(s.community_id);
-    res.status(201).json({ group: group(id) });
+    transaction(() => {
+      run('INSERT INTO groups(id,community_id,subcommunity_id,name,description,private,admin_only) VALUES (?,?,?,?,?,?,?)',
+        id, cid, parentId, text(req.body.name, 'Circle name'), description(req.body.description), boolean(req.body.private ?? false, 'Private'), boolean(req.body.admin_only ?? false, 'Admin-only posting'));
+      run('INSERT INTO group_members(group_id,user_id) VALUES (?,?)', id, req.user.id);
+    });
+    refresh(cid); res.status(201).json({ group: group(id) });
+  }
+  app.post('/api/subcommunities/:id/groups', (req, res) => { const s = sub(req.params.id); createCircle(req, res, s.community_id, s.id); });
+  app.post('/api/communities/:id/circles', (req, res) => {
+    const cid = req.params.id, parentId = req.body.subcommunity_id ?? null;
+    membership(req.user.id, cid);
+    if (parentId !== null && (typeof parentId !== 'string' || sub(parentId).community_id !== cid)) fail(400, 'Choose a Group in this Community.');
+    createCircle(req, res, cid, parentId);
   });
   app.get('/api/communities/:id/members', (req, res) => {
     membership(req.user.id, req.params.id);
@@ -273,8 +288,8 @@ export function createApp(options = {}) {
       JOIN community_members m ON m.user_id=u.id WHERE m.community_id=? ORDER BY u.name`, req.params.id),
       assignments: all(`SELECT a.* FROM scoped_admins a WHERE
         (a.scope_type='subcommunity' AND a.scope_id IN (SELECT id FROM subcommunities WHERE community_id=?)) OR
-        (a.scope_type='group' AND a.scope_id IN (SELECT g.id FROM groups g JOIN subcommunities s ON s.id=g.subcommunity_id WHERE s.community_id=?))`, req.params.id, req.params.id)
-        .filter(a => a.scope_type !== 'group' || (() => { try { visibleGroup(req.user.id, a.scope_id); return true; } catch { return false; } })()) });
+        (a.scope_type='group' AND a.scope_id IN (SELECT id FROM groups WHERE community_id=?))`, req.params.id, req.params.id)
+        .filter(a => a.scope_type !== 'group' || (() => { try { visibleCircle(req.user.id, a.scope_id); return true; } catch { return false; } })()) });
   });
   app.patch('/api/communities/:id/members/:userId', (req, res) => {
     const c = community(req.params.id);
@@ -305,8 +320,8 @@ export function createApp(options = {}) {
     if (target.role === 'admin' && c.owner_id !== req.user.id) fail(403, 'Only the owner can remove another Community admin.');
     refresh(c.id);
     transaction(() => {
-      run('DELETE FROM group_members WHERE user_id=? AND group_id IN (SELECT g.id FROM groups g JOIN subcommunities s ON s.id=g.subcommunity_id WHERE s.community_id=?)', req.params.userId, c.id);
-      run(`DELETE FROM scoped_admins WHERE user_id=? AND ((scope_type='subcommunity' AND scope_id IN (SELECT id FROM subcommunities WHERE community_id=?)) OR (scope_type='group' AND scope_id IN (SELECT g.id FROM groups g JOIN subcommunities s ON s.id=g.subcommunity_id WHERE s.community_id=?)))`, req.params.userId, c.id, c.id);
+      run('DELETE FROM group_members WHERE user_id=? AND group_id IN (SELECT id FROM groups WHERE community_id=?)', req.params.userId, c.id);
+      run(`DELETE FROM scoped_admins WHERE user_id=? AND ((scope_type='subcommunity' AND scope_id IN (SELECT id FROM subcommunities WHERE community_id=?)) OR (scope_type='group' AND scope_id IN (SELECT id FROM groups WHERE community_id=?)))`, req.params.userId, c.id, c.id);
       run('DELETE FROM community_members WHERE community_id=? AND user_id=?', c.id, req.params.userId);
       run('UPDATE users SET last_community_id=NULL WHERE id=? AND last_community_id=?', req.params.userId, c.id);
     });
@@ -317,7 +332,7 @@ export function createApp(options = {}) {
     if (!['subcommunity','group'].includes(type)) fail(400, 'Invalid admin scope.');
     const entity = type === 'group' ? group(id) : sub(id);
     membership(userId, entity.community_id);
-    const canAssign = type === 'subcommunity' ? communityAdmin(req.user.id, entity.community_id) : subAdmin(req.user.id, sub(entity.subcommunity_id));
+    const canAssign = type === 'subcommunity' || !entity.subcommunity_id ? communityAdmin(req.user.id, entity.community_id) : subAdmin(req.user.id, sub(entity.subcommunity_id));
     if (!canAssign) fail(403, 'An admin of the parent space must assign this role.');
     const enabled = boolean(req.body.enabled, 'Admin assignment');
     if (enabled) {
@@ -331,7 +346,7 @@ export function createApp(options = {}) {
     membership(req.user.id, cid);
     if (gid) {
       const g = group(gid);
-      if (g.community_id !== cid || !groupAdmin(req.user.id, g)) fail(403, 'Only Group admins can invite people into this Group.');
+      if (g.community_id !== cid || !groupAdmin(req.user.id, g)) fail(403, 'Only Circle admins can invite people into this Circle.');
     } else if (!communityAdmin(req.user.id, cid)) fail(403, 'Only Community admins can invite new members.');
     const value = token();
     const expires = Date.now() + 7 * 86400 * 1000;
@@ -346,7 +361,7 @@ export function createApp(options = {}) {
     let stillAdmin = false;
     try { stillAdmin = inv.group_id ? groupAdmin(inv.created_by, group(inv.group_id)) : communityAdmin(inv.created_by, inv.community_id); } catch { /* removed creator */ }
     if (!stillAdmin) fail(410, 'This invitation has been revoked. Ask an admin for a new link.');
-    if (inv.group_id && !one('SELECT 1 FROM community_members WHERE community_id=? AND user_id=?', inv.community_id, req.user.id)) fail(403, 'Join the Community with a Community invitation before accepting a Group invitation.');
+    if (inv.group_id && !one('SELECT 1 FROM community_members WHERE community_id=? AND user_id=?', inv.community_id, req.user.id)) fail(403, 'Join the Community with a Community invitation before accepting a Circle invitation.');
     transaction(() => {
       if (!inv.group_id) run("INSERT OR IGNORE INTO community_members VALUES (?,?,'member')", inv.community_id, req.user.id);
       if (inv.group_id) run('INSERT OR IGNORE INTO group_members(group_id,user_id) VALUES (?,?)', inv.group_id, req.user.id);
@@ -356,36 +371,55 @@ export function createApp(options = {}) {
     res.json({ community_id: inv.community_id, group_id: inv.group_id });
   });
   app.post('/api/groups/:id/join', (req, res) => {
-    const g = visibleGroup(req.user.id, req.params.id);
-    if (g.private && !groupAdmin(req.user.id, g) && !joined(req.user.id, g.id)) fail(403, 'A Group admin must invite you.');
+    const g = visibleCircle(req.user.id, req.params.id);
+    if (g.private && !groupAdmin(req.user.id, g) && !joined(req.user.id, g.id)) fail(403, 'A Circle admin must invite you.');
     run('INSERT OR IGNORE INTO group_members(group_id,user_id,last_read) VALUES (?,?,?)', g.id, req.user.id, one('SELECT COALESCE(MAX(id),0) AS n FROM messages WHERE group_id=?', g.id).n);
     refresh(g.community_id); res.json({ ok: true });
   });
   app.delete('/api/groups/:id/join', (req, res) => {
-    const g = visibleGroup(req.user.id, req.params.id);
+    const g = visibleCircle(req.user.id, req.params.id);
     run('DELETE FROM group_members WHERE group_id=? AND user_id=?', g.id, req.user.id);
     refresh(g.community_id); res.json({ ok: true });
   });
   app.patch('/api/groups/:id/membership', (req, res) => {
-    visibleGroup(req.user.id, req.params.id);
-    const previous = joined(req.user.id, req.params.id);
-    if (!previous) fail(403, 'Join this Group first.');
-    let changed = false;
+    const g = visibleCircle(req.user.id, req.params.id);
+    const previous = joined(req.user.id, g.id);
+    if (!previous) fail(403, 'Join this Circle first.');
+    // Validate every field before writing any preferences.
     const mute = req.body.muted === undefined ? previous.muted : boolean(req.body.muted, 'Muted');
+    const unread = req.body.marked_unread === undefined ? previous.marked_unread : boolean(req.body.marked_unread, 'Unread');
+    if (req.body.pinned !== undefined) boolean(req.body.pinned, 'Pinned');
+    if (req.body.pin_position !== undefined && (!Number.isSafeInteger(req.body.pin_position) || req.body.pin_position < 0)) fail(400, 'Invalid pinned position.');
     if (req.body.read_to !== undefined && (!Number.isSafeInteger(req.body.read_to) || req.body.read_to < 0)) fail(400, 'Invalid read position.');
-    if (mute !== previous.muted) { run('UPDATE group_members SET muted=? WHERE group_id=? AND user_id=?', mute, req.params.id, req.user.id); changed = true; }
-    if (req.body.read_to !== undefined) {
-      const max = one('SELECT COALESCE(MAX(id),0) AS n FROM messages WHERE group_id=?', req.params.id).n;
-      const readTo = Math.min(max, req.body.read_to);
-      if (readTo > previous.last_read) { run('UPDATE group_members SET last_read=? WHERE group_id=? AND user_id=?', readTo, req.params.id, req.user.id); changed = true; }
-      const seen = run('UPDATE notifications SET seen=1 WHERE user_id=? AND seen=0 AND message_id IN (SELECT id FROM messages WHERE group_id=? AND id<=?)', req.user.id, req.params.id, readTo);
-      if (seen.changes) changed = true;
-    }
+    if (req.body.read_to !== undefined && req.body.marked_unread === true) fail(400, 'Choose read or unread.');
+    if (req.body.pin_position !== undefined && previous.pin_position === null && req.body.pinned !== true) fail(400, 'Pin this Circle before changing its position.');
+    let changed = false;
+    transaction(() => {
+      const preferences = run('UPDATE group_members SET muted=?,marked_unread=? WHERE group_id=? AND user_id=? AND (muted<>? OR marked_unread<>?)', mute, unread, g.id, req.user.id, mute, unread);
+      changed = !!preferences.changes;
+      if (req.body.pinned !== undefined || req.body.pin_position !== undefined) {
+        const pins = all(`SELECT gm.group_id FROM group_members gm JOIN groups g ON g.id=gm.group_id
+          WHERE gm.user_id=? AND g.community_id=? AND gm.pin_position IS NOT NULL ORDER BY gm.pin_position,g.id`, req.user.id, g.community_id).map(x => x.group_id);
+        const old = pins.indexOf(g.id);
+        if (old !== -1) pins.splice(old,1);
+        if (req.body.pinned !== false) pins.splice(Math.min(req.body.pin_position ?? (old === -1 ? pins.length : old), pins.length),0,g.id);
+        run('UPDATE group_members SET pin_position=NULL WHERE group_id=? AND user_id=?',g.id,req.user.id);
+        pins.forEach((id,i) => run('UPDATE group_members SET pin_position=? WHERE group_id=? AND user_id=?',i,id,req.user.id));
+        changed = true;
+      }
+      if (req.body.read_to !== undefined) {
+        const max = one('SELECT COALESCE(MAX(id),0) AS n FROM messages WHERE group_id=?', g.id).n;
+        const readTo = Math.min(max, req.body.read_to);
+        const read = run('UPDATE group_members SET last_read=MAX(last_read,?),marked_unread=0 WHERE group_id=? AND user_id=? AND (last_read<? OR marked_unread<>0)',readTo,g.id,req.user.id,readTo);
+        const seen = run('UPDATE notifications SET seen=1 WHERE user_id=? AND seen=0 AND message_id IN (SELECT id FROM messages WHERE group_id=? AND id<=?)', req.user.id, g.id, readTo);
+        changed ||= !!read.changes || !!seen.changes;
+      }
+    });
     if (changed) refreshUser(req.user.id);
     res.json({ ok: true });
   });
   app.get('/api/groups/:id/messages', (req, res) => {
-    visibleGroup(req.user.id, req.params.id);
+    visibleCircle(req.user.id, req.params.id);
     const before = req.query.before === undefined ? Number.MAX_SAFE_INTEGER : Number(req.query.before);
     if (!Number.isSafeInteger(before) || before < 1) fail(400, 'Invalid message cursor.');
     const messages = all(`SELECT m.*,u.name,u.avatar_id,p.body AS parent_body,pu.name AS parent_name FROM messages m JOIN users u ON u.id=m.user_id
@@ -395,7 +429,7 @@ export function createApp(options = {}) {
     res.json({ messages, has_more: messages.length === 100 });
   });
   app.get('/api/groups/:id/threads/:messageId', (req, res) => {
-    visibleGroup(req.user.id, req.params.id);
+    visibleCircle(req.user.id, req.params.id);
     const root = one('SELECT * FROM messages WHERE id=? AND group_id=?', req.params.messageId, req.params.id) || fail(404, 'Thread not found.');
     const rootId = root.reply_to || root.id;
     const messages = all('SELECT m.*,u.name,u.avatar_id FROM messages m JOIN users u ON u.id=m.user_id WHERE m.group_id=? AND (m.id=? OR m.reply_to=?) ORDER BY m.id LIMIT 500', req.params.id, rootId, rootId);
@@ -403,11 +437,12 @@ export function createApp(options = {}) {
     res.json({ messages });
   });
   app.post('/api/groups/:id/messages', rateLimit({ windowMs: 60_000, limit: options.testing ? 1000 : 90, keyGenerator: req => req.user.id, message: { error: 'Please slow down and try again in a moment.' } }), (req, res) => {
-    const g = visibleGroup(req.user.id, req.params.id);
-    if (!joined(req.user.id, g.id)) fail(403, 'Join this Group to send messages.');
-    if (g.admin_only && !groupAdmin(req.user.id, g)) fail(403, 'Only admins can post or reply in this Group.');
+    const g = visibleCircle(req.user.id, req.params.id);
+    if (!joined(req.user.id, g.id)) fail(403, 'Join this Circle to send messages.');
+    if (g.admin_only && !groupAdmin(req.user.id, g)) fail(403, 'Only admins can post or reply in this Circle.');
     const body = req.body.body ?? '';
     const files = req.body.files ?? [];
+    const urgent = boolean(req.body.urgent ?? false, 'Urgent');
     if (typeof body !== 'string' || body.length > 10000) fail(400, 'Messages can contain up to 10,000 characters.');
     if (!Array.isArray(files) || files.length > 5 || files.some(id => typeof id !== 'string') || new Set(files).size !== files.length) fail(400, 'Attach up to five files.');
     if (!body.trim() && !files.length) fail(400, 'Write a message or attach a file.');
@@ -422,23 +457,31 @@ export function createApp(options = {}) {
     let id;
     const recipients = all('SELECT user_id FROM group_members WHERE group_id=? AND user_id<>? AND muted=0', g.id, req.user.id);
     transaction(() => {
-      id = Number(run('INSERT INTO messages(group_id,user_id,body,reply_to) VALUES (?,?,?,?)', g.id, req.user.id, body.trim(), reply).lastInsertRowid);
+      id = Number(run('INSERT INTO messages(group_id,user_id,body,reply_to,urgent) VALUES (?,?,?,?,?)', g.id, req.user.id, body.trim(), reply, urgent).lastInsertRowid);
       for (const fid of files) run('INSERT INTO message_files VALUES (?,?)', id, fid);
-      run('UPDATE group_members SET last_read=? WHERE group_id=? AND user_id=?', id, g.id, req.user.id);
+      run('UPDATE group_members SET last_read=?,marked_unread=0 WHERE group_id=? AND user_id=?', id, g.id, req.user.id);
       for (const r of recipients) run('INSERT INTO notifications(user_id,message_id) VALUES (?,?)', r.user_id, id);
     });
     refresh(g.community_id);
     if (pushEnabled) for (const recipient of recipients) for (const s of all('SELECT * FROM push_subscriptions WHERE user_id=?', recipient.user_id)) {
       // No message contents in device notifications; access is checked when the app opens.
-      webPush.sendNotification(JSON.parse(s.subscription), JSON.stringify({ title: 'New message on Gatherly', body: 'You have a new message in a Group you joined.', url: `/?community=${g.community_id}&group=${g.id}` }), { TTL: 3600, timeout: 10000, proxy: process.env.HTTPS_PROXY || process.env.https_proxy }).catch(error => {
+      webPush.sendNotification(JSON.parse(s.subscription), JSON.stringify({ title: 'New message on Gatherly', body: 'You have a new message in a Circle you joined.', url: `/?community=${g.community_id}&group=${g.id}` }), { TTL: 3600, timeout: 10000, proxy: process.env.HTTPS_PROXY || process.env.https_proxy }).catch(error => {
         if ([404,410].includes(error.statusCode)) run('DELETE FROM push_subscriptions WHERE endpoint=?', s.endpoint);
       });
     }
     res.status(201).json({ id });
   });
+  app.patch('/api/messages/:id', (req, res) => {
+    const m = one('SELECT * FROM messages WHERE id=? AND deleted=0', req.params.id) || fail(404, 'Message not found.');
+    const g = visibleCircle(req.user.id, m.group_id);
+    if (m.user_id !== req.user.id && !groupAdmin(req.user.id, g)) fail(403, 'Only the author or a Circle admin can change urgency.');
+    if (!joined(req.user.id, g.id) || (g.admin_only && !groupAdmin(req.user.id,g))) fail(403, 'Posting permissions are required to change urgency.');
+    run('UPDATE messages SET urgent=? WHERE id=?', boolean(req.body.urgent, 'Urgent'), m.id);
+    refresh(g.community_id); res.json({ ok: true });
+  });
   app.delete('/api/messages/:id', (req, res) => {
     const m = one('SELECT * FROM messages WHERE id=?', req.params.id) || fail(404, 'Message not found.');
-    const g = visibleGroup(req.user.id, m.group_id);
+    const g = visibleCircle(req.user.id, m.group_id);
     if (m.user_id !== req.user.id && !groupAdmin(req.user.id, g)) fail(403, 'You can only delete your own messages.');
     transaction(() => {
       run("UPDATE messages SET deleted=1,body='' WHERE id=?", m.id);
@@ -468,21 +511,21 @@ export function createApp(options = {}) {
     const f = one('SELECT * FROM files WHERE id=?', req.params.id) || fail(404, 'File not found.');
     let allowed = f.user_id === req.user.id;
     const attached = one('SELECT m.group_id FROM message_files mf JOIN messages m ON m.id=mf.message_id WHERE mf.file_id=? AND m.deleted=0', f.id);
-    if (attached) { try { visibleGroup(req.user.id, attached.group_id); allowed = true; } catch { /* no access */ } }
+    if (attached) { try { visibleCircle(req.user.id, attached.group_id); allowed = true; } catch { /* no access */ } }
     if (!allowed && one('SELECT 1 FROM users WHERE avatar_id=?', f.id)) allowed = true;
     if (!allowed) for (const c of all('SELECT id FROM communities WHERE avatar_id=?', f.id)) if (one('SELECT 1 FROM community_members WHERE community_id=? AND user_id=?', c.id, req.user.id)) allowed = true;
     if (!allowed) for (const s of all('SELECT community_id FROM subcommunities WHERE avatar_id=?', f.id)) if (one('SELECT 1 FROM community_members WHERE community_id=? AND user_id=?', s.community_id, req.user.id)) allowed = true;
-    if (!allowed) for (const g of all('SELECT id FROM groups WHERE avatar_id=?', f.id)) { try { visibleGroup(req.user.id, g.id); allowed = true; } catch { /* no access */ } }
+    if (!allowed) for (const g of all('SELECT id FROM groups WHERE avatar_id=?', f.id)) { try { visibleCircle(req.user.id, g.id); allowed = true; } catch { /* no access */ } }
     if (!allowed) fail(404, 'File not found.');
     res.type(imageTypes.has(f.mime) ? f.mime : 'application/octet-stream');
     res.setHeader('Content-Disposition', `${imageTypes.has(f.mime) ? 'inline' : 'attachment'}; filename*=UTF-8''${encodeURIComponent(f.name).replaceAll("'", '%27')}`);
     res.sendFile(join(uploadDir, f.disk_name));
   });
-  app.get('/api/notifications', (req, res) => res.json({ notifications: all(`SELECT n.id,n.seen,m.body,m.created_at,m.group_id,m.id AS message_id,u.name AS sender,g.name AS group_name,s.community_id
+  app.get('/api/notifications', (req, res) => res.json({ notifications: all(`SELECT n.id,n.seen,m.body,m.created_at,m.group_id,m.id AS message_id,u.name AS sender,g.name AS group_name,g.community_id
     FROM notifications n JOIN messages m ON m.id=n.message_id JOIN users u ON u.id=m.user_id
-    JOIN groups g ON g.id=m.group_id JOIN subcommunities s ON s.id=g.subcommunity_id
+    JOIN groups g ON g.id=m.group_id
     JOIN group_members gm ON gm.group_id=g.id AND gm.user_id=n.user_id
-    JOIN community_members cm ON cm.community_id=s.community_id AND cm.user_id=n.user_id
+    JOIN community_members cm ON cm.community_id=g.community_id AND cm.user_id=n.user_id
     WHERE n.user_id=? AND m.deleted=0 ORDER BY n.id DESC LIMIT 80`, req.user.id) }));
   app.patch('/api/notifications', (req, res) => { const r = run('UPDATE notifications SET seen=1 WHERE user_id=? AND seen=0', req.user.id); if (r.changes) refreshUser(req.user.id); res.json({ ok: true }); });
   app.post('/api/push/subscribe', (req, res) => {

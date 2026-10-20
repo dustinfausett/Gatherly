@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
 
-test('create a Community, invite a member, chat live, share files, and manage Group posting', async ({ page, browser }, testInfo) => {
+test('create a Community, invite a member, chat live, share files, and manage Circle posting', async ({ page, browser }, testInfo) => {
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
   const suffix = randomUUID().slice(0,8);
@@ -28,14 +28,15 @@ test('create a Community, invite a member, chat live, share files, and manage Gr
     await expect(page.locator('.community-switcher .switcher-menu')).toBeVisible();
   }
   await page.keyboard.press('Escape');
-  await page.getByRole('button', { name: 'New Subcommunity', exact: true }).click();
-  await page.getByLabel('Subcommunity name', { exact: true }).fill('Community life');
+  await page.locator('.home-tabs').getByRole('button', { name: 'Discover', exact: true }).click();
+  await page.getByRole('button', { name: 'New Group', exact: true }).click();
+  await page.getByLabel('Group name', { exact: true }).fill('Community life');
   await page.getByLabel('Description', { exact: true }).fill('The everyday things that bring us together.');
-  await page.getByRole('dialog').getByRole('button', { name: 'Create Subcommunity', exact: true }).click();
-  await page.getByRole('button', { name: 'Add Group', exact: true }).click();
-  await page.getByLabel('Group name', { exact: true }).fill('The daily catch-up');
-  await page.getByLabel('Description', { exact: true }).fill('A little hello. A good story. Whatever is on your mind.');
   await page.getByRole('dialog').getByRole('button', { name: 'Create Group', exact: true }).click();
+  await page.getByRole('button', { name: 'Add Circle to Community life', exact: true }).click();
+  await page.getByLabel('Circle name', { exact: true }).fill('The daily catch-up');
+  await page.getByLabel('Description', { exact: true }).fill('A little hello. A good story. Whatever is on your mind.');
+  await page.getByRole('dialog').getByRole('button', { name: 'Create Circle', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'The daily catch-up', exact: true })).toBeVisible();
   await page.getByRole('textbox', { name: 'Write a message', exact: true }).fill('Hello, neighbors! So happy to have a place for all of us. 🌿');
   await page.getByRole('button', { name: 'Send message', exact: true }).click();
@@ -60,9 +61,10 @@ test('create a Community, invite a member, chat live, share files, and manage Gr
   await expect(bob.getByRole('dialog')).toBeVisible();
   await bob.getByRole('button', { name: 'Accept invitation', exact: true }).click();
   await expect(bob.getByRole('heading', { name: 'The Neighborhood', exact: true })).toBeVisible();
-  await bob.locator('.group-card').filter({ hasText: 'The daily catch-up' }).click();
+  await bob.locator('.home-tabs').getByRole('button', { name: 'Discover', exact: true }).click();
+  await bob.getByRole('button', { name: 'Open Circle The daily catch-up', exact: true }).click();
   await expect(bob.getByText('There’s room for you here.', { exact: true })).toBeVisible();
-  await bob.getByRole('button', { name: 'Join Group', exact: true }).click();
+  await bob.getByRole('button', { name: 'Join Circle', exact: true }).click();
   await bob.getByRole('textbox', { name: 'Write a message', exact: true }).fill('Hey everyone! Love this little corner of the internet.');
   await bob.getByRole('button', { name: 'Send message', exact: true }).click();
   await expect(page.getByText('Hey everyone! Love this little corner of the internet.', { exact: true })).toBeVisible();
@@ -72,15 +74,15 @@ test('create a Community, invite a member, chat live, share files, and manage Gr
   await expect(bob.getByText('Glad you are here, Jamie!', { exact: true })).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath('conversation.png'), fullPage: true });
 
-  await page.getByRole('button', { name: 'Group information', exact: true }).click();
-  await page.getByRole('button', { name: 'Group settings', exact: true }).click();
+  await page.getByRole('button', { name: 'Circle information', exact: true }).click();
+  await page.getByRole('button', { name: 'Circle settings', exact: true }).click();
   await page.getByText('Only admins can post', { exact: true }).click();
   await page.getByRole('dialog').getByRole('button', { name: 'Save changes', exact: true }).click();
-  await expect(bob.locator('.read-only')).toContainText('Only admins can post and reply in this Group.');
+  await expect(bob.locator('.read-only')).toContainText('Only admins can post and reply in this Circle.');
   await expect(bob.getByRole('textbox', { name: 'Write a message', exact: true })).toHaveCount(0);
-  await bob.getByRole('button', { name: 'Mute Group', exact: true }).click();
-  await expect(bob.getByRole('button', { name: 'Unmute Group', exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'Close Group information', exact: true }).click();
+  await bob.getByRole('button', { name: 'Mute Circle', exact: true }).click();
+  await expect(bob.getByRole('button', { name: 'Unmute Circle', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Close Circle information', exact: true }).click();
   await page.reload();
   await expect(page.getByRole('heading', { name: 'The Neighborhood', exact: true })).toBeVisible();
   await expect(page.getByText('Good to see you, Alex', { exact: false })).toBeVisible();

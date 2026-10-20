@@ -7,18 +7,19 @@ export function SpaceDialog({ modal, community, onClose, onSave }) {
   const { type, entity, parent } = modal;
   const editing = !!entity;
   const [avatarId, setAvatarId] = useState(entity?.avatar_id || null);
-  const [privateGroup, setPrivate] = useState(!!entity?.private);
+  const [privateCircle, setPrivate] = useState(!!entity?.private);
   const [adminOnly, setAdminOnly] = useState(!!entity?.admin_only);
   const [name, setName] = useState(entity?.name || '');
-  const label = { community: 'Community', subcommunity: 'Subcommunity', group: 'Group' }[type];
+  const [location, setLocation] = useState(entity?.subcommunity_id || parent?.id || '');
+  const label = { community: 'Community', subcommunity: 'Group', group: 'Circle' }[type];
   return <Modal title={`${editing ? 'Edit' : 'Create a'} ${label}`} subtitle={type === 'community' ? 'Give your people a place to gather.' : type === 'subcommunity' ? 'A little organization for a growing Community.' : 'A dedicated space for a conversation.'} onClose={onClose}>
     <Form submit={editing ? 'Save changes' : `Create ${label}`} onSubmit={async form => {
       const payload = { name: form.get('name'), description: form.get('description') };
-      if (type === 'group') Object.assign(payload, { private: privateGroup, admin_only: adminOnly });
+      if (type === 'group') Object.assign(payload, { private: privateCircle, admin_only: adminOnly, subcommunity_id: location || null });
       let result;
       if (editing) { payload.avatar_id = avatarId; result = await patch(`/${type === 'community' ? 'communities' : type === 'subcommunity' ? 'subcommunities' : 'groups'}/${entity.id}`, payload); }
       else {
-        const url = type === 'community' ? '/communities' : type === 'subcommunity' ? `/communities/${community.id}/subcommunities` : `/subcommunities/${parent.id}/groups`;
+        const url = type === 'community' ? '/communities' : type === 'subcommunity' ? `/communities/${community.id}/subcommunities` : `/communities/${community.id}/circles`;
         result = await post(url, payload);
         if (avatarId) {
           const item = result[type];
@@ -30,8 +31,12 @@ export function SpaceDialog({ modal, community, onClose, onSave }) {
       <AvatarEditor name={name || label} value={avatarId} onChange={setAvatarId} />
       <Field label={`${label} name`}><input name="name" value={name} onChange={e => setName(e.target.value)} placeholder={type === 'community' ? 'e.g. The Neighborhood' : type === 'subcommunity' ? 'e.g. Community life' : 'e.g. The daily catch-up'} required maxLength={80} /></Field>
       <Field label="Description" hint="A short introduction helps everyone feel at home."><textarea name="description" defaultValue={entity?.description} placeholder="What brings you together?" maxLength={500} rows={3} /></Field>
+      {type === 'group' && (!editing || community.is_admin) && <Field label="Group (optional)" hint={editing ? 'Moving a Circle changes which Group admins inherit access. Existing Circle members and Circle admins keep access.' : 'Leave at Community level, or place this Circle in a Group.'}><select value={location} onChange={e => setLocation(e.target.value)}>
+        {community.is_admin && <option value="">Community level · no Group</option>}
+        {community.subcommunities.filter(s => community.is_admin || s.is_admin).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+      </select></Field>}
       {type === 'group' && <div className="settings-section"><h4>Make it your own</h4>
-        <Toggle label="Private Group" description="Only admins can invite people. Hidden from everyone else." checked={privateGroup} onChange={setPrivate} />
+        <Toggle label="Private Circle" description="Only admins can invite people. Hidden from everyone else." checked={privateCircle} onChange={setPrivate} />
         <Toggle label="Only admins can post" description="Members can read. Only admins can send messages or replies." checked={adminOnly} onChange={setAdminOnly} />
       </div>}
     </Form>
@@ -39,9 +44,9 @@ export function SpaceDialog({ modal, community, onClose, onSave }) {
 }
 export function InviteDialog({ community, group, onClose }) {
   const [link, setLink] = useState(''), [copied, setCopied] = useState(false);
-  return <Modal title={`Invite to ${group ? 'Group' : 'Community'}`} subtitle={`Good conversations are better with company. Invite someone to ${group?.name || community.name}.`} onClose={onClose}>
+  return <Modal title={`Invite to ${group ? 'Circle' : 'Community'}`} subtitle={`Good conversations are better with company. Invite someone to ${group?.name || community.name}.`} onClose={onClose}>
     <div className="invite-art"><UserPlus size={35} strokeWidth={1.5} /><span>Make a little more room.</span></div>
-    {group && <div className="info-banner">Group invitations work for existing Community members. Invite someone to the Community first if they haven’t joined yet.</div>}
+    {group && <div className="info-banner">Circle invitations work for existing Community members. Invite someone to the Community first if they haven’t joined yet.</div>}
     {!link ? <Form submit="Create invitation link" onSubmit={async () => {
       const result = await post('/invitations', { community_id: community.id, group_id: group?.id });
       setLink(`${window.location.origin}${result.path}`);
@@ -89,7 +94,7 @@ export function ProfileDialog({ user, config, onClose, onSave, onLogout, notify 
     <Form submit="Save profile" onSubmit={async form => { await onSave({ name: form.get('name'), avatar_id: avatarId }); notify('Profile updated. Looking good!'); onClose(); }}>
       <AvatarEditor name={user.name} value={avatarId} onChange={setAvatarId} /><Field label="Display name" name="name" defaultValue={user.name} required maxLength={80} /><Field label="Username" value={user.username} disabled />
     </Form>
-    <div className="settings-section"><h4><BellRing size={17} /> Stay in the loop</h4><p className="muted small-text">Joined Groups send in-app notifications. Mute any Group to take a breather.</p>
+    <div className="settings-section"><h4><BellRing size={17} /> Stay in the loop</h4><p className="muted small-text">Joined Circles send in-app notifications. Mute any Circle to take a breather.</p>
       <button className="button secondary" onClick={subscribed ? disablePush : enablePush}>{subscribed ? <BellOff size={16} /> : <BellRing size={16} />}{subscribed ? 'Turn off device notifications' : 'Enable device notifications'}</button>
       {!config.vapidPublicKey && <p className="small-text muted">Device push is awaiting server configuration.</p>}{pushState && <p className="info-banner" role="status">{pushState}</p>}
     </div><button className="text-button danger logout" onClick={onLogout}><LogOut size={17} /> Sign out of Gatherly</button>
@@ -98,7 +103,7 @@ export function ProfileDialog({ user, config, onClose, onSave, onLogout, notify 
 export function MembersDialog({ community, user, onClose, onRefresh, notify }) {
   const [members, setMembers] = useState([]), [assignments, setAssignments] = useState([]), [error, setError] = useState(''), [busy, setBusy] = useState(false);
   const [target, setTarget] = useState(null), [scope, setScope] = useState('community'), [confirm, setConfirm] = useState(null);
-  const scopes = community.subcommunities.flatMap(s => [{ type: 'subcommunity', id: s.id, name: s.name, can: community.is_admin }, ...s.groups.map(g => ({ type: 'group', id: g.id, name: `${s.name} / ${g.name}`, can: s.is_admin }))]);
+  const scopes = [...community.circles.filter(g => !g.subcommunity_id).map(g => ({ type: 'group', id: g.id, name: g.name, can: community.is_admin })), ...community.subcommunities.flatMap(s => [{ type: 'subcommunity', id: s.id, name: s.name, can: community.is_admin }, ...s.groups.map(g => ({ type: 'group', id: g.id, name: `${s.name} / ${g.name}`, can: s.is_admin }))])];
   async function load() { try { const data = await api(`/communities/${community.id}/members`); setMembers(data.members); setAssignments(data.assignments); } catch (err) { setError(err.message); } }
   useEffect(() => { load(); }, [community.id]);
   async function action(fn, message) {
@@ -114,7 +119,7 @@ export function MembersDialog({ community, user, onClose, onRefresh, notify }) {
     </div>)}</div>
     {!members.length && !error && <p className="muted">Loading members…</p>}
     {currentTarget && <div className="member-management"><h4>Manage {currentTarget.name}</h4><Field label="Admin scope"><select value={scope} onChange={e => setScope(e.target.value)}>
-      {community.role === 'owner' && <option value="community">Entire Community</option>}{scopes.filter(s => s.can).map(s => <option key={s.id} value={`${s.type}:${s.id}`}>{s.type === 'group' ? 'Group' : 'Subcommunity'}: {s.name}</option>)}
+      {community.role === 'owner' && <option value="community">Entire Community</option>}{scopes.filter(s => s.can).map(s => <option key={s.id} value={`${s.type}:${s.id}`}>{s.type === 'group' ? 'Circle' : 'Group'}: {s.name}</option>)}
     </select></Field><p className="muted small-text">Admins manage the selected space and everything beneath it.</p>
       {scope && <button className="button secondary" disabled={busy} onClick={() => {
         if (scope === 'community') action(() => patch(`/communities/${community.id}/members/${target}`, { role: currentTarget.role === 'admin' ? 'member' : 'admin' }), 'Community role updated.');
@@ -123,11 +128,11 @@ export function MembersDialog({ community, user, onClose, onRefresh, notify }) {
       {community.role === 'owner' && <button className="text-button" disabled={busy} onClick={() => setConfirm({ type: 'transfer', member: currentTarget })}><Crown size={15} /> Transfer Community ownership</button>}
       {community.is_admin && (currentTarget.role !== 'admin' || community.role === 'owner') && <button className="text-button danger" disabled={busy} onClick={() => setConfirm({ type: 'remove', member: currentTarget })}><Trash2 size={15} /> Remove from Community</button>}
     </div>}
-    {confirm && <div className="confirmation" role="alert"><strong>{confirm.type === 'transfer' ? `Make ${confirm.member.name} the owner?` : `Remove ${confirm.member.name}?`}</strong><p>{confirm.type === 'transfer' ? 'They will control this Community and its admins. You will remain a Community admin.' : 'They will lose access to the Community and all of its Groups. A new invitation will be needed to rejoin.'}</p><div className="button-row"><button className="button secondary" onClick={() => setConfirm(null)}>Cancel</button><button className="button danger-button" disabled={busy} onClick={() => action(async () => { if (confirm.type === 'transfer') await post(`/communities/${community.id}/transfer`, { user_id: confirm.member.id }); else await api(`/communities/${community.id}/members/${confirm.member.id}`, { method: 'DELETE' }); setTarget(null); }, confirm.type === 'transfer' ? 'Ownership transferred.' : 'Member removed.')}>{busy ? 'Working…' : 'Confirm'}</button></div></div>}
+    {confirm && <div className="confirmation" role="alert"><strong>{confirm.type === 'transfer' ? `Make ${confirm.member.name} the owner?` : `Remove ${confirm.member.name}?`}</strong><p>{confirm.type === 'transfer' ? 'They will control this Community and its admins. You will remain a Community admin.' : 'They will lose access to the Community and all of its Circles. A new invitation will be needed to rejoin.'}</p><div className="button-row"><button className="button secondary" onClick={() => setConfirm(null)}>Cancel</button><button className="button danger-button" disabled={busy} onClick={() => action(async () => { if (confirm.type === 'transfer') await post(`/communities/${community.id}/transfer`, { user_id: confirm.member.id }); else await api(`/communities/${community.id}/members/${confirm.member.id}`, { method: 'DELETE' }); setTarget(null); }, confirm.type === 'transfer' ? 'Ownership transferred.' : 'Member removed.')}>{busy ? 'Working…' : 'Confirm'}</button></div></div>}
   </Modal>;
 }
 export function NotificationsDialog({ notifications, onClose, onOpen, onMarkRead }) {
-  return <Modal title="A little heads-up." subtitle="Catch up on conversations in your joined Groups." onClose={onClose}>
-    {notifications.length ? <><button className="text-button mark-all" onClick={onMarkRead}><CheckCheck size={16} /> Mark all as read</button><div className="notification-list">{notifications.map(n => <button key={n.id} className={`notification ${n.seen ? '' : 'unseen'}`} onClick={() => { onOpen(n.community_id, n.group_id); onClose(); }}><span className="notification-dot" /><div><strong>{n.sender} <small>in {n.group_name}</small></strong><p>{n.body || 'Shared an attachment'}</p><small>{new Date(n.created_at).toLocaleDateString()} · {formatTime(n.created_at)}</small></div><ArrowRight size={16} /></button>)}</div></> : <Empty icon={BellRing} title="You’re all caught up.">New messages from Groups you join will appear here. Muted Groups stay quiet.</Empty>}
+  return <Modal title="A little heads-up." subtitle="Catch up on conversations in your joined Circles." onClose={onClose}>
+    {notifications.length ? <><button className="text-button mark-all" onClick={onMarkRead}><CheckCheck size={16} /> Mark all as read</button><div className="notification-list">{notifications.map(n => <button key={n.id} className={`notification ${n.seen ? '' : 'unseen'}`} onClick={() => { onOpen(n.community_id, n.group_id); onClose(); }}><span className="notification-dot" /><div><strong>{n.sender} <small>in {n.group_name}</small></strong><p>{n.body || 'Shared an attachment'}</p><small>{new Date(n.created_at).toLocaleDateString()} · {formatTime(n.created_at)}</small></div><ArrowRight size={16} /></button>)}</div></> : <Empty icon={BellRing} title="You’re all caught up.">New messages from Circles you join will appear here. Muted Circles stay quiet.</Empty>}
   </Modal>;
 }

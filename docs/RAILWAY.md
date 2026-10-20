@@ -10,7 +10,7 @@ The repository contains a Dockerfile and `railway.json`. Railway builds the fron
 4. In the service's **Settings → Networking**, generate a public domain. If Railway asks for a target port, use the listening `PORT` from the service logs (default `3000`). Railway provides HTTPS for the generated domain.
 5. Redeploy after generating the domain. The app derives `APP_URL` from Railway's `RAILWAY_PUBLIC_DOMAIN`, and creates private push-signing keys once on the persistent Volume. Open the generated HTTPS domain and create your account. The first user must still create a Community; no public admin account is preinstalled.
 
-The app is ready to serve when Railway's deployment health check to `/api/health` succeeds. Validate it by registering, creating a Community/Subcommunity/Group, sending a message, and inviting another account. Redeploy once and confirm the same account and messages remain.
+The app is ready to serve when Railway's deployment health check to `/api/health` succeeds. Validate it by registering, creating a Community, optional Group, and Circle, sending a message, and inviting another account. Redeploy once and confirm the same account and messages remain.
 
 To test the production container locally before deploying:
 
