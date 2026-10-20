@@ -112,5 +112,25 @@ export function openDatabase(path) {
     CREATE TRIGGER IF NOT EXISTS circle_parent_update BEFORE UPDATE OF subcommunity_id,community_id ON groups
     WHEN NEW.subcommunity_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM subcommunities WHERE id=NEW.subcommunity_id AND community_id=NEW.community_id)
     BEGIN SELECT RAISE(ABORT,'Circle parent must belong to its Community'); END;`);
+  // Seed Group membership once from existing Circle memberships and Group admin roles.
+  // Explicitly leaving a Group must remain effective after subsequent restarts.
+  if (!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='collection_members'").get()) {
+    db.exec('BEGIN IMMEDIATE');
+    try {
+      db.exec(`CREATE TABLE collection_members (
+        subcommunity_id TEXT NOT NULL REFERENCES subcommunities(id) ON DELETE CASCADE,
+        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        PRIMARY KEY(subcommunity_id,user_id)
+      );
+      INSERT OR IGNORE INTO collection_members
+        SELECT g.subcommunity_id,gm.user_id FROM groups g JOIN group_members gm ON gm.group_id=g.id
+        JOIN community_members cm ON cm.community_id=g.community_id AND cm.user_id=gm.user_id
+        WHERE g.subcommunity_id IS NOT NULL;
+      INSERT OR IGNORE INTO collection_members
+        SELECT s.id,a.user_id FROM subcommunities s JOIN scoped_admins a ON a.scope_id=s.id AND a.scope_type='subcommunity'
+        JOIN community_members cm ON cm.community_id=s.community_id AND cm.user_id=a.user_id;`);
+      db.exec('COMMIT');
+    } catch (error) { db.exec('ROLLBACK'); throw error; }
+  }
   return db;
 }

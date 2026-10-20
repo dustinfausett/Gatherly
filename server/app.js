@@ -224,7 +224,13 @@ export function createApp(options = {}) {
         marked_unread: !!gm?.marked_unread, ...counts };
     }).filter(Boolean);
     const subs = all('SELECT * FROM subcommunities WHERE community_id=? ORDER BY name COLLATE NOCASE', c.id)
-      .map(s => ({ ...s, is_admin: subAdmin(req.user.id, s), groups: circles.filter(g => g.subcommunity_id === s.id) }));
+      .map(s => {
+        const children = circles.filter(g => g.subcommunity_id === s.id);
+        return { ...s, is_admin: subAdmin(req.user.id, s), groups: children,
+          joined: !!one('SELECT 1 FROM collection_members WHERE subcommunity_id=? AND user_id=?', s.id, req.user.id),
+          unread: children.reduce((n,g) => n + g.unread,0), marked_unread: children.some(g => g.marked_unread),
+          urgent_unread: children.reduce((n,g) => n + g.urgent_unread,0) };
+      });
     res.json({ community: { ...c, role: m.role, is_admin: ['owner','admin'].includes(m.role),
       member_count: one('SELECT COUNT(*) AS n FROM community_members WHERE community_id=?', c.id).n,
       subcommunities: subs, circles } });
@@ -261,10 +267,27 @@ export function createApp(options = {}) {
   app.post('/api/communities/:id/subcommunities', (req, res) => {
     if (!communityAdmin(req.user.id, req.params.id)) fail(403, 'Only Community admins can create Groups.');
     const id = randomUUID();
-    run('INSERT INTO subcommunities(id,community_id,name,description) VALUES (?,?,?,?)', id, req.params.id, text(req.body.name, 'Group name'), description(req.body.description));
+    transaction(() => {
+      run('INSERT INTO subcommunities(id,community_id,name,description) VALUES (?,?,?,?)', id, req.params.id, text(req.body.name, 'Group name'), description(req.body.description));
+      run('INSERT INTO collection_members VALUES (?,?)',id,req.user.id);
+    });
     refresh(req.params.id);
     res.status(201).json({ subcommunity: sub(id) });
   });
+  app.post('/api/subcommunities/:id/join', (req, res) => {
+    const s = sub(req.params.id); membership(req.user.id,s.community_id);
+    run('INSERT OR IGNORE INTO collection_members VALUES (?,?)',s.id,req.user.id);
+    refreshUser(req.user.id); res.json({ ok:true });
+  });
+  app.delete('/api/subcommunities/:id/join', (req, res) => {
+    const s = sub(req.params.id); membership(req.user.id,s.community_id);
+    // Leaving the collection keeps Circle membership, pins, and notification choices.
+    run('DELETE FROM collection_members WHERE subcommunity_id=? AND user_id=?',s.id,req.user.id);
+    refreshUser(req.user.id); res.json({ ok:true });
+  });
+  function joinParent(userId, g) {
+    if (g.subcommunity_id) run('INSERT OR IGNORE INTO collection_members VALUES (?,?)',g.subcommunity_id,userId);
+  }
   function createCircle(req, res, cid, parentId = null) {
     if (parentId ? !subAdmin(req.user.id, sub(parentId)) : !communityAdmin(req.user.id, cid)) fail(403, 'Only admins of the parent space can create Circles.');
     const id = randomUUID();
@@ -272,6 +295,7 @@ export function createApp(options = {}) {
       run('INSERT INTO groups(id,community_id,subcommunity_id,name,description,private,admin_only) VALUES (?,?,?,?,?,?,?)',
         id, cid, parentId, text(req.body.name, 'Circle name'), description(req.body.description), boolean(req.body.private ?? false, 'Private'), boolean(req.body.admin_only ?? false, 'Admin-only posting'));
       run('INSERT INTO group_members(group_id,user_id) VALUES (?,?)', id, req.user.id);
+      if (parentId) run('INSERT OR IGNORE INTO collection_members VALUES (?,?)',parentId,req.user.id);
     });
     refresh(cid); res.status(201).json({ group: group(id) });
   }
@@ -320,6 +344,7 @@ export function createApp(options = {}) {
     if (target.role === 'admin' && c.owner_id !== req.user.id) fail(403, 'Only the owner can remove another Community admin.');
     refresh(c.id);
     transaction(() => {
+      run('DELETE FROM collection_members WHERE user_id=? AND subcommunity_id IN (SELECT id FROM subcommunities WHERE community_id=?)', req.params.userId, c.id);
       run('DELETE FROM group_members WHERE user_id=? AND group_id IN (SELECT id FROM groups WHERE community_id=?)', req.params.userId, c.id);
       run(`DELETE FROM scoped_admins WHERE user_id=? AND ((scope_type='subcommunity' AND scope_id IN (SELECT id FROM subcommunities WHERE community_id=?)) OR (scope_type='group' AND scope_id IN (SELECT id FROM groups WHERE community_id=?)))`, req.params.userId, c.id, c.id);
       run('DELETE FROM community_members WHERE community_id=? AND user_id=?', c.id, req.params.userId);
@@ -337,7 +362,8 @@ export function createApp(options = {}) {
     const enabled = boolean(req.body.enabled, 'Admin assignment');
     if (enabled) {
       run('INSERT OR IGNORE INTO scoped_admins VALUES (?,?,?)', type, id, userId);
-      if (type === 'group') run('INSERT OR IGNORE INTO group_members(group_id,user_id) VALUES (?,?)', id, userId);
+      if (type === 'group') { run('INSERT OR IGNORE INTO group_members(group_id,user_id) VALUES (?,?)', id, userId); joinParent(userId,entity); }
+      else run('INSERT OR IGNORE INTO collection_members VALUES (?,?)',id,userId);
     } else run('DELETE FROM scoped_admins WHERE scope_type=? AND scope_id=? AND user_id=?', type, id, userId);
     refresh(entity.community_id); res.json({ ok: true });
   });
@@ -364,7 +390,7 @@ export function createApp(options = {}) {
     if (inv.group_id && !one('SELECT 1 FROM community_members WHERE community_id=? AND user_id=?', inv.community_id, req.user.id)) fail(403, 'Join the Community with a Community invitation before accepting a Circle invitation.');
     transaction(() => {
       if (!inv.group_id) run("INSERT OR IGNORE INTO community_members VALUES (?,?,'member')", inv.community_id, req.user.id);
-      if (inv.group_id) run('INSERT OR IGNORE INTO group_members(group_id,user_id) VALUES (?,?)', inv.group_id, req.user.id);
+      if (inv.group_id) { run('INSERT OR IGNORE INTO group_members(group_id,user_id) VALUES (?,?)', inv.group_id, req.user.id); joinParent(req.user.id,group(inv.group_id)); }
       run('UPDATE users SET last_community_id=? WHERE id=?', inv.community_id, req.user.id);
     });
     refresh(inv.community_id);
@@ -373,7 +399,10 @@ export function createApp(options = {}) {
   app.post('/api/groups/:id/join', (req, res) => {
     const g = visibleCircle(req.user.id, req.params.id);
     if (g.private && !groupAdmin(req.user.id, g) && !joined(req.user.id, g.id)) fail(403, 'A Circle admin must invite you.');
-    run('INSERT OR IGNORE INTO group_members(group_id,user_id,last_read) VALUES (?,?,?)', g.id, req.user.id, one('SELECT COALESCE(MAX(id),0) AS n FROM messages WHERE group_id=?', g.id).n);
+    transaction(() => {
+      run('INSERT OR IGNORE INTO group_members(group_id,user_id,last_read) VALUES (?,?,?)', g.id, req.user.id, one('SELECT COALESCE(MAX(id),0) AS n FROM messages WHERE group_id=?', g.id).n);
+      joinParent(req.user.id,g);
+    });
     refresh(g.community_id); res.json({ ok: true });
   });
   app.delete('/api/groups/:id/join', (req, res) => {
@@ -552,8 +581,8 @@ export function createApp(options = {}) {
     res.status(status).json({ error: status === 500 ? 'Something went wrong. Please try again.' : error.message });
   });
   if (production && existsSync(resolve('dist/index.html'))) {
-    app.use(express.static(resolve('dist')));
-    app.get('/{*path}', (req, res) => res.sendFile(resolve('dist/index.html')));
+    app.use(express.static(resolve('dist'), { setHeaders: (res, path) => { if (path.endsWith('/index.html') || path.endsWith('/sw.js')) res.setHeader('Cache-Control','no-store'); } }));
+    app.get('/{*path}', (req, res) => { res.setHeader('Cache-Control','no-store'); res.sendFile(resolve('dist/index.html')); });
   }
   return { app, db, close: () => { for (const set of streams.values()) for (const res of set) res.end(); db.close(); } };
 }

@@ -28,7 +28,6 @@ test('create a Community, invite a member, chat live, share files, and manage Ci
     await expect(page.locator('.community-switcher .switcher-menu')).toBeVisible();
   }
   await page.keyboard.press('Escape');
-  await page.locator('.home-tabs').getByRole('button', { name: 'Discover', exact: true }).click();
   await page.getByRole('button', { name: 'New Group', exact: true }).click();
   await page.getByLabel('Group name', { exact: true }).fill('Community life');
   await page.getByLabel('Description', { exact: true }).fill('The everyday things that bring us together.');
@@ -61,7 +60,7 @@ test('create a Community, invite a member, chat live, share files, and manage Ci
   await expect(bob.getByRole('dialog')).toBeVisible();
   await bob.getByRole('button', { name: 'Accept invitation', exact: true }).click();
   await expect(bob.getByRole('heading', { name: 'The Neighborhood', exact: true })).toBeVisible();
-  await bob.locator('.home-tabs').getByRole('button', { name: 'Discover', exact: true }).click();
+  await bob.getByRole('button', { name: 'Open Group Community life', exact: true }).click();
   await bob.getByRole('button', { name: 'Open Circle The daily catch-up', exact: true }).click();
   await expect(bob.getByText('There’s room for you here.', { exact: true })).toBeVisible();
   await bob.getByRole('button', { name: 'Join Circle', exact: true }).click();
@@ -85,7 +84,8 @@ test('create a Community, invite a member, chat live, share files, and manage Ci
   await page.getByRole('button', { name: 'Close Circle information', exact: true }).click();
   await page.reload();
   await expect(page.getByRole('heading', { name: 'The Neighborhood', exact: true })).toBeVisible();
-  await expect(page.getByText('Good to see you, Alex', { exact: false })).toBeVisible();
+  await expect(page.locator('.community-banner h1')).toHaveText('The Neighborhood');
+  await expect(page.locator('.home-hero,.community-stats,.home-greeting')).toHaveCount(0);
   await page.screenshot({ path: testInfo.outputPath('community.png'), fullPage: true });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy();
   expect(errors).toEqual([]);

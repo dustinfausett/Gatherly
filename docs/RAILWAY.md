@@ -39,3 +39,6 @@ Retain the Volume when changing or redeploying the service. Back up the entire `
 - **Build is healthy but no website link**: generate a public domain in the service's Networking settings.
 - **Sign-in works, Google does not**: username/password and Google setup are independent. Check `GOOGLE_CLIENT_ID`, the Google consent screen/test users, and the exact authorized JavaScript origin.
 - **Push is unavailable**: after generating the Railway domain, redeploy and check that it is HTTPS. Opt in using a supported browser. iPhone/iPad require adding the app to the Home Screen. Actual device delivery must be tested after deployment.
+
+
+If the app still shows “Subcommunities” or the old greeting/stats layout, check the service’s **Deployments** tab. The active deployment must use the latest commit on GitHub `main`; a failed or disabled automatic deployment leaves the previous version running. Redeploy the latest commit, wait for **Active**, then refresh the app. The current Public Networking domain is the one listed in Railway Settings; previously generated URLs may no longer work. Keep the domain target port matched to the listening port in Deploy Logs (currently 8080 for the existing service).

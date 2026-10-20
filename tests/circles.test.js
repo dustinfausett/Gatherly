@@ -40,10 +40,13 @@ test('legacy hierarchy migration retains conversations, invitations, files, sess
     assert.equal(db.prepare('SELECT urgent FROM messages WHERE id=3').get().urgent,0);
     assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(),[]);
     assert.equal(db.prepare('PRAGMA foreign_keys').get().foreign_keys,1);
+    assert.equal(db.prepare('SELECT COUNT(*) AS n FROM collection_members').get().n,1);
+    db.prepare('DELETE FROM collection_members WHERE subcommunity_id=? AND user_id=?').run('s','u');
     db.prepare('INSERT INTO groups(id,community_id,name) VALUES (?,?,?)').run('direct','c','Standalone');
     assert.throws(() => db.prepare('INSERT INTO groups(id,community_id,subcommunity_id,name) VALUES (?,?,?,?)').run('invalid','c','missing','Bad parent'));
     db.close(); db = openDatabase(path);
     assert.equal(db.prepare('SELECT COUNT(*) AS n FROM messages').get().n,2);
+    assert.equal(db.prepare('SELECT COUNT(*) AS n FROM collection_members').get().n,0,'Leaving a Group survives repeat startup');
     assert.equal(db.prepare('SELECT community_id FROM groups WHERE id=?').get('direct').community_id,'c');
   } finally { db.close(); rmSync(dir,{ recursive:true,force:true }); }
 });
@@ -82,6 +85,23 @@ test('standalone Circles, personal preferences, urgency, and scoped administrati
     await ok(`/groups/${direct}/messages`,member,'POST',{body:'Standalone conversation'});
     assert.ok((await ok(`/groups/${direct}/messages`,owner)).messages.some(m=>m.body==='Standalone conversation'));
     assert.ok((await ok('/notifications',owner)).notifications.some(n=>n.group_id===direct));
+  });
+  await t.test('Group joining is separate from Circle access and leaving keeps existing chats',async () => {
+    const empty=(await ok(`/communities/${cid}/subcommunities`,owner,'POST',{name:'Empty public Group'})).subcommunity.id;
+    const before=(await snapshot(member)).circles.filter(g=>g.joined).map(g=>g.id).sort();
+    await ok(`/subcommunities/${empty}/join`,member,'POST');
+    const workspace=await snapshot(member);
+    assert.equal(workspace.subcommunities.find(g=>g.id===empty).joined,true);
+    assert.deepEqual(workspace.circles.filter(g=>g.joined).map(g=>g.id).sort(),before);
+    assert.equal((await req(`/subcommunities/${empty}`,member,'PATCH',{name:'No admin escalation'})).status,403);
+    assert.equal((await req(`/subcommunities/${otherSid}/join`,member,'POST')).status,403);
+    assert.equal((await workspace.subcommunities.find(g=>g.id===sid)).joined,true,'Joining a Circle adds its Group');
+    await ok(`/groups/${nested}/membership`,member,'PATCH',{pinned:true,muted:true});
+    await ok(`/subcommunities/${sid}/join`,member,'DELETE');
+    assert.equal((await snapshot(member)).subcommunities.find(g=>g.id===sid).joined,false);
+    const retained=await circle(member,nested);
+    assert.equal(retained.joined,true);assert.equal(retained.muted,true);assert.notEqual(retained.pin_position,null);
+    await ok(`/groups/${nested}/membership`,member,'PATCH',{pinned:false});
   });
   await t.test('Group admins inherit only their Circles; Community admins can move Circles',async () => {
     await ok(`/admins/subcommunity/${sid}/${scoped.id}`,owner,'PUT',{enabled:true});
@@ -155,12 +175,14 @@ test('standalone Circles, personal preferences, urgency, and scoped administrati
     await new Promise(r=>server.listen(0,'127.0.0.1',r));base=`http://127.0.0.1:${server.address().port}`;
     const g=await circle(member);
     assert.equal(g.pin_position,0);assert.equal(g.muted,true);assert.equal(g.marked_unread,true);assert.equal(g.subcommunity_id,null);
+    assert.equal((await snapshot(member)).subcommunities.find(s=>s.id===sid).joined,false);
   });
   await t.test('Community removal revokes direct Circle membership, pins, and scoped rights',async () => {
     await ok(`/communities/${cid}/members/${scoped.id}`,owner,'DELETE');
     assert.equal((await req(`/groups/${direct}/messages`,scoped)).status,403);
     assert.equal(runtime.db.prepare('SELECT COUNT(*) AS n FROM group_members WHERE user_id=?').get(scoped.id).n,0);
     assert.equal(runtime.db.prepare('SELECT COUNT(*) AS n FROM scoped_admins WHERE user_id=?').get(scoped.id).n,0);
+    assert.equal(runtime.db.prepare('SELECT COUNT(*) AS n FROM collection_members WHERE user_id=?').get(scoped.id).n,0);
     assert.deepEqual(runtime.db.prepare('PRAGMA foreign_key_check').all(),[]);
   });
 });
