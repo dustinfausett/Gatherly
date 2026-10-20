@@ -92,3 +92,17 @@ The browser tests use the existing `/usr/bin/chromium` if available. Otherwise i
 ## Deployment scope
 
 This is a self-hosted first version. Hosting and HTTPS must be configured for public access. A Google OAuth client is required only for Google Sign-in. It does not include password recovery, email delivery, end-to-end encryption, malware scanning, or backup automation. Invitation links are reusable for 7 days; removing someone revokes membership but is not a permanent ban if they obtain a still-valid invitation. Device push and real Google authorization need testing with your configured domain and provider accounts.
+
+## Test on iPhone and Android
+
+Gatherly is an installable web app (PWA). Deploy the latest commit to Railway and use the same HTTPS URL on both phones. There is no app-store account required, and this adds no SMS or app-store fees. Hosting costs still apply. It needs an internet connection; private chats are not cached for offline use.
+
+- **iPhone:** open the site in Safari, tap **Share → Add to Home Screen**, turn on **Open as Web App** if offered, then tap **Add**. Open Gatherly from its new icon and sign in there. Web Push requires iOS 16.4 or newer and the Home Screen app.
+- **Android:** open the site in Chrome, tap the three-dot menu, choose **Install app** or **Add to Home screen**, and confirm. Open Gatherly from its icon and sign in.
+- **Notifications:** inside the installed app, open your profile and choose **Enable device notifications**. Allow the system prompt. Server Web Push configuration is also required; Railway creates persistent keys when a public domain and data volume are available.
+
+Use separate accounts on two devices. Create a Community, Subcommunity, and Group; accept an invitation on the second phone; join a public Group; exchange messages, replies, photos, and files. Check private invitations, admin-only posting, muting, permissions, logout/login, and reopening to the selected Community. Test with the keyboard open, rotate the phone, and check the notch and bottom home indicator. For push, background the installed app and send a message from the other account to a joined, unmuted Group.
+
+`npm run test:e2e` exercises the workflow in desktop Chromium and emulated iPhone and Android sizes. Emulation does not verify actual Safari rendering, Home Screen installation, the device keyboard, or system push delivery; check those on real phones.
+
+App Store and Google Play distribution would be a separate step, using a native wrapper such as Capacitor, store accounts, native push integration, and store review. The Home Screen version lets you test the shared UI and functionality now.

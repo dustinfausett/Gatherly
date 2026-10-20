@@ -4,7 +4,7 @@ self.addEventListener('push', event => {
   try { payload = event.data?.json(); } catch { return; }
   if (!payload) return;
   event.waitUntil(self.registration.showNotification(payload.title || 'Gatherly', {
-    body: payload.body, icon: '/favicon.svg', badge: '/favicon.svg', data: { url: payload.url || '/' }, tag: 'gatherly-message',
+    body: payload.body, icon: '/icons/icon-192.png', data: { url: payload.url || '/' }, tag: 'gatherly-message',
   }));
 });
 self.addEventListener('notificationclick', event => {

@@ -20,7 +20,7 @@ test('create a Community, invite a member, chat live, share files, and manage Gr
   await page.getByLabel('Description', { exact: true }).fill('Familiar faces. Fresh conversations. A place for all of us.');
   await page.getByRole('dialog').getByRole('button', { name: 'Create Community', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'The Neighborhood', exact: true })).toBeVisible();
-  if (testInfo.project.name === 'mobile') {
+  if (testInfo.project.name !== 'desktop') {
     await page.getByRole('button', { name: 'Switch Community', exact: true }).click();
     await expect(page.locator('.mobile-community-switcher .switcher-menu')).toBeVisible();
   } else {

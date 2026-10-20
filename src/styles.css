@@ -57,3 +57,16 @@
 @media(max-width:640px){.group-card h4{font-size:12px}.group-card>p{font-size:10px;min-height:36px}.group-card-footer{font-size:9px}.group-privacy{font-size:8px}.community-stats small{font-size:9px}.message-bubble{font-size:13px}.composer>textarea{font-size:13px}.card-decoration{width:110px;height:110px}}
 @media(max-width:640px){.desktop-logo{display:none}.mobile-community-switcher{display:block;position:relative;min-width:0}.mobile-community-button{display:flex;align-items:center;gap:8px;padding:0;text-align:left;max-width:223px}.mobile-community-button>span:nth-child(2){display:flex;flex-direction:column;gap:4px;min-width:0}.mobile-community-button strong{font-size:11px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:145px}.mobile-community-button small{font-size:6px;letter-spacing:1.1px;color:#9aaa8c}.mobile-community-button>.avatar{width:30px!important;height:30px!important;border-radius:8px;font-size:10px!important}.mobile-community-button>svg{color:#92a17f}.mobile-community-switcher .switcher-menu{top:44px;left:-30px;right:auto;width:275px}.brand-zone{min-width:0}.brand-zone>.mobile-only{flex-shrink:0}.topbar-actions{flex-shrink:0}.topbar{gap:9px}}
 @media(prefers-reduced-motion:reduce){*,*:before,*:after{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
+
+/* Home Screen layouts keep controls clear of notches and the home indicator. */
+.app{padding-top:env(safe-area-inset-top);padding-right:env(safe-area-inset-right);padding-bottom:env(safe-area-inset-bottom);padding-left:env(safe-area-inset-left)}
+@media(max-width:640px){
+  /* Sixteen-pixel fields prevent automatic zoom while typing on iOS. */
+  input,textarea,select,.auth-form-wrap .field input,.modal .field input,.modal .field textarea,.modal .field select,.composer>textarea,.sidebar-search input,.chat-search>input{font-size:16px}
+  .icon-button{min-width:44px;min-height:44px}
+  .sidebar{top:calc(62px + env(safe-area-inset-top));bottom:env(safe-area-inset-bottom);left:env(safe-area-inset-left)}
+  .mobile-scrim{top:calc(62px + env(safe-area-inset-top))}
+  .modal-backdrop{padding-top:max(15px,env(safe-area-inset-top));padding-bottom:max(15px,env(safe-area-inset-bottom))}
+  .modal{max-height:calc(100dvh - 30px - env(safe-area-inset-top) - env(safe-area-inset-bottom))}
+  .toast{margin-bottom:env(safe-area-inset-bottom)}
+}
