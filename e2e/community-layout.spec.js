@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 
 const picture=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/O2sAAAAASUVORK5CYII=','base64');
 
-test('compact Community home, Group navigation, photos, and menu details', async ({ page, browser }, testInfo) => {
+test('compact Tree home, Branch navigation, photos, and menu details', async ({ page, browser }, testInfo) => {
   const errors=[];page.on('pageerror',e=>errors.push(e.message));
   const suffix=randomUUID().slice(0,8);
   expect((await page.request.post('/api/auth/register',{data:{username:`layout_${suffix}`,name:'Dustin',password:'test layout password'}})).ok()).toBeTruthy();
@@ -13,16 +13,16 @@ test('compact Community home, Group navigation, photos, and menu details', async
   await page.request.post(`/api/communities/${community.id}/circles`,{data:{name:'Private planning',subcommunity_id:collection.id,private:true}});
   const direct=(await (await page.request.post(`/api/communities/${community.id}/circles`,{data:{name:'Announcements'}})).json()).group;
   await page.goto('/');
-  const circle=name=>page.locator('.circle-row').filter({has:page.getByRole('button',{name:`Open Circle ${name}`,exact:true})});
-  const group=name=>page.locator('.group-row').filter({has:page.getByRole('button',{name:`Open Group ${name}`,exact:true})});
+  const circle=name=>page.locator('.circle-row').filter({has:page.getByRole('button',{name:`Open Nest ${name}`,exact:true})});
+  const group=name=>page.locator('.group-row').filter({has:page.getByRole('button',{name:`Open Branch ${name}`,exact:true})});
   const home=page.locator('.compact-home');
   await expect(home.locator('h1')).toHaveText('Fausett Family');
   expect((await home.locator('.community-banner').boundingBox()).height).toBeLessThanOrEqual(135);
-  await expect(home.locator('section>h2')).toHaveText(['Pinned Circles','Groups & Circles you’ve joined','Explore Groups & Circles']);
+  await expect(home.locator('section>h2')).toHaveText(['Pinned Nests','Branches & Nests you’ve joined','Explore Branches & Nests']);
   await expect(home.locator('.circle-preview,.circle-location,.home-hero,.community-stats')).toHaveCount(0);
   await expect(home).not.toContainText('Your shared space');
   await expect(home).not.toContainText('Subcommunities');
-  await expect(circle('Announcements').locator('.circle-row-content')).toHaveCSS('background-color','rgb(237, 243, 230)');
+  await expect(circle('Announcements').locator('.circle-row-content')).toHaveCSS('background-color','rgb(238, 227, 211)');
   if(testInfo.project.name!=='desktop') {
     const box=await circle('Announcements').boundingBox();
     expect(box.x).toBeLessThanOrEqual(12);
@@ -43,21 +43,21 @@ test('compact Community home, Group navigation, photos, and menu details', async
   await expect(circle('Family plans')).toBeVisible();
   await expect(circle('Family plans')).not.toContainText('This description');
   await circle('Family plans').getByRole('button',{name:'Options for Family plans',exact:true}).click();
-  await page.getByRole('button',{name:'Circle settings',exact:true}).click();
+  await page.getByRole('button',{name:'Nest settings',exact:true}).click();
   await page.locator('.avatar-editor input[type=file]').setInputFiles({name:'circle.png',mimeType:'image/png',buffer:picture});
   await expect(page.locator('.avatar-editor img')).toBeVisible();
   await page.getByRole('button',{name:'Save changes',exact:true}).click();
   await expect(circle('Family plans').locator('.row-avatar img')).toBeVisible();
-  await circle('Family plans').getByRole('button',{name:'Open Circle Family plans',exact:true}).click();
+  await circle('Family plans').getByRole('button',{name:'Open Nest Family plans',exact:true}).click();
   await expect(page.getByRole('heading',{name:'Family plans',exact:true})).toBeVisible();
-  if(testInfo.project.name!=='desktop') await page.getByRole('button',{name:'Back to Circles',exact:true}).click();
-  else await page.getByRole('button',{name:'Community home',exact:true}).click();
+  if(testInfo.project.name!=='desktop') await page.getByRole('button',{name:'Back to Nests',exact:true}).click();
+  else await page.getByRole('button',{name:'Tree home',exact:true}).click();
   await expect(group('Family life').getByRole('button')).toHaveAttribute('aria-expanded','true');
   await expect(circle('Family plans')).toBeVisible();
   await circle('Family plans').getByRole('button',{name:'Options for Family plans',exact:true}).click();
-  await page.getByRole('button',{name:'Pin Circle',exact:true}).click();
+  await page.getByRole('button',{name:'Pin Nest',exact:true}).click();
   await expect(page.locator('.pinned-circles .circle-name')).toHaveText(['Family plans']);
-  await page.getByRole('button',{name:'Group settings for Family life',exact:true}).click();
+  await page.getByRole('button',{name:'Branch settings for Family life',exact:true}).click();
   await page.locator('.avatar-editor input[type=file]').setInputFiles({name:'group.png',mimeType:'image/png',buffer:picture});
   await expect(page.locator('.avatar-editor img')).toBeVisible();
   await page.getByRole('button',{name:'Save changes',exact:true}).click();
@@ -66,15 +66,15 @@ test('compact Community home, Group navigation, photos, and menu details', async
   await expect(group('Family life').locator('.row-avatar img')).toBeVisible();
   await expect(page.locator('.pinned-circles .circle-name')).toHaveText(['Family plans']);
   await expect(page.locator('.joined-circles .circle-name')).toHaveText(['Announcements','Family life']);
-  const first=await home.locator('section').first().getAttribute('aria-label');expect(first).toBe('Pinned Circles');
+  const first=await home.locator('section').first().getAttribute('aria-label');expect(first).toBe('Pinned Nests');
   await page.screenshot({path:testInfo.outputPath('community-redesign.png'),fullPage:true});
 
   if(testInfo.project.name!=='desktop') await page.getByRole('button',{name:'Open navigation',exact:true}).click();
-  await page.getByRole('button',{name:'Community details',exact:true}).click();
+  await page.getByRole('button',{name:'Tree details',exact:true}).click();
   await expect(page.locator('.community-details h1')).toHaveText('Fausett Family');
-  await expect(page.locator('.community-details-stats dt')).toHaveText(['Members','Groups','Circles to explore','Circles you’ve joined']);
+  await expect(page.locator('.community-details-stats dt')).toHaveText(['Members','Branches','Nests to explore','Nests you’ve joined']);
   await expect(page.locator('.community-description')).toHaveText('The whole of the Fausett clan');
-  await page.getByRole('button',{name:'Back to Community',exact:true}).click();
+  await page.getByRole('button',{name:'Back to Tree',exact:true}).click();
 
   const guest=await browser.newContext({viewport:testInfo.project.use.viewport});
   try {
@@ -83,14 +83,14 @@ test('compact Community home, Group navigation, photos, and menu details', async
     await guest.request.post('http://127.0.0.1:3100/api/invitations/accept',{data:{token:invite}});
     const gp=await guest.newPage();await gp.goto('http://127.0.0.1:3100/');
     await expect(gp.locator('.explore-circles .circle-name')).toHaveText(['Announcements','Family life']);
-    await gp.getByRole('button',{name:'Open Group Family life',exact:true}).click();
-    await expect(gp.getByRole('button',{name:'Open Circle Private planning',exact:true})).toHaveCount(0);
-    await gp.getByRole('button',{name:'Join Group',exact:true}).click();
-    await expect(gp.getByRole('button',{name:'Leave Group',exact:true})).toBeVisible();
-    await expect(gp.getByRole('button',{name:'Open Circle Private planning',exact:true})).toHaveCount(0);
-    await gp.getByRole('button',{name:'Open Circle Family plans',exact:true}).click();
-    await expect(gp.getByRole('button',{name:'Join Circle',exact:true})).toBeVisible();
-    await gp.getByRole('button',{name:'Join Circle',exact:true}).click();
+    await gp.getByRole('button',{name:'Open Branch Family life',exact:true}).click();
+    await expect(gp.getByRole('button',{name:'Open Nest Private planning',exact:true})).toHaveCount(0);
+    await gp.getByRole('button',{name:'Join Branch',exact:true}).click();
+    await expect(gp.getByRole('button',{name:'Leave Branch',exact:true})).toBeVisible();
+    await expect(gp.getByRole('button',{name:'Open Nest Private planning',exact:true})).toHaveCount(0);
+    await gp.getByRole('button',{name:'Open Nest Family plans',exact:true}).click();
+    await expect(gp.getByRole('button',{name:'Join Nest',exact:true})).toBeVisible();
+    await gp.getByRole('button',{name:'Join Nest',exact:true}).click();
     await gp.getByRole('textbox',{name:'Write a message',exact:true}).fill('An urgent family update.');
     await gp.getByRole('button',{name:'Mark as urgent',exact:true}).click();
     await gp.getByRole('button',{name:'Send message',exact:true}).click();

@@ -1,9 +1,9 @@
 import React, { useEffect, useId, useRef, useState } from 'react';
-import { X, Camera, LoaderCircle, Check, Sprout, ImagePlus } from 'lucide-react';
+import { X, Camera, LoaderCircle, Check, ImagePlus } from 'lucide-react';
 import { upload } from './api';
 
 export function Logo({ compact = false }) {
-  return <div className="logo"><span className="logo-mark"><Sprout size={24} strokeWidth={2.1} /></span>{!compact && <span>gatherly<span className="logo-period">.</span></span>}</div>;
+  return <div className={`logo churp-logo ${compact ? 'compact' : ''}`}><img src={compact ? '/brand/churp-nest.webp' : '/brand/churp-logo.webp'} alt="Churp" /></div>;
 }
 export function Avatar({ name = '?', id, size = 40, className = '', square = false }) {
   const palette = ['sage', 'rose', 'sand', 'lilac', 'blue'];

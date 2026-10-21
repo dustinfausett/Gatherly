@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
 
-test('create a Community, invite a member, chat live, share files, and manage Circle posting', async ({ page, browser }, testInfo) => {
+test('create a Tree, invite a member, chat live, share files, and manage Nest posting', async ({ page, browser }, testInfo) => {
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
   const suffix = randomUUID().slice(0,8);
@@ -15,27 +15,28 @@ test('create a Community, invite a member, chat live, share files, and manage Ci
   await page.getByRole('button', { name: 'Create your account', exact: true }).click();
   await expect(page.getByRole('heading', { name: /find your kind of together/i })).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath('welcome.png'), fullPage: true });
-  await page.getByRole('button', { name: /Start a Community/ }).click();
-  await page.getByLabel('Community name', { exact: true }).fill('The Neighborhood');
+  await page.getByRole('button', { name: /Start a Tree/ }).click();
+  await page.getByLabel('Tree name', { exact: true }).fill('The Neighborhood');
   await page.getByLabel('Description', { exact: true }).fill('Familiar faces. Fresh conversations. A place for all of us.');
-  await page.getByRole('dialog').getByRole('button', { name: 'Create Community', exact: true }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Create Tree', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'The Neighborhood', exact: true })).toBeVisible();
   if (testInfo.project.name !== 'desktop') {
-    await page.getByRole('button', { name: 'Switch Community', exact: true }).click();
+    await page.locator('.mobile-community-switcher').getByRole('button', { name: 'My Orchard', exact: true }).click();
     await expect(page.locator('.mobile-community-switcher .switcher-menu')).toBeVisible();
   } else {
     await page.locator('.community-switch').click();
     await expect(page.locator('.community-switcher .switcher-menu')).toBeVisible();
   }
+  await expect(page.locator('.switcher-menu:visible .menu-label')).toHaveText('My Orchard');
   await page.keyboard.press('Escape');
-  await page.getByRole('button', { name: 'New Group', exact: true }).click();
-  await page.getByLabel('Group name', { exact: true }).fill('Community life');
+  await page.getByRole('button', { name: 'New Branch', exact: true }).click();
+  await page.getByLabel('Branch name', { exact: true }).fill('Tree life');
   await page.getByLabel('Description', { exact: true }).fill('The everyday things that bring us together.');
-  await page.getByRole('dialog').getByRole('button', { name: 'Create Group', exact: true }).click();
-  await page.getByRole('button', { name: 'Add Circle to Community life', exact: true }).click();
-  await page.getByLabel('Circle name', { exact: true }).fill('The daily catch-up');
+  await page.getByRole('dialog').getByRole('button', { name: 'Create Branch', exact: true }).click();
+  await page.getByRole('button', { name: 'Add Nest to Tree life', exact: true }).click();
+  await page.getByLabel('Nest name', { exact: true }).fill('The daily catch-up');
   await page.getByLabel('Description', { exact: true }).fill('A little hello. A good story. Whatever is on your mind.');
-  await page.getByRole('dialog').getByRole('button', { name: 'Create Circle', exact: true }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Create Nest', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'The daily catch-up', exact: true })).toBeVisible();
   await page.getByRole('textbox', { name: 'Write a message', exact: true }).fill('Hello, neighbors! So happy to have a place for all of us. 🌿');
   await page.getByRole('button', { name: 'Send message', exact: true }).click();
@@ -60,28 +61,30 @@ test('create a Community, invite a member, chat live, share files, and manage Ci
   await expect(bob.getByRole('dialog')).toBeVisible();
   await bob.getByRole('button', { name: 'Accept invitation', exact: true }).click();
   await expect(bob.getByRole('heading', { name: 'The Neighborhood', exact: true })).toBeVisible();
-  await bob.getByRole('button', { name: 'Open Group Community life', exact: true }).click();
-  await bob.getByRole('button', { name: 'Open Circle The daily catch-up', exact: true }).click();
+  await bob.getByRole('button', { name: 'Open Branch Tree life', exact: true }).click();
+  await bob.getByRole('button', { name: 'Open Nest The daily catch-up', exact: true }).click();
   await expect(bob.getByText('There’s room for you here.', { exact: true })).toBeVisible();
-  await bob.getByRole('button', { name: 'Join Circle', exact: true }).click();
+  await bob.getByRole('button', { name: 'Join Nest', exact: true }).click();
   await bob.getByRole('textbox', { name: 'Write a message', exact: true }).fill('Hey everyone! Love this little corner of the internet.');
   await bob.getByRole('button', { name: 'Send message', exact: true }).click();
   await expect(page.getByText('Hey everyone! Love this little corner of the internet.', { exact: true })).toBeVisible();
+  await expect(page.locator('.message.own .message-bubble').first()).toHaveCSS('background-color','rgb(247, 216, 132)');
+  await expect(page.locator('.message:not(.own) .message-bubble').first()).toHaveCSS('background-color','rgb(191, 227, 237)');
   await page.getByRole('button', { name: 'Reply to Jamie Lee', exact: true }).click();
   await page.getByRole('textbox', { name: 'Write a message', exact: true }).fill('Glad you are here, Jamie!');
   await page.getByRole('button', { name: 'Send message', exact: true }).click();
   await expect(bob.getByText('Glad you are here, Jamie!', { exact: true })).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath('conversation.png'), fullPage: true });
 
-  await page.getByRole('button', { name: 'Circle information', exact: true }).click();
-  await page.getByRole('button', { name: 'Circle settings', exact: true }).click();
+  await page.getByRole('button', { name: 'Nest information', exact: true }).click();
+  await page.getByRole('button', { name: 'Nest settings', exact: true }).click();
   await page.getByText('Only admins can post', { exact: true }).click();
   await page.getByRole('dialog').getByRole('button', { name: 'Save changes', exact: true }).click();
-  await expect(bob.locator('.read-only')).toContainText('Only admins can post and reply in this Circle.');
+  await expect(bob.locator('.read-only')).toContainText('Only admins can post and reply in this Nest.');
   await expect(bob.getByRole('textbox', { name: 'Write a message', exact: true })).toHaveCount(0);
-  await bob.getByRole('button', { name: 'Mute Circle', exact: true }).click();
-  await expect(bob.getByRole('button', { name: 'Unmute Circle', exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'Close Circle information', exact: true }).click();
+  await bob.getByRole('button', { name: 'Mute Nest', exact: true }).click();
+  await expect(bob.getByRole('button', { name: 'Unmute Nest', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Close Nest information', exact: true }).click();
   await page.reload();
   await expect(page.getByRole('heading', { name: 'The Neighborhood', exact: true })).toBeVisible();
   await expect(page.locator('.community-banner h1')).toHaveText('The Neighborhood');

@@ -3,8 +3,8 @@ self.addEventListener('push', event => {
   let payload;
   try { payload = event.data?.json(); } catch { return; }
   if (!payload) return;
-  event.waitUntil(self.registration.showNotification(payload.title || 'Gatherly', {
-    body: payload.body, icon: '/icons/icon-192.png', data: { url: payload.url || '/' }, tag: 'gatherly-message',
+  event.waitUntil(self.registration.showNotification(payload.title || 'Churp', {
+    body: payload.body, icon: '/icons/churp-192.png', data: { url: payload.url || '/' }, tag: 'gatherly-message',
   }));
 });
 self.addEventListener('notificationclick', event => {

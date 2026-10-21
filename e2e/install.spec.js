@@ -6,6 +6,13 @@ test('Home Screen manifest and icons are available', async ({ page }) => {
   const response = await page.request.get(manifestUrl);
   expect(response.ok()).toBeTruthy();
   const manifest = await response.json();
+  expect(manifest.name).toBe('Churp');
+  expect(manifest.short_name).toBe('Churp');
+  await expect(page).toHaveTitle(/Churp/);
+  await expect(page.locator('.auth-mobile-logo .churp-logo img, .auth-story .churp-logo img').first()).toHaveAttribute('alt','Churp');
+  expect(await page.locator('.churp-logo img').evaluateAll(async images => { await Promise.all(images.map(image=>image.decode())); return images.every(image=>image.naturalWidth>0); })).toBeTruthy();
+  await page.evaluate(()=>document.fonts.ready);
+  expect(await page.evaluate(()=>getComputedStyle(document.documentElement).fontFamily)).toContain('Nunito Sans');
   expect(manifest.display).toBe('standalone');
   expect(manifest.scope).toBe('/');
   for (const icon of manifest.icons) {

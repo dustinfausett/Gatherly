@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Asterisk, ArrowRight, ArrowUpRight, MessageCircle, ShieldCheck, Users, Sprout, LockKeyhole } from 'lucide-react';
+import { ArrowRight, ShieldCheck, Users, Sprout, LockKeyhole } from 'lucide-react';
 import { api, post } from './api';
-import { Avatar, Field, Form, Logo } from './components';
+import { Field, Form, Logo } from './components';
 
 export default function Auth({ onLogin, config }) {
   const [signup, setSignup] = useState(false), [googleError, setGoogleError] = useState('');
@@ -27,14 +27,10 @@ export default function Auth({ onLogin, config }) {
   return <div className="auth-page">
     <div className="auth-story">
       <Logo />
-      <div className="story-content"><div className="eyebrow light"><span className="tiny-dot" /> YOUR PEOPLE. YOUR PLACE.</div><h1>A little closer,<br /><em>together.</em></h1><p>A home for your communities.<br />Room for every conversation.</p>
-        <div className="story-art" aria-hidden="true"><span className="orbit orbit-one" /><span className="orbit orbit-two" /><Asterisk className="art-spark" size={58} strokeWidth={1} />
-          <div className="art-card art-community"><span className="art-card-icon"><Sprout size={30} /></span><div><strong>Your community</strong><small>Where belonging begins</small></div><ArrowUpRight size={19} /></div>
-          <div className="art-card art-message"><span className="bubble-icon"><MessageCircle size={20} /></span><div><span className="art-line long" /><span className="art-line" /><div className="art-reaction">♡ &nbsp; A little connection goes a long way.</div></div></div>
-          <div className="art-people"><span>Made for your circle</span><div><Avatar name="Together" size={34} /><Avatar name="People" size={34} /><Avatar name="Community" size={34} /><span className="art-plus">+</span></div></div>
-        </div>
+      <div className="story-content"><div className="eyebrow light"><span className="tiny-dot" /> GOOD COMPANY. ROOM TO GROW.</div><h1>A little place<br /><em>to belong.</em></h1><p>A Tree for your people.<br />A Nest for every conversation.</p>
+        <div className="brand-nest-art" aria-hidden="true"><img src="/brand/churp-nest.webp" alt="" /><span>A little room to belong.</span></div>
         <div className="story-values"><span><ShieldCheck size={17} /> Private by design</span><span><Users size={17} /> Built around people</span></div>
-      </div><div className="story-footer">Small circles. Meaningful connections.<span>EST. 2026</span></div>
+      </div><div className="story-footer">Small nests. Meaningful connections.<span>EST. 2026</span></div>
     </div>
     <main className="auth-main"><span className="auth-corner">A space to call yours <Sprout size={16} /></span><div className="auth-form-wrap">
       <div className="auth-mobile-logo"><Logo /></div><span className="eyebrow">LET’S GET TOGETHER</span><h2>{signup ? 'Find your people.' : 'Welcome home.'}</h2><p className="muted">{signup ? 'Create an account. Start something good.' : 'Sign in and pick up where you left off.'}</p>
@@ -49,8 +45,8 @@ export default function Auth({ onLogin, config }) {
         <Field label="Password" name="password" type="password" placeholder={signup ? 'At least 8 characters' : 'Enter your password'} autoComplete={signup ? 'new-password' : 'current-password'} required minLength={signup ? 8 : undefined} maxLength={128} />
         {!signup && <p className="auth-session-note"><ShieldCheck size={14} /> You’ll stay signed in on this device.</p>}
       </Form>
-      <p className="auth-switch">{signup ? 'Already part of the circle?' : 'New around here?'} <button onClick={() => setSignup(!signup)}>{signup ? 'Sign in' : 'Create an account'} <ArrowRight size={14} /></button></p>
+      <p className="auth-switch">{signup ? 'Already part of the nest?' : 'New around here?'} <button onClick={() => setSignup(!signup)}>{signup ? 'Sign in' : 'Create an account'} <ArrowRight size={14} /></button></p>
       <p className="auth-fine">Your next great conversation starts here.</p>
-    </div><div className="auth-bottom">Gatherly · A little closer, together.</div></main>
+    </div><div className="auth-bottom">Churp · A little closer, together.</div></main>
   </div>;
 }

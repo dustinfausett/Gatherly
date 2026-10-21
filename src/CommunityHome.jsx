@@ -41,13 +41,13 @@ function CircleRow({ circle: c, onOpen, onOptions, onChange }) {
       }}
       onPointerCancel={() => { gesture.current = null; setOffset(0); }}
       onClickCapture={e => { if (suppressClick.current) { e.preventDefault(); e.stopPropagation(); suppressClick.current = false; } }}>
-      <button className="circle-open" aria-label={`Open Circle ${c.name}`} aria-describedby={unread(c) ? `circle-state-${c.id}` : undefined} onClick={() => { if (revealed) setRevealed(false); else onOpen(c.id); }}>
+      <button className="circle-open" aria-label={`Open Nest ${c.name}`} aria-describedby={unread(c) ? `circle-state-${c.id}` : undefined} onClick={() => { if (revealed) setRevealed(false); else onOpen(c.id); }}>
         <span className="row-avatar"><Avatar name={c.name} id={c.avatar_id} size={50} />{unread(c) && <span className={`avatar-status-dot ${c.urgent_unread > 0 ? 'urgent' : ''}`} aria-hidden="true" />}</span>
-        <span className="circle-copy"><span className="circle-name">{c.name}{!!c.private && <LockKeyhole size={13} aria-label="Private Circle" />}{c.pin_position !== null && <Pin size={13} aria-label="Pinned" />}</span></span>
+        <span className="circle-copy"><span className="circle-name">{c.name}{!!c.private && <LockKeyhole size={13} aria-label="Private Nest" />}{c.pin_position !== null && <Pin size={13} aria-label="Pinned" />}</span></span>
         {unread(c) && <span id={`circle-state-${c.id}`} className="visually-hidden">{c.urgent_unread > 0 ? 'Urgent and unread' : 'Unread'} · {c.unread || 'Marked unread'}</span>}
       </button>
       {c.joined && <button data-row-control className={`circle-mute ${c.muted ? 'muted' : ''}`} aria-label={`${c.muted ? 'Unmute' : 'Mute'} ${c.name}`} aria-pressed={c.muted} disabled={busy} title={c.muted ? 'Unmute notifications' : 'Mute notifications'} onClick={async () => { setBusy(true); try { await onChange(c, { muted: !c.muted }); } finally { setBusy(false); } }}>{c.muted ? <BellOff size={19} /> : <Bell size={19} />}</button>}
-      <button data-row-control className="circle-more" aria-label={`Options for ${c.name}`} title="Circle options" onClick={() => onOptions(c)}><MoreHorizontal size={21} /></button>
+      <button data-row-control className="circle-more" aria-label={`Options for ${c.name}`} title="Nest options" onClick={() => onOptions(c)}><MoreHorizontal size={21} /></button>
     </div>
   </div>;
 }
@@ -56,10 +56,10 @@ function CircleRow({ circle: c, onOpen, onOptions, onChange }) {
 function GroupRow({ group: g, expanded, onToggle }) {
   return <div className={`circle-row group-row ${unread(g) ? 'is-unread' : ''} ${g.urgent_unread > 0 ? 'is-urgent' : ''}`} data-group-id={g.id} data-unread={unread(g)} data-urgent={g.urgent_unread > 0}>
     <div className="circle-row-content">
-      <button className="circle-open" aria-label={`Open Group ${g.name}`} aria-expanded={expanded} aria-controls={`group-circles-${g.id}`} aria-describedby={unread(g) ? `group-state-${g.id}` : undefined} onClick={() => onToggle(g.id)}>
+      <button className="circle-open" aria-label={`Open Branch ${g.name}`} aria-expanded={expanded} aria-controls={`group-circles-${g.id}`} aria-describedby={unread(g) ? `group-state-${g.id}` : undefined} onClick={() => onToggle(g.id)}>
         <span className="row-avatar"><Avatar name={g.name} id={g.avatar_id} size={50} /><span className="group-avatar-symbol" aria-hidden="true"><Users size={11} /></span>{unread(g) && <span className={`avatar-status-dot ${g.urgent_unread > 0 ? 'urgent' : ''}`} aria-hidden="true" />}</span>
         <span className="circle-copy"><span className="circle-name">{g.name}</span></span><ChevronRight size={20} className={`group-row-chevron ${expanded ? 'expanded' : ''}`} />
-        {unread(g) && <span id={`group-state-${g.id}`} className="visually-hidden">{g.urgent_unread > 0 ? 'Urgent and unread' : 'Unread'} Circles in this Group</span>}
+        {unread(g) && <span id={`group-state-${g.id}`} className="visually-hidden">{g.urgent_unread > 0 ? 'Urgent and unread' : 'Unread'} Nests in this Branch</span>}
       </button>
     </div>
   </div>;
@@ -109,38 +109,38 @@ export default function CommunityHome({ community: c, search, onModal, onCircle,
       .sort((a,b) => Number(unread(b)) - Number(unread(a)) || alphabetic(a,b));
     return <div className="group-branch" key={`group-${item.id}`}>
       <GroupRow group={item} expanded={expanded} onToggle={onToggleGroup} />
-      {expanded && <div className="group-children" id={`group-circles-${item.id}`} role="group" aria-label={`Circles in ${item.name}`}>
+      {expanded && <div className="group-children" id={`group-circles-${item.id}`} role="group" aria-label={`Nests in ${item.name}`}>
         <div className="circle-list">{children.map(circleRow)}</div>
-        {!children.length && <p className="list-empty">{item.groups.some(g => g.pin_position !== null) ? 'Your pinned Circles from this Group are shown above.' : query ? 'No Circles match your search.' : 'No Circles here yet.'}</p>}
+        {!children.length && <p className="list-empty">{item.groups.some(g => g.pin_position !== null) ? 'Your pinned Nests from this Branch are shown above.' : query ? 'No Nests match your search.' : 'No Nests here yet.'}</p>}
         <div className="inline-group-actions">
-          <button className="text-button" disabled={busy} onClick={() => groupMembership(item)}>{item.joined ? 'Leave Group' : 'Join Group'}</button>
-          {item.is_admin && <><button className="text-button" aria-label={`Add Circle to ${item.name}`} onClick={() => createCircle(item)}><Plus size={15} />Add Circle</button><button className="icon-button" aria-label={`Group settings for ${item.name}`} onClick={() => onModal({kind:'space',type:'subcommunity',entity:item})}><Settings2 size={16} /></button></>}
+          <button className="text-button" disabled={busy} onClick={() => groupMembership(item)}>{item.joined ? 'Leave Branch' : 'Join Branch'}</button>
+          {item.is_admin && <><button className="text-button" aria-label={`Add Nest to ${item.name}`} onClick={() => createCircle(item)}><Plus size={15} />Add Nest</button><button className="icon-button" aria-label={`Branch settings for ${item.name}`} onClick={() => onModal({kind:'space',type:'subcommunity',entity:item})}><Settings2 size={16} /></button></>}
         </div>
       </div>}
     </div>;
   });
   return <div className="community-home circle-home compact-home">
     <header className="community-banner"><Avatar name={c.name} id={c.avatar_id} size={56} /><h1>{c.name}</h1><div className="banner-actions">
-      <button className="icon-button" aria-label="Search Groups and Circles" aria-expanded={searchOpen} onClick={() => { if (searchOpen) setSearch(''); setSearchOpen(!searchOpen); }}><Search size={19} /></button>
-      {c.is_admin && <button className="icon-button" aria-label="Community settings" onClick={() => onModal({kind:'space',type:'community',entity:c})}><Settings2 size={19} /></button>}
+      <button className="icon-button" aria-label="Search Branches and Nests" aria-expanded={searchOpen} onClick={() => { if (searchOpen) setSearch(''); setSearchOpen(!searchOpen); }}><Search size={19} /></button>
+      {c.is_admin && <button className="icon-button" aria-label="Tree settings" onClick={() => onModal({kind:'space',type:'community',entity:c})}><Settings2 size={19} /></button>}
     </div></header>
-    {searchOpen && <label className="circle-search compact-search"><Search size={18} /><input autoFocus aria-label="Search Groups and Circles" placeholder="Search Groups and Circles…" value={localSearch} onChange={e => setSearch(e.target.value)} /></label>}
-    <section className="circle-section pinned-circles" aria-label="Pinned Circles"><h2><Pin size={14} />Pinned Circles</h2><div className="circle-list">{scopePins.map(circleRow)}</div>{!scopePins.length && <p className="list-empty">{query ? 'No pinned Circles match your search.' : 'Pin your favorite Circles from Options.'}</p>}</section>
-    <section className="circle-section joined-circles" aria-label="Joined Groups and Circles"><h2>Groups &amp; Circles you’ve joined</h2><div className="circle-list">{list(yourEntries)}</div>{!yourEntries.length && <p className="list-empty">{query ? 'No matches here.' : 'Join a Group or Circle from Explore below.'}</p>}</section>
-    <section className="circle-section explore-circles" aria-label="Explore Groups and Circles"><h2>Explore Groups &amp; Circles</h2><div className="circle-list">{list(exploreEntries)}</div>{!exploreEntries.length && <p className="list-empty">{query ? 'No matches here.' : 'You’re all caught up. More spaces can be added as your Community grows.'}</p>}</section>
-    {(canCreate || c.is_admin) && <div className="space-create-actions">{canCreate && <button className="button primary" onClick={() => createCircle()}><Plus size={17} />New Circle</button>}{c.is_admin && <button className="button secondary" onClick={() => onModal({kind:'space',type:'subcommunity'})}><Users size={17} />New Group</button>}</div>}
-    {options && <Modal title={options.name} subtitle="Circle options · your preferences are saved across devices." onClose={() => setOptionsId(null)}>
+    {searchOpen && <label className="circle-search compact-search"><Search size={18} /><input autoFocus aria-label="Search Branches and Nests" placeholder="Search Branches and Nests…" value={localSearch} onChange={e => setSearch(e.target.value)} /></label>}
+    <section className="circle-section pinned-circles" aria-label="Pinned Nests"><h2><Pin size={14} />Pinned Nests</h2><div className="circle-list">{scopePins.map(circleRow)}</div>{!scopePins.length && <p className="list-empty">{query ? 'No pinned Nests match your search.' : 'Pin your favorite Nests from Options.'}</p>}</section>
+    <section className="circle-section joined-circles" aria-label="Joined Branches and Nests"><h2>Branches &amp; Nests you’ve joined</h2><div className="circle-list">{list(yourEntries)}</div>{!yourEntries.length && <p className="list-empty">{query ? 'No matches here.' : 'Join a Branch or Nest from Explore below.'}</p>}</section>
+    <section className="circle-section explore-circles" aria-label="Explore Branches and Nests"><h2>Explore Branches &amp; Nests</h2><div className="circle-list">{list(exploreEntries)}</div>{!exploreEntries.length && <p className="list-empty">{query ? 'No matches here.' : 'You’re all caught up. More spaces can be added as your Tree grows.'}</p>}</section>
+    {(canCreate || c.is_admin) && <div className="space-create-actions">{canCreate && <button className="button primary" onClick={() => createCircle()}><Plus size={17} />New Nest</button>}{c.is_admin && <button className="button secondary" onClick={() => onModal({kind:'space',type:'subcommunity'})}><Users size={17} />New Branch</button>}</div>}
+    {options && <Modal title={options.name} subtitle="Nest options · your preferences are saved across devices." onClose={() => setOptionsId(null)}>
       <div className="circle-options">
-        <button disabled={busy} onClick={() => { setOptionsId(null); onCircle(options.id); }}><MessageCircle size={18} />Open Circle</button>
+        <button disabled={busy} onClick={() => { setOptionsId(null); onCircle(options.id); }}><MessageCircle size={18} />Open Nest</button>
         {options.joined && <>
-          <button disabled={busy} onClick={() => action({ pinned: options.pin_position === null })}>{options.pin_position === null ? <Pin size={18} /> : <PinOff size={18} />}{options.pin_position === null ? 'Pin Circle' : 'Unpin Circle'}</button>
+          <button disabled={busy} onClick={() => action({ pinned: options.pin_position === null })}>{options.pin_position === null ? <Pin size={18} /> : <PinOff size={18} />}{options.pin_position === null ? 'Pin Nest' : 'Unpin Nest'}</button>
           {options.pin_position !== null && <div className="pin-position-controls"><button disabled={busy || pinned[0]?.id === options.id} onClick={() => action({ pin_position: Math.max(0, pinned.findIndex(g => g.id === options.id) - 1) })}><ArrowUp size={18} />Move up</button><button disabled={busy || pinned.at(-1)?.id === options.id} onClick={() => action({ pin_position: pinned.findIndex(g => g.id === options.id) + 1 })}><ArrowDown size={18} />Move down</button></div>}
           <button disabled={busy} onClick={() => action(unread(options) ? { read_to: Number.MAX_SAFE_INTEGER } : { marked_unread: true })}><CheckCheck size={18} />{unread(options) ? 'Mark as read' : 'Mark as unread'}</button>
           <button disabled={busy} onClick={() => action({ muted: !options.muted })}>{options.muted ? <Bell size={18} /> : <BellOff size={18} />}{options.muted ? 'Unmute notifications' : 'Mute notifications'}</button>
         </>}
-        {options.is_admin && <button onClick={() => { setOptionsId(null); onModal({ kind: 'space', type: 'group', entity: options }); }}><Settings2 size={18} />Circle settings</button>}
-        {options.joined && <button className="danger" disabled={busy} onClick={() => setConfirmLeave(true)}>Leave Circle</button>}
-        {confirmLeave && <div className="confirmation"><p>Leave {options.name}? Private Circles require an admin invitation to rejoin.</p><div className="button-row"><button className="button secondary" disabled={busy} onClick={() => setConfirmLeave(false)}>Cancel</button><button className="button danger-button" disabled={busy} onClick={async () => { setBusy(true); try { await api(`/groups/${options.id}/join`, { method: 'DELETE' }); setOptionsId(null); await onRefresh(); } catch (err) { notify(err.message, true); } finally { setBusy(false); } }}>Leave Circle</button></div></div>}
+        {options.is_admin && <button onClick={() => { setOptionsId(null); onModal({ kind: 'space', type: 'group', entity: options }); }}><Settings2 size={18} />Nest settings</button>}
+        {options.joined && <button className="danger" disabled={busy} onClick={() => setConfirmLeave(true)}>Leave Nest</button>}
+        {confirmLeave && <div className="confirmation"><p>Leave {options.name}? Private Nests require an admin invitation to rejoin.</p><div className="button-row"><button className="button secondary" disabled={busy} onClick={() => setConfirmLeave(false)}>Cancel</button><button className="button danger-button" disabled={busy} onClick={async () => { setBusy(true); try { await api(`/groups/${options.id}/join`, { method: 'DELETE' }); setOptionsId(null); await onRefresh(); } catch (err) { notify(err.message, true); } finally { setBusy(false); } }}>Leave Nest</button></div></div>}
       </div>
     </Modal>}
   </div>;

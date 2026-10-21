@@ -1,5 +1,5 @@
 {
-  "name": "gatherly",
+  "name": "churp",
   "version": "1.0.0",
   "private": true,
   "type": "module",
@@ -16,8 +16,8 @@
     "node": ">=24.0.0"
   },
   "dependencies": {
-    "@fontsource/dm-sans": "^5.3.0",
-    "@fontsource/manrope": "^5.3.0",
+    "@fontsource/nunito": "^5.3.0",
+    "@fontsource/nunito-sans": "^5.3.0",
     "cookie-parser": "^1.4.7",
     "express": "^5.3.0",
     "express-rate-limit": "^8.7.1",

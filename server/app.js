@@ -62,16 +62,16 @@ export function createApp(options = {}) {
     const users = communityId ? all('SELECT user_id FROM community_members WHERE community_id=?', communityId).map(x => x.user_id) : [...streams.keys()];
     for (const id of users) refreshUser(id);
   }
-  const community = id => one('SELECT * FROM communities WHERE id=?', id) || fail(404, 'Community not found.');
+  const community = id => one('SELECT * FROM communities WHERE id=?', id) || fail(404, 'Tree not found.');
   function membership(userId, communityId) {
-    return one('SELECT * FROM community_members WHERE user_id=? AND community_id=?', userId, communityId) || fail(403, 'You are not a member of this Community.');
+    return one('SELECT * FROM community_members WHERE user_id=? AND community_id=?', userId, communityId) || fail(403, 'You are not a member of this Tree.');
   }
   function communityAdmin(userId, id) {
     return ['owner', 'admin'].includes(membership(userId, id).role);
   }
-  function sub(id) { return one('SELECT * FROM subcommunities WHERE id=?', id) || fail(404, 'Group not found.'); }
+  function sub(id) { return one('SELECT * FROM subcommunities WHERE id=?', id) || fail(404, 'Branch not found.'); }
   function group(id) {
-    return one('SELECT * FROM groups WHERE id=?', id) || fail(404, 'Circle not found.');
+    return one('SELECT * FROM groups WHERE id=?', id) || fail(404, 'Nest not found.');
   }
   function subAdmin(userId, s) {
     return communityAdmin(userId, s.community_id) || !!one("SELECT 1 FROM scoped_admins WHERE user_id=? AND scope_type='subcommunity' AND scope_id=?", userId, s.id);
@@ -83,7 +83,7 @@ export function createApp(options = {}) {
   function visibleCircle(userId, id) {
     const g = group(id);
     membership(userId, g.community_id);
-    if (g.private && !joined(userId, id) && !groupAdmin(userId, g)) fail(404, 'Circle not found.');
+    if (g.private && !joined(userId, id) && !groupAdmin(userId, g)) fail(404, 'Nest not found.');
     return g;
   }
   function avatar(userId, id) {
@@ -201,7 +201,7 @@ export function createApp(options = {}) {
     (SELECT COUNT(*) FROM community_members WHERE community_id=c.id) AS member_count
     FROM communities c JOIN community_members m ON m.community_id=c.id WHERE m.user_id=? ORDER BY c.name`, req.user.id) }));
   app.post('/api/communities', (req, res) => {
-    const name = text(req.body.name, 'Community name');
+    const name = text(req.body.name, 'Tree name');
     const desc = description(req.body.description);
     const id = randomUUID();
     transaction(() => {
@@ -250,9 +250,9 @@ export function createApp(options = {}) {
     }
     let parentId = entity.subcommunity_id;
     if (type === 'group' && req.body.subcommunity_id !== undefined && req.body.subcommunity_id !== parentId) {
-      if (!communityAdmin(req.user.id, entity.community_id)) fail(403, 'Only Community admins can move Circles.');
+      if (!communityAdmin(req.user.id, entity.community_id)) fail(403, 'Only Tree admins can move Nests.');
       parentId = req.body.subcommunity_id;
-      if (parentId !== null && (typeof parentId !== 'string' || sub(parentId).community_id !== entity.community_id)) fail(400, 'Choose a Group in this Community.');
+      if (parentId !== null && (typeof parentId !== 'string' || sub(parentId).community_id !== entity.community_id)) fail(400, 'Choose a Branch in this Tree.');
     }
     transaction(() => {
       run(`UPDATE ${table} SET name=?,description=?,avatar_id=? WHERE id=?`, name, desc, pic, entity.id);
@@ -265,10 +265,10 @@ export function createApp(options = {}) {
   app.patch('/api/subcommunities/:id', (req, res) => updateSpace(req, res, 'subcommunity'));
   app.patch('/api/groups/:id', (req, res) => updateSpace(req, res, 'group'));
   app.post('/api/communities/:id/subcommunities', (req, res) => {
-    if (!communityAdmin(req.user.id, req.params.id)) fail(403, 'Only Community admins can create Groups.');
+    if (!communityAdmin(req.user.id, req.params.id)) fail(403, 'Only Tree admins can create Branches.');
     const id = randomUUID();
     transaction(() => {
-      run('INSERT INTO subcommunities(id,community_id,name,description) VALUES (?,?,?,?)', id, req.params.id, text(req.body.name, 'Group name'), description(req.body.description));
+      run('INSERT INTO subcommunities(id,community_id,name,description) VALUES (?,?,?,?)', id, req.params.id, text(req.body.name, 'Branch name'), description(req.body.description));
       run('INSERT INTO collection_members VALUES (?,?)',id,req.user.id);
     });
     refresh(req.params.id);
@@ -289,11 +289,11 @@ export function createApp(options = {}) {
     if (g.subcommunity_id) run('INSERT OR IGNORE INTO collection_members VALUES (?,?)',g.subcommunity_id,userId);
   }
   function createCircle(req, res, cid, parentId = null) {
-    if (parentId ? !subAdmin(req.user.id, sub(parentId)) : !communityAdmin(req.user.id, cid)) fail(403, 'Only admins of the parent space can create Circles.');
+    if (parentId ? !subAdmin(req.user.id, sub(parentId)) : !communityAdmin(req.user.id, cid)) fail(403, 'Only admins of the parent space can create Nests.');
     const id = randomUUID();
     transaction(() => {
       run('INSERT INTO groups(id,community_id,subcommunity_id,name,description,private,admin_only) VALUES (?,?,?,?,?,?,?)',
-        id, cid, parentId, text(req.body.name, 'Circle name'), description(req.body.description), boolean(req.body.private ?? false, 'Private'), boolean(req.body.admin_only ?? false, 'Admin-only posting'));
+        id, cid, parentId, text(req.body.name, 'Nest name'), description(req.body.description), boolean(req.body.private ?? false, 'Private'), boolean(req.body.admin_only ?? false, 'Admin-only posting'));
       run('INSERT INTO group_members(group_id,user_id) VALUES (?,?)', id, req.user.id);
       if (parentId) run('INSERT OR IGNORE INTO collection_members VALUES (?,?)',parentId,req.user.id);
     });
@@ -303,7 +303,7 @@ export function createApp(options = {}) {
   app.post('/api/communities/:id/circles', (req, res) => {
     const cid = req.params.id, parentId = req.body.subcommunity_id ?? null;
     membership(req.user.id, cid);
-    if (parentId !== null && (typeof parentId !== 'string' || sub(parentId).community_id !== cid)) fail(400, 'Choose a Group in this Community.');
+    if (parentId !== null && (typeof parentId !== 'string' || sub(parentId).community_id !== cid)) fail(400, 'Choose a Branch in this Tree.');
     createCircle(req, res, cid, parentId);
   });
   app.get('/api/communities/:id/members', (req, res) => {
@@ -317,7 +317,7 @@ export function createApp(options = {}) {
   });
   app.patch('/api/communities/:id/members/:userId', (req, res) => {
     const c = community(req.params.id);
-    if (c.owner_id !== req.user.id) fail(403, 'Only the Community owner can appoint Community admins.');
+    if (c.owner_id !== req.user.id) fail(403, 'Only the Tree owner can appoint Tree admins.');
     const target = membership(req.params.userId, c.id);
     if (target.role === 'owner') fail(400, 'Transfer ownership before changing the owner’s role.');
     if (!['admin', 'member'].includes(req.body.role)) fail(400, 'Choose admin or member.');
@@ -326,7 +326,7 @@ export function createApp(options = {}) {
   });
   app.post('/api/communities/:id/transfer', (req, res) => {
     const c = community(req.params.id);
-    if (c.owner_id !== req.user.id) fail(403, 'Only the owner can transfer this Community.');
+    if (c.owner_id !== req.user.id) fail(403, 'Only the owner can transfer this Tree.');
     membership(req.body.user_id, c.id);
     if (req.body.user_id === req.user.id) fail(400, 'Choose another member to become the owner.');
     transaction(() => {
@@ -338,10 +338,10 @@ export function createApp(options = {}) {
   });
   app.delete('/api/communities/:id/members/:userId', (req, res) => {
     const c = community(req.params.id);
-    if (!communityAdmin(req.user.id, c.id)) fail(403, 'Only Community admins can remove members.');
+    if (!communityAdmin(req.user.id, c.id)) fail(403, 'Only Tree admins can remove members.');
     const target = membership(req.params.userId, c.id);
     if (target.role === 'owner' || req.params.userId === req.user.id) fail(400, 'You cannot remove the owner or yourself.');
-    if (target.role === 'admin' && c.owner_id !== req.user.id) fail(403, 'Only the owner can remove another Community admin.');
+    if (target.role === 'admin' && c.owner_id !== req.user.id) fail(403, 'Only the owner can remove another Tree admin.');
     refresh(c.id);
     transaction(() => {
       run('DELETE FROM collection_members WHERE user_id=? AND subcommunity_id IN (SELECT id FROM subcommunities WHERE community_id=?)', req.params.userId, c.id);
@@ -372,8 +372,8 @@ export function createApp(options = {}) {
     membership(req.user.id, cid);
     if (gid) {
       const g = group(gid);
-      if (g.community_id !== cid || !groupAdmin(req.user.id, g)) fail(403, 'Only Circle admins can invite people into this Circle.');
-    } else if (!communityAdmin(req.user.id, cid)) fail(403, 'Only Community admins can invite new members.');
+      if (g.community_id !== cid || !groupAdmin(req.user.id, g)) fail(403, 'Only Nest admins can invite people into this Nest.');
+    } else if (!communityAdmin(req.user.id, cid)) fail(403, 'Only Tree admins can invite new members.');
     const value = token();
     const expires = Date.now() + 7 * 86400 * 1000;
     run('INSERT INTO invitations VALUES (?,?,?,?,?)', hash(value), cid, gid || null, req.user.id, expires);
@@ -387,7 +387,7 @@ export function createApp(options = {}) {
     let stillAdmin = false;
     try { stillAdmin = inv.group_id ? groupAdmin(inv.created_by, group(inv.group_id)) : communityAdmin(inv.created_by, inv.community_id); } catch { /* removed creator */ }
     if (!stillAdmin) fail(410, 'This invitation has been revoked. Ask an admin for a new link.');
-    if (inv.group_id && !one('SELECT 1 FROM community_members WHERE community_id=? AND user_id=?', inv.community_id, req.user.id)) fail(403, 'Join the Community with a Community invitation before accepting a Circle invitation.');
+    if (inv.group_id && !one('SELECT 1 FROM community_members WHERE community_id=? AND user_id=?', inv.community_id, req.user.id)) fail(403, 'Join the Tree with a Tree invitation before accepting a Nest invitation.');
     transaction(() => {
       if (!inv.group_id) run("INSERT OR IGNORE INTO community_members VALUES (?,?,'member')", inv.community_id, req.user.id);
       if (inv.group_id) { run('INSERT OR IGNORE INTO group_members(group_id,user_id) VALUES (?,?)', inv.group_id, req.user.id); joinParent(req.user.id,group(inv.group_id)); }
@@ -398,7 +398,7 @@ export function createApp(options = {}) {
   });
   app.post('/api/groups/:id/join', (req, res) => {
     const g = visibleCircle(req.user.id, req.params.id);
-    if (g.private && !groupAdmin(req.user.id, g) && !joined(req.user.id, g.id)) fail(403, 'A Circle admin must invite you.');
+    if (g.private && !groupAdmin(req.user.id, g) && !joined(req.user.id, g.id)) fail(403, 'A Nest admin must invite you.');
     transaction(() => {
       run('INSERT OR IGNORE INTO group_members(group_id,user_id,last_read) VALUES (?,?,?)', g.id, req.user.id, one('SELECT COALESCE(MAX(id),0) AS n FROM messages WHERE group_id=?', g.id).n);
       joinParent(req.user.id,g);
@@ -413,7 +413,7 @@ export function createApp(options = {}) {
   app.patch('/api/groups/:id/membership', (req, res) => {
     const g = visibleCircle(req.user.id, req.params.id);
     const previous = joined(req.user.id, g.id);
-    if (!previous) fail(403, 'Join this Circle first.');
+    if (!previous) fail(403, 'Join this Nest first.');
     // Validate every field before writing any preferences.
     const mute = req.body.muted === undefined ? previous.muted : boolean(req.body.muted, 'Muted');
     const unread = req.body.marked_unread === undefined ? previous.marked_unread : boolean(req.body.marked_unread, 'Unread');
@@ -421,7 +421,7 @@ export function createApp(options = {}) {
     if (req.body.pin_position !== undefined && (!Number.isSafeInteger(req.body.pin_position) || req.body.pin_position < 0)) fail(400, 'Invalid pinned position.');
     if (req.body.read_to !== undefined && (!Number.isSafeInteger(req.body.read_to) || req.body.read_to < 0)) fail(400, 'Invalid read position.');
     if (req.body.read_to !== undefined && req.body.marked_unread === true) fail(400, 'Choose read or unread.');
-    if (req.body.pin_position !== undefined && previous.pin_position === null && req.body.pinned !== true) fail(400, 'Pin this Circle before changing its position.');
+    if (req.body.pin_position !== undefined && previous.pin_position === null && req.body.pinned !== true) fail(400, 'Pin this Nest before changing its position.');
     let changed = false;
     transaction(() => {
       const preferences = run('UPDATE group_members SET muted=?,marked_unread=? WHERE group_id=? AND user_id=? AND (muted<>? OR marked_unread<>?)', mute, unread, g.id, req.user.id, mute, unread);
@@ -467,8 +467,8 @@ export function createApp(options = {}) {
   });
   app.post('/api/groups/:id/messages', rateLimit({ windowMs: 60_000, limit: options.testing ? 1000 : 90, keyGenerator: req => req.user.id, message: { error: 'Please slow down and try again in a moment.' } }), (req, res) => {
     const g = visibleCircle(req.user.id, req.params.id);
-    if (!joined(req.user.id, g.id)) fail(403, 'Join this Circle to send messages.');
-    if (g.admin_only && !groupAdmin(req.user.id, g)) fail(403, 'Only admins can post or reply in this Circle.');
+    if (!joined(req.user.id, g.id)) fail(403, 'Join this Nest to send messages.');
+    if (g.admin_only && !groupAdmin(req.user.id, g)) fail(403, 'Only admins can post or reply in this Nest.');
     const body = req.body.body ?? '';
     const files = req.body.files ?? [];
     const urgent = boolean(req.body.urgent ?? false, 'Urgent');
@@ -494,7 +494,7 @@ export function createApp(options = {}) {
     refresh(g.community_id);
     if (pushEnabled) for (const recipient of recipients) for (const s of all('SELECT * FROM push_subscriptions WHERE user_id=?', recipient.user_id)) {
       // No message contents in device notifications; access is checked when the app opens.
-      webPush.sendNotification(JSON.parse(s.subscription), JSON.stringify({ title: 'New message on Gatherly', body: 'You have a new message in a Circle you joined.', url: `/?community=${g.community_id}&group=${g.id}` }), { TTL: 3600, timeout: 10000, proxy: process.env.HTTPS_PROXY || process.env.https_proxy }).catch(error => {
+      webPush.sendNotification(JSON.parse(s.subscription), JSON.stringify({ title: 'New message on Churp', body: 'You have a new message in a Nest you joined.', url: `/?community=${g.community_id}&group=${g.id}` }), { TTL: 3600, timeout: 10000, proxy: process.env.HTTPS_PROXY || process.env.https_proxy }).catch(error => {
         if ([404,410].includes(error.statusCode)) run('DELETE FROM push_subscriptions WHERE endpoint=?', s.endpoint);
       });
     }
@@ -503,7 +503,7 @@ export function createApp(options = {}) {
   app.patch('/api/messages/:id', (req, res) => {
     const m = one('SELECT * FROM messages WHERE id=? AND deleted=0', req.params.id) || fail(404, 'Message not found.');
     const g = visibleCircle(req.user.id, m.group_id);
-    if (m.user_id !== req.user.id && !groupAdmin(req.user.id, g)) fail(403, 'Only the author or a Circle admin can change urgency.');
+    if (m.user_id !== req.user.id && !groupAdmin(req.user.id, g)) fail(403, 'Only the author or a Nest admin can change urgency.');
     if (!joined(req.user.id, g.id) || (g.admin_only && !groupAdmin(req.user.id,g))) fail(403, 'Posting permissions are required to change urgency.');
     run('UPDATE messages SET urgent=? WHERE id=?', boolean(req.body.urgent, 'Urgent'), m.id);
     refresh(g.community_id); res.json({ ok: true });

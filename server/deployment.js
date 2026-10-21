@@ -5,7 +5,7 @@ import webPush from 'web-push';
 // A Railway service must have its persistent volume before accepting user data.
 export function prepareDeployment(env = process.env) {
   if (env.RAILWAY_ENVIRONMENT_ID && !env.RAILWAY_VOLUME_MOUNT_PATH) {
-    throw new Error('Attach a Railway Volume mounted at /data before starting Gatherly. Accounts, messages, and uploads must survive redeploys.');
+    throw new Error('Attach a Railway Volume mounted at /data before starting Churp. Accounts, messages, and uploads must survive redeploys.');
   }
   if (!env.DATA_DIR && env.RAILWAY_VOLUME_MOUNT_PATH) env.DATA_DIR = env.RAILWAY_VOLUME_MOUNT_PATH;
   if (env.RAILWAY_VOLUME_MOUNT_PATH && resolve(env.DATA_DIR || '.data') !== resolve(env.RAILWAY_VOLUME_MOUNT_PATH)) {
