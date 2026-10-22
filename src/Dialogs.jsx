@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { Check, CheckCheck, Copy, Crown, Link, LogOut, Shield, UserPlus, BellRing, BellOff, Trash2, ArrowRight, Users } from 'lucide-react';
+import { Check, Copy, Crown, Link, LogOut, Shield, UserPlus, BellRing, BellOff, Trash2, Users } from 'lucide-react';
 import { api, post, patch } from './api';
-import { Avatar, AvatarEditor, Empty, Field, Form, Modal, Toggle, formatTime } from './components';
+import { Avatar, AvatarEditor, Empty, Field, Form, Modal, Toggle } from './components';
 
 export function SpaceDialog({ modal, community, onClose, onSave }) {
   const { type, entity, parent } = modal;
@@ -9,32 +9,40 @@ export function SpaceDialog({ modal, community, onClose, onSave }) {
   const [avatarId, setAvatarId] = useState(entity?.avatar_id || null);
   const [privateCircle, setPrivate] = useState(!!entity?.private);
   const [adminOnly, setAdminOnly] = useState(!!entity?.admin_only);
+  const [branchApproval, setBranchApproval] = useState(!!(entity?.branch_approval_required ?? true));
+  const [nestApproval, setNestApproval] = useState(!!(entity?.nest_approval_required ?? true));
   const [name, setName] = useState(entity?.name || '');
   const [location, setLocation] = useState(entity?.subcommunity_id || parent?.id || '');
   const label = { community: 'Tree', subcommunity: 'Branch', group: 'Nest' }[type];
+  const parentAdmin = type === 'group' && location ? community?.subcommunities.find(s => s.id === location)?.is_admin : false;
+  const needsApproval = !editing && type !== 'community' && !community.is_admin && !parentAdmin && (type === 'subcommunity' ? community.branch_approval_required : community.nest_approval_required);
   return <Modal title={`${editing ? 'Edit' : 'Create a'} ${label}`} subtitle={type === 'community' ? 'Give your people a place to gather.' : type === 'subcommunity' ? 'A little organization for a growing Tree.' : 'A dedicated space for a conversation.'} onClose={onClose}>
-    <Form submit={editing ? 'Save changes' : `Create ${label}`} onSubmit={async form => {
-      const payload = { name: form.get('name'), description: form.get('description') };
+    <Form submit={editing ? 'Save changes' : needsApproval ? 'Submit for Approval' : `Create ${label}`} onSubmit={async form => {
+      const payload = { name: form.get('name'), description: form.get('description'), avatar_id: avatarId };
+      if (type === 'community' && editing) Object.assign(payload,{branch_approval_required:branchApproval,nest_approval_required:nestApproval});
       if (type === 'group') Object.assign(payload, { private: privateCircle, admin_only: adminOnly, subcommunity_id: location || null });
       let result;
       if (editing) { payload.avatar_id = avatarId; result = await patch(`/${type === 'community' ? 'communities' : type === 'subcommunity' ? 'subcommunities' : 'groups'}/${entity.id}`, payload); }
       else {
         const url = type === 'community' ? '/communities' : type === 'subcommunity' ? `/communities/${community.id}/subcommunities` : `/communities/${community.id}/circles`;
         result = await post(url, payload);
-        if (avatarId) {
-          const item = result[type];
-          await patch(`/${type === 'community' ? 'communities' : type === 'subcommunity' ? 'subcommunities' : 'groups'}/${item.id}`, { avatar_id: avatarId });
-        }
       }
       await onSave(result, type); onClose();
     }}>
+      {needsApproval && <div className="info-banner">An admin will review this before it appears in the Tree. Follow its status in Creation requests.</div>}
+      {!editing && type !== 'community' && <p className="small-text muted">Creators can manage their own {label.toLowerCase()}. Tree-wide settings stay with Tree admins.</p>}
       <AvatarEditor name={name || label} value={avatarId} onChange={setAvatarId} />
       <Field label={`${label} name`}><input name="name" value={name} onChange={e => setName(e.target.value)} placeholder={type === 'community' ? 'e.g. The Neighborhood' : type === 'subcommunity' ? 'e.g. Tree life' : 'e.g. The daily catch-up'} required maxLength={80} /></Field>
       <Field label="Description" hint="A short introduction helps everyone feel at home."><textarea name="description" defaultValue={entity?.description} placeholder="What brings you together?" maxLength={500} rows={3} /></Field>
       {type === 'group' && (!editing || community.is_admin) && <Field label="Branch (optional)" hint={editing ? 'Moving a Nest changes which Branch admins inherit access. Existing Nest members and Nest admins keep access.' : 'Leave at Tree level, or place this Nest in a Branch.'}><select value={location} onChange={e => setLocation(e.target.value)}>
-        {community.is_admin && <option value="">Tree level · no Branch</option>}
-        {community.subcommunities.filter(s => community.is_admin || s.is_admin).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+        <option value="">Tree level · no Branch</option>
+        {community.subcommunities.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
       </select></Field>}
+      {type === 'community' && editing && <div className="settings-section"><h4>Member creation</h4>
+        <p className="muted small-text">Everyone can add Branches and Nests. Require a review first, or let members create immediately. Admins create directly within the areas they manage. Changing this does not approve existing requests.</p>
+        <Toggle label="Require approval for Branches" description="Tree admins review new Branch requests." checked={branchApproval} onChange={setBranchApproval} />
+        <Toggle label="Require approval for Nests" description="Tree admins, or admins of the selected Branch, review new Nest requests." checked={nestApproval} onChange={setNestApproval} />
+      </div>}
       {type === 'group' && <div className="settings-section"><h4>Make it your own</h4>
         <Toggle label="Private Nest" description="Only admins can invite people. Hidden from everyone else." checked={privateCircle} onChange={setPrivate} />
         <Toggle label="Only admins can post" description="Members can read. Only admins can send messages or replies." checked={adminOnly} onChange={setAdminOnly} />
@@ -70,7 +78,7 @@ export function ProfileDialog({ user, config, onClose, onSave, onLogout, notify 
   useEffect(() => { if ('serviceWorker' in navigator) navigator.serviceWorker.ready.then(async r => setSubscribed(!!await r.pushManager?.getSubscription())); }, []);
   async function enablePush() {
     try {
-      if (!config.vapidPublicKey) throw new Error('Device notifications are awaiting server setup. Your in-app notifications already work.');
+      if (!config.vapidPublicKey) throw new Error('Device notifications are awaiting server setup. Your Nest unread indicators still work.');
       if (!('PushManager' in window) || !window.isSecureContext) throw new Error('Device notifications need a supported browser and HTTPS. On iPhone, add Churp to your Home Screen first.');
       const allowed = await Notification.requestPermission(); setPermission(allowed);
       if (allowed !== 'granted') throw new Error('Notifications are blocked. You can allow them in your browser’s site settings.');
@@ -94,7 +102,7 @@ export function ProfileDialog({ user, config, onClose, onSave, onLogout, notify 
     <Form submit="Save profile" onSubmit={async form => { await onSave({ name: form.get('name'), avatar_id: avatarId }); notify('Profile updated. Looking good!'); onClose(); }}>
       <AvatarEditor name={user.name} value={avatarId} onChange={setAvatarId} /><Field label="Display name" name="name" defaultValue={user.name} required maxLength={80} /><Field label="Username" value={user.username} disabled />
     </Form>
-    <div className="settings-section"><h4><BellRing size={17} /> Stay in the loop</h4><p className="muted small-text">Joined Nests send in-app notifications. Mute any Nest to take a breather.</p>
+    <div className="settings-section"><h4><BellRing size={17} /> Stay in the loop</h4><p className="muted small-text">Joined Nests show unread indicators. Enable device notifications for alerts, or mute an individual Nest to take a breather.</p>
       <button className="button secondary" onClick={subscribed ? disablePush : enablePush}>{subscribed ? <BellOff size={16} /> : <BellRing size={16} />}{subscribed ? 'Turn off device notifications' : 'Enable device notifications'}</button>
       {!config.vapidPublicKey && <p className="small-text muted">Device push is awaiting server configuration.</p>}{pushState && <p className="info-banner" role="status">{pushState}</p>}
     </div><button className="text-button danger logout" onClick={onLogout}><LogOut size={17} /> Sign out of Churp</button>
@@ -129,10 +137,5 @@ export function MembersDialog({ community, user, onClose, onRefresh, notify }) {
       {community.is_admin && (currentTarget.role !== 'admin' || community.role === 'owner') && <button className="text-button danger" disabled={busy} onClick={() => setConfirm({ type: 'remove', member: currentTarget })}><Trash2 size={15} /> Remove from Tree</button>}
     </div>}
     {confirm && <div className="confirmation" role="alert"><strong>{confirm.type === 'transfer' ? `Make ${confirm.member.name} the owner?` : `Remove ${confirm.member.name}?`}</strong><p>{confirm.type === 'transfer' ? 'They will control this Tree and its admins. You will remain a Tree admin.' : 'They will lose access to the Tree and all of its Nests. A new invitation will be needed to rejoin.'}</p><div className="button-row"><button className="button secondary" onClick={() => setConfirm(null)}>Cancel</button><button className="button danger-button" disabled={busy} onClick={() => action(async () => { if (confirm.type === 'transfer') await post(`/communities/${community.id}/transfer`, { user_id: confirm.member.id }); else await api(`/communities/${community.id}/members/${confirm.member.id}`, { method: 'DELETE' }); setTarget(null); }, confirm.type === 'transfer' ? 'Ownership transferred.' : 'Member removed.')}>{busy ? 'Working…' : 'Confirm'}</button></div></div>}
-  </Modal>;
-}
-export function NotificationsDialog({ notifications, onClose, onOpen, onMarkRead }) {
-  return <Modal title="A little heads-up." subtitle="Catch up on conversations in your joined Nests." onClose={onClose}>
-    {notifications.length ? <><button className="text-button mark-all" onClick={onMarkRead}><CheckCheck size={16} /> Mark all as read</button><div className="notification-list">{notifications.map(n => <button key={n.id} className={`notification ${n.seen ? '' : 'unseen'}`} onClick={() => { onOpen(n.community_id, n.group_id); onClose(); }}><span className="notification-dot" /><div><strong>{n.sender} <small>in {n.group_name}</small></strong><p>{n.body || 'Shared an attachment'}</p><small>{new Date(n.created_at).toLocaleDateString()} · {formatTime(n.created_at)}</small></div><ArrowRight size={16} /></button>)}</div></> : <Empty icon={BellRing} title="You’re all caught up.">New messages from Nests you join will appear here. Muted Nests stay quiet.</Empty>}
   </Modal>;
 }

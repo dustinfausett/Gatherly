@@ -76,10 +76,10 @@ test('standalone Circles, personal preferences, urgency, and scoped administrati
   const nested=(await ok(`/communities/${cid}/circles`,owner,'POST',{name:'Nested',subcommunity_id:sid})).group.id;
   const snapshot=async actor => (await ok(`/communities/${cid}`,actor)).community;
   const circle=async (actor,id=direct) => (await snapshot(actor)).circles.find(g=>g.id===id);
-  await t.test('Circles work with no Group; invalid and unauthorized parents are rejected',async () => {
+  await t.test('Nests work with no Branch; member creation awaits approval and foreign parents are rejected',async () => {
     assert.equal((await circle(owner)).subcommunity_id,null);
     assert.equal((await snapshot(owner)).subcommunities[0].groups.length,1);
-    assert.equal((await req(`/communities/${cid}/circles`,member,'POST',{name:'No'})).status,403);
+    assert.equal((await req(`/communities/${cid}/circles`,member,'POST',{name:'No'})).status,202);
     assert.equal((await req(`/communities/${cid}/circles`,owner,'POST',{name:'No',subcommunity_id:otherSid})).status,400);
     for(const id of [direct,zulu,nested]) await ok(`/groups/${id}/join`,member,'POST');
     await ok(`/groups/${direct}/messages`,member,'POST',{body:'Standalone conversation'});

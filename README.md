@@ -28,23 +28,31 @@ Production requires HTTPS because cookies use `Secure`. A reverse proxy must for
 ## Accounts, permissions, and conversations
 
 - Username/password authentication uses salted scrypt hashes and HttpOnly cookie sessions. Optional Google Sign-in verifies ID tokens on the server.
-- Trees can be created or joined through invitations. The owner appoints Tree admins and can transfer ownership, remaining an admin afterward. Tree admins create Branches and assign Branch admins. Rights inherit down to Nests; Nest admins manage only their assigned Nests.
+- Trees can be created or joined through invitations. The owner appoints Tree admins and can transfer ownership, remaining an admin afterward. Tree admins assign Branch admins. Rights inherit down to Nests; Nest admins manage only their assigned Nests. All Tree members can propose new Branches and Nests; the Tree’s creation settings determine whether approval is needed.
 - Tree admins can remove members and revoke all Nest memberships and scoped admin roles. Only the owner can remove another Tree admin; the owner cannot be removed.
 - Public Nests can be read by Tree members. Joining is required to post or receive notifications. Private Nests are hidden except from invited members and applicable admins. A single setting permits all joined members or only applicable admins to post and reply.
 - Tree, Branch, and Nest admins can edit the names, descriptions, and pictures within their scope. Members can edit their display name and profile picture.
 - Invitations last seven days, grant membership only, and are revoked if their creator loses the relevant admin rights. Nest invitations require existing Tree membership. Links are reusable; member removal is not a permanent ban if another valid link is obtained.
-- Nest conversations support live messages, one-level threads, emoji, photos/files, author/admin deletion, unread counts, in-app notifications, and device push. Message history loads 100 messages at a time; search filters loaded messages. Threads show up to 500 messages.
+- Nest conversations support live messages, one-level threads, emoji, photos/files, author/admin deletion, unread indicators and device push. Message history loads 100 messages at a time; search filters loaded messages. Threads show up to 500 messages.
 - Uploads are limited to 15 MB each and five per message. Only recognized PNG, JPEG, GIF, and WebP files render inline. Other files download. Authentication and Nest access protect attachments.
 
 ## Tree home
 
-A compact Tree banner sits above three sections: Pinned Nests, joined Branches/Nests, and Explore. Rows show only the name and profile image. Branches expand in place, with Nests slightly indented below them. Expansion remains while opening and returning from chats. Pinned Nests stay in the top section. Descriptions, counts, and member details are available under **Menu → Tree details**.
+A compact Tree banner sits above three sections: Pinned Nests, joined Branches/Nests, and Explore. Nest rows show the name and profile image. Branch rows have a leafy background, a green accent, and a Branch label. Branches expand in place, with Nests slightly indented below them. Expansion remains while opening and returning from chats. Pinned Nests stay in the top section. Descriptions, counts, and member details are available under **Menu → Tree details**.
 
-Pins have a personal order saved across devices. Use Nest Options to pin/unpin or move a pin up/down. Other joined Branches and Nests sort unread first, then alphabetically within unread/read lists. Branch indicators summarize unread and urgent messages in joined child Nests. Swipe right to mark unread; swipe left to reveal Options. The bell icon toggles muting without opening the chat. Opening a Nest or selecting Mark as read clears its unread reminder.
+Pins have a personal order saved across devices. Use Nest Options to pin/unpin or move a pin up/down. Other joined Branches and Nests sort unread first, then alphabetically within unread/read lists. Branch indicators summarize unread and urgent messages in joined child Nests. Swipe right to mark unread; swipe left to reveal Options. The bell on each Nest row toggles muting without opening the chat; the global notification bell has been removed. Opening a Nest or selecting Mark as read clears its unread reminder.
 
 Branches can be joined independently. Joining a Nest adds its parent Branch to your list. Joining a Branch does not join any Nests or grant extra access. Leaving a Branch retains Nest memberships, pins, and notification settings. Existing Branch memberships are seeded once from Nest membership and Branch admin roles.
 
-Anyone allowed to post can send urgent messages and replies. Authors and applicable admins with posting rights can change urgency. Unread urgent messages turn the Nest row red until read. Muting suppresses in-app and device notifications even for urgent messages.
+Anyone allowed to post can send urgent messages and replies. Authors and applicable admins with posting rights can change urgency. Unread urgent messages turn the Nest row red until read. Muting suppresses device alerts even for urgent messages; unread indicators still update.
+
+The Tree banner has a subtle branch illustration and a perched blue bird. Tapping a Nest briefly highlights its row, then slides into the chat while the bird flies to the small nest in the chat header. Reduced-motion preferences skip the flight and slide. The shared `Bird` component accepts a skin palette for future customization; no purchases or premium settings are enabled.
+
+## Member creation and approvals
+
+Under **Tree settings → Member creation**, Tree admins separately choose whether Branches and Nests require approval. Both settings default to on, including for existing Trees. Everyone sees New Branch/New Nest (and Add Nest inside a Branch). Members see **Submit for Approval** when a review is required; applicable admins create directly within their scope. Disabling approval allows immediate member creation and leaves existing requests pending.
+
+Open **Menu → Creation requests** to review requests or follow your own submissions. Tree admins can approve or decline any request; Branch admins can review only Nest requests inside their own Branch. Pending drafts are hidden from everyone else. Approval preserves the submitted name, photo, description, location, and Nest settings, then joins the creator and grants them admin rights over that new space only. Declines create nothing. Removing a member cancels their pending requests. Each member can have up to 20 pending requests per Tree. Identical pending submissions reuse the existing request; a request can be decided only once.
 
 ## Google Sign-in
 
@@ -102,7 +110,7 @@ Historical storage/API mapping:
 | Branch | `subcommunities`, `/api/subcommunities` |
 | Nest | `groups`, `/api/groups` |
 
-`GET /api/communities/:id` includes all visible Nests in `circles`, plus Branch children in `subcommunities[].groups`. Create a Nest at `/api/communities/:id/circles` with an optional `subcommunity_id`. Nest preferences use `/api/groups/:id/membership`. Branch memberships use `collection_members` and POST/DELETE `/api/subcommunities/:id/join`. Tree admins can move Nests between Branches or to Tree level; existing Nest membership and explicit Nest admin roles persist, while inherited Branch admin rights follow the new parent.
+`GET /api/communities/:id` includes all visible Nests in `circles`, plus Branch children in `subcommunities[].groups`. Create a Nest at `/api/communities/:id/circles` with an optional `subcommunity_id`. Nest preferences use `/api/groups/:id/membership`. Tree settings include `branch_approval_required` and `nest_approval_required`. Member creation may return HTTP 202 with `request` instead of an immediately created space. List authorized requests at `GET /api/communities/:id/creation-requests` and review via `POST /api/creation-requests/:id/review` with `decision: "approve"` or `"reject"`. Branch memberships use `collection_members` and POST/DELETE `/api/subcommunities/:id/join`. Tree admins can move Nests between Branches or to Tree level; existing Nest membership and explicit Nest admin roles persist, while inherited Branch admin rights follow the new parent.
 
 ## Checks
 
@@ -113,4 +121,4 @@ npm run test:e2e   # Desktop, iPhone-size, and Android-size browser workflows
 
 The browser tests use `/usr/bin/chromium` when available. Otherwise install Chromium with `npx playwright install chromium` or supply `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH`. Tests run a separate server on port 3100, use temporary storage, and remove it afterward.
 
-Tests cover real accounts, invitations, live messaging, files, scoped administration, private access, pin order, touch swipes, unread/urgent colors, branching in place, image uploads, the Tree chooser, Churp branding, message bubble colors, and persistence. Emulation does not prove actual Safari rendering, device keyboards, Home Screen installation, or system push delivery; check those on real phones. `GET /api/health` verifies SQLite access, not the full workflow.
+Tests cover real accounts, invitations, live messaging, files, scoped administration, private access, pin order, touch swipes, unread/urgent colors, branching in place, image uploads, the Tree chooser, Churp branding, message bubble colors, creation approvals and scope boundaries, bird navigation, reduced motion, and persistence. Emulation does not prove actual Safari rendering, device keyboards, Home Screen installation, or system push delivery; check those on real phones. `GET /api/health` verifies SQLite access, not the full workflow.

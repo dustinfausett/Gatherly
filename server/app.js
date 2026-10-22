@@ -203,9 +203,9 @@ export function createApp(options = {}) {
   app.post('/api/communities', (req, res) => {
     const name = text(req.body.name, 'Tree name');
     const desc = description(req.body.description);
-    const id = randomUUID();
+    const id = randomUUID(), pic = avatar(req.user.id, req.body.avatar_id ?? null);
     transaction(() => {
-      run('INSERT INTO communities(id,name,description,owner_id) VALUES (?,?,?,?)', id, name, desc, req.user.id);
+      run('INSERT INTO communities(id,name,description,owner_id,avatar_id) VALUES (?,?,?,?,?)', id, name, desc, req.user.id, pic);
       run("INSERT INTO community_members VALUES (?,?,'owner')", id, req.user.id);
       run('UPDATE users SET last_community_id=? WHERE id=?', id, req.user.id);
     });
@@ -233,7 +233,7 @@ export function createApp(options = {}) {
       });
     res.json({ community: { ...c, role: m.role, is_admin: ['owner','admin'].includes(m.role),
       member_count: one('SELECT COUNT(*) AS n FROM community_members WHERE community_id=?', c.id).n,
-      subcommunities: subs, circles } });
+      subcommunities: subs, circles, pending_creation_count: all("SELECT * FROM creation_requests WHERE community_id=? AND status='pending'",c.id).filter(r => canReview(req.user.id,r)).length } });
   });
   function updateSpace(req, res, type) {
     const table = { community: 'communities', subcommunity: 'subcommunities', group: 'groups' }[type];
@@ -243,6 +243,8 @@ export function createApp(options = {}) {
     const name = req.body.name === undefined ? entity.name : text(req.body.name, 'Name');
     const desc = req.body.description === undefined ? entity.description : description(req.body.description);
     const pic = req.body.avatar_id === undefined || req.body.avatar_id === entity.avatar_id ? entity.avatar_id : avatar(req.user.id, req.body.avatar_id);
+    const branchApproval = type === 'community' ? boolean(req.body.branch_approval_required === undefined ? !!entity.branch_approval_required : req.body.branch_approval_required, 'Branch approval') : null;
+    const nestApproval = type === 'community' ? boolean(req.body.nest_approval_required === undefined ? !!entity.nest_approval_required : req.body.nest_approval_required, 'Nest approval') : null;
     let priv, adminOnly;
     if (type === 'group') {
       priv = req.body.private === undefined ? entity.private : boolean(req.body.private, 'Private');
@@ -257,6 +259,7 @@ export function createApp(options = {}) {
     transaction(() => {
       run(`UPDATE ${table} SET name=?,description=?,avatar_id=? WHERE id=?`, name, desc, pic, entity.id);
       if (type === 'group') run('UPDATE groups SET private=?,admin_only=?,subcommunity_id=? WHERE id=?', priv, adminOnly, parentId, entity.id);
+      if (type === 'community') run('UPDATE communities SET branch_approval_required=?,nest_approval_required=? WHERE id=?',branchApproval,nestApproval,entity.id);
     });
     refresh(type === 'community' ? entity.id : entity.community_id);
     res.json({ ok: true });
@@ -264,15 +267,74 @@ export function createApp(options = {}) {
   app.patch('/api/communities/:id', (req, res) => updateSpace(req, res, 'community'));
   app.patch('/api/subcommunities/:id', (req, res) => updateSpace(req, res, 'subcommunity'));
   app.patch('/api/groups/:id', (req, res) => updateSpace(req, res, 'group'));
-  app.post('/api/communities/:id/subcommunities', (req, res) => {
-    if (!communityAdmin(req.user.id, req.params.id)) fail(403, 'Only Tree admins can create Branches.');
+  // Creation and review share the same validated draft and atomic insert path.
+  function canReview(userId, request) {
+    if (!one('SELECT 1 FROM community_members WHERE community_id=? AND user_id=?',request.community_id,userId)) return false;
+    return request.kind === 'nest' && request.parent_id
+      ? subAdmin(userId,sub(request.parent_id)) : communityAdmin(userId,request.community_id);
+  }
+  function requestView(r, userId) {
+    return { ...r, payload:JSON.parse(r.payload), can_review:canReview(userId,r),
+      requester_name:one('SELECT name FROM users WHERE id=?',r.requester_id).name,
+      parent_name:r.parent_id ? sub(r.parent_id).name : null };
+  }
+  function insertSpace(cid, kind, parentId, draft, creatorId) {
     const id = randomUUID();
-    transaction(() => {
-      run('INSERT INTO subcommunities(id,community_id,name,description) VALUES (?,?,?,?)', id, req.params.id, text(req.body.name, 'Branch name'), description(req.body.description));
-      run('INSERT INTO collection_members VALUES (?,?)',id,req.user.id);
+    if (kind === 'branch') {
+      run('INSERT INTO subcommunities(id,community_id,name,description,avatar_id) VALUES (?,?,?,?,?)',id,cid,draft.name,draft.description,draft.avatar_id);
+      run('INSERT INTO collection_members VALUES (?,?)',id,creatorId);
+    } else {
+      run('INSERT INTO groups(id,community_id,subcommunity_id,name,description,avatar_id,private,admin_only) VALUES (?,?,?,?,?,?,?,?)',
+        id,cid,parentId,draft.name,draft.description,draft.avatar_id,draft.private,draft.admin_only);
+      run('INSERT INTO group_members(group_id,user_id) VALUES (?,?)',id,creatorId);
+      if (parentId) run('INSERT OR IGNORE INTO collection_members VALUES (?,?)',parentId,creatorId);
+    }
+    // The creator manages this space, never the whole Tree.
+    if (!communityAdmin(creatorId,cid)) run('INSERT INTO scoped_admins VALUES (?,?,?)',kind === 'branch' ? 'subcommunity' : 'group',id,creatorId);
+    return id;
+  }
+  function createSpace(req,res,cid,kind,parentId=null) {
+    const c=community(cid); membership(req.user.id,cid);
+    if (parentId !== null && (typeof parentId !== 'string' || sub(parentId).community_id !== cid)) fail(400,'Choose a Branch in this Tree.');
+    const draft={ name:text(req.body.name,kind === 'branch' ? 'Branch name' : 'Nest name'), description:description(req.body.description), avatar_id:avatar(req.user.id,req.body.avatar_id ?? null) };
+    if (kind === 'nest') Object.assign(draft,{private:boolean(req.body.private ?? false,'Private'),admin_only:boolean(req.body.admin_only ?? false,'Admin-only posting')});
+    const admin=canReview(req.user.id,{community_id:cid,kind,parent_id:parentId});
+    if (!admin && (kind === 'branch' ? c.branch_approval_required : c.nest_approval_required)) {
+      const payload=JSON.stringify(draft);
+      const duplicate=one("SELECT * FROM creation_requests WHERE community_id=? AND requester_id=? AND kind=? AND parent_id IS ? AND payload=? AND status='pending'",cid,req.user.id,kind,parentId,payload);
+      if (duplicate) return res.status(202).json({request:requestView(duplicate,req.user.id)});
+      if (one("SELECT COUNT(*) AS n FROM creation_requests WHERE community_id=? AND requester_id=? AND status='pending'",cid,req.user.id).n >= 20) fail(409,'You already have 20 requests awaiting approval in this Tree.');
+      const id=randomUUID();
+      run('INSERT INTO creation_requests(id,community_id,requester_id,kind,parent_id,payload) VALUES (?,?,?,?,?,?)',id,cid,req.user.id,kind,parentId,payload);
+      refresh(cid); return res.status(202).json({request:requestView(one('SELECT * FROM creation_requests WHERE id=?',id),req.user.id)});
+    }
+    const id=transaction(() => insertSpace(cid,kind,parentId,draft,req.user.id));
+    refresh(cid); res.status(201).json(kind === 'branch' ? {subcommunity:sub(id)} : {group:group(id)});
+  }
+  app.post('/api/communities/:id/subcommunities',(req,res) => createSpace(req,res,req.params.id,'branch'));
+  app.get('/api/communities/:id/creation-requests',(req,res) => {
+    membership(req.user.id,req.params.id);
+    const requests=all('SELECT * FROM creation_requests WHERE community_id=? ORDER BY created_at DESC,id',req.params.id)
+      .filter(r => r.requester_id === req.user.id || canReview(req.user.id,r)).map(r => requestView(r,req.user.id));
+    res.json({requests});
+  });
+  app.post('/api/creation-requests/:id/review',(req,res) => {
+    const request=one('SELECT * FROM creation_requests WHERE id=?',req.params.id) || fail(404,'Request not found.');
+    if (!canReview(req.user.id,request)) fail(403,'Only admins of the requested space can review this request.');
+    if (!['approve','reject'].includes(req.body.decision)) fail(400,'Choose approve or reject.');
+    const updated=transaction(() => {
+      if (request.status !== 'pending') fail(409,'This request has already been reviewed.');
+      membership(request.requester_id,request.community_id);
+      const draft=JSON.parse(request.payload);
+      // Validate the parent and uploaded image again at approval time.
+      if (request.parent_id && sub(request.parent_id).community_id !== request.community_id) fail(400,'The Branch no longer belongs to this Tree.');
+      if (req.body.decision === 'approve') avatar(request.requester_id,draft.avatar_id);
+      const resultId=req.body.decision === 'approve' ? insertSpace(request.community_id,request.kind,request.parent_id,draft,request.requester_id) : null;
+      run("UPDATE creation_requests SET status=?,reviewed_by=?,reviewed_at=strftime('%Y-%m-%dT%H:%M:%fZ','now'),result_id=? WHERE id=?",
+        resultId ? 'approved' : 'rejected',req.user.id,resultId,request.id);
+      return one('SELECT * FROM creation_requests WHERE id=?',request.id);
     });
-    refresh(req.params.id);
-    res.status(201).json({ subcommunity: sub(id) });
+    refresh(request.community_id); res.json({request:requestView(updated,req.user.id)});
   });
   app.post('/api/subcommunities/:id/join', (req, res) => {
     const s = sub(req.params.id); membership(req.user.id,s.community_id);
@@ -288,24 +350,8 @@ export function createApp(options = {}) {
   function joinParent(userId, g) {
     if (g.subcommunity_id) run('INSERT OR IGNORE INTO collection_members VALUES (?,?)',g.subcommunity_id,userId);
   }
-  function createCircle(req, res, cid, parentId = null) {
-    if (parentId ? !subAdmin(req.user.id, sub(parentId)) : !communityAdmin(req.user.id, cid)) fail(403, 'Only admins of the parent space can create Nests.');
-    const id = randomUUID();
-    transaction(() => {
-      run('INSERT INTO groups(id,community_id,subcommunity_id,name,description,private,admin_only) VALUES (?,?,?,?,?,?,?)',
-        id, cid, parentId, text(req.body.name, 'Nest name'), description(req.body.description), boolean(req.body.private ?? false, 'Private'), boolean(req.body.admin_only ?? false, 'Admin-only posting'));
-      run('INSERT INTO group_members(group_id,user_id) VALUES (?,?)', id, req.user.id);
-      if (parentId) run('INSERT OR IGNORE INTO collection_members VALUES (?,?)',parentId,req.user.id);
-    });
-    refresh(cid); res.status(201).json({ group: group(id) });
-  }
-  app.post('/api/subcommunities/:id/groups', (req, res) => { const s = sub(req.params.id); createCircle(req, res, s.community_id, s.id); });
-  app.post('/api/communities/:id/circles', (req, res) => {
-    const cid = req.params.id, parentId = req.body.subcommunity_id ?? null;
-    membership(req.user.id, cid);
-    if (parentId !== null && (typeof parentId !== 'string' || sub(parentId).community_id !== cid)) fail(400, 'Choose a Branch in this Tree.');
-    createCircle(req, res, cid, parentId);
-  });
+  app.post('/api/subcommunities/:id/groups', (req,res) => { const s=sub(req.params.id); createSpace(req,res,s.community_id,'nest',s.id); });
+  app.post('/api/communities/:id/circles', (req,res) => createSpace(req,res,req.params.id,'nest',req.body.subcommunity_id ?? null));
   app.get('/api/communities/:id/members', (req, res) => {
     membership(req.user.id, req.params.id);
     res.json({ members: all(`SELECT u.id,u.name,u.username,u.avatar_id,m.role FROM users u
@@ -347,6 +393,7 @@ export function createApp(options = {}) {
       run('DELETE FROM collection_members WHERE user_id=? AND subcommunity_id IN (SELECT id FROM subcommunities WHERE community_id=?)', req.params.userId, c.id);
       run('DELETE FROM group_members WHERE user_id=? AND group_id IN (SELECT id FROM groups WHERE community_id=?)', req.params.userId, c.id);
       run(`DELETE FROM scoped_admins WHERE user_id=? AND ((scope_type='subcommunity' AND scope_id IN (SELECT id FROM subcommunities WHERE community_id=?)) OR (scope_type='group' AND scope_id IN (SELECT id FROM groups WHERE community_id=?)))`, req.params.userId, c.id, c.id);
+      run("UPDATE creation_requests SET status='cancelled',reviewed_by=?,reviewed_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE community_id=? AND requester_id=? AND status='pending'",req.user.id,c.id,req.params.userId);
       run('DELETE FROM community_members WHERE community_id=? AND user_id=?', c.id, req.params.userId);
       run('UPDATE users SET last_community_id=NULL WHERE id=? AND last_community_id=?', req.params.userId, c.id);
     });
@@ -545,6 +592,7 @@ export function createApp(options = {}) {
     if (!allowed) for (const c of all('SELECT id FROM communities WHERE avatar_id=?', f.id)) if (one('SELECT 1 FROM community_members WHERE community_id=? AND user_id=?', c.id, req.user.id)) allowed = true;
     if (!allowed) for (const s of all('SELECT community_id FROM subcommunities WHERE avatar_id=?', f.id)) if (one('SELECT 1 FROM community_members WHERE community_id=? AND user_id=?', s.community_id, req.user.id)) allowed = true;
     if (!allowed) for (const g of all('SELECT id FROM groups WHERE avatar_id=?', f.id)) { try { visibleCircle(req.user.id, g.id); allowed = true; } catch { /* no access */ } }
+    if (!allowed) for (const r of all("SELECT * FROM creation_requests WHERE json_extract(payload,'$.avatar_id')=?",f.id)) if (canReview(req.user.id,r)) allowed=true;
     if (!allowed) fail(404, 'File not found.');
     res.type(imageTypes.has(f.mime) ? f.mime : 'application/octet-stream');
     res.setHeader('Content-Disposition', `${imageTypes.has(f.mime) ? 'inline' : 'attachment'}; filename*=UTF-8''${encodeURIComponent(f.name).replaceAll("'", '%27')}`);
@@ -558,7 +606,7 @@ export function createApp(options = {}) {
     WHERE n.user_id=? AND m.deleted=0 ORDER BY n.id DESC LIMIT 80`, req.user.id) }));
   app.patch('/api/notifications', (req, res) => { const r = run('UPDATE notifications SET seen=1 WHERE user_id=? AND seen=0', req.user.id); if (r.changes) refreshUser(req.user.id); res.json({ ok: true }); });
   app.post('/api/push/subscribe', (req, res) => {
-    if (!pushEnabled) fail(503, 'Push notifications need VAPID configuration. In-app notifications are available.');
+    if (!pushEnabled) fail(503, 'Push notifications need VAPID configuration. Nest unread indicators are available.');
     const s = req.body.subscription;
     if (!s || typeof s.endpoint !== 'string' || s.endpoint.length > 2048 || typeof s.keys?.p256dh !== 'string' || typeof s.keys?.auth !== 'string') fail(400, 'Invalid push subscription.');
     let url; try { url = new URL(s.endpoint); } catch { fail(400, 'Invalid push endpoint.'); }

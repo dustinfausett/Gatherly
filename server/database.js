@@ -105,6 +105,18 @@ export function openDatabase(path) {
   addColumn('group_members', 'pin_position', 'INTEGER');
   addColumn('group_members', 'marked_unread', 'INTEGER NOT NULL DEFAULT 0');
   addColumn('messages', 'urgent', 'INTEGER NOT NULL DEFAULT 0');
+  // Existing Trees stay moderated when member creation is introduced.
+  addColumn('communities', 'branch_approval_required', 'INTEGER NOT NULL DEFAULT 1');
+  addColumn('communities', 'nest_approval_required', 'INTEGER NOT NULL DEFAULT 1');
+  db.exec(`CREATE TABLE IF NOT EXISTS creation_requests (
+    id TEXT PRIMARY KEY, community_id TEXT NOT NULL REFERENCES communities(id) ON DELETE CASCADE,
+    requester_id TEXT NOT NULL REFERENCES users(id), kind TEXT NOT NULL CHECK(kind IN ('branch','nest')),
+    parent_id TEXT REFERENCES subcommunities(id) ON DELETE CASCADE,
+    payload TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','approved','rejected','cancelled')),
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+    reviewed_by TEXT REFERENCES users(id), reviewed_at TEXT, result_id TEXT
+  );
+  CREATE INDEX IF NOT EXISTS creation_requests_tree ON creation_requests(community_id,status);`);
   db.exec(`CREATE INDEX IF NOT EXISTS circles_community ON groups(community_id);
     CREATE TRIGGER IF NOT EXISTS circle_parent_insert BEFORE INSERT ON groups
     WHEN NEW.subcommunity_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM subcommunities WHERE id=NEW.subcommunity_id AND community_id=NEW.community_id)

@@ -33,13 +33,13 @@ test('real accounts, scoped permissions, messaging, and durable storage', async 
     assert.equal((await ok('/me',owner)).user.id,owner.id);
     assert.equal((await request('/auth/google',null,'POST',{credential:'fake'})).status,503);
   });
-  await t.test('Community creation, invitation membership, and admin-only hierarchy creation', async () => {
+  await t.test('Tree creation, invitation membership, and moderated member creation', async () => {
     cid = (await ok('/communities',owner,'POST',{name:'The Neighborhood',description:'A place for us.'})).community.id;
     communityInvite = (await ok('/invitations',owner,'POST',{community_id:cid})).path.split('invite=')[1];
     assert.equal((await request(`/communities/${cid}`,alice)).status,403);
     await ok('/invitations/accept',alice,'POST',{token:communityInvite});
     await ok('/invitations/accept',bob,'POST',{token:communityInvite});
-    assert.equal((await request(`/communities/${cid}/subcommunities`,alice,'POST',{name:'Nope'})).status,403);
+    assert.equal((await request(`/communities/${cid}/subcommunities`,alice,'POST',{name:'Nope'})).status,202);
     sid = (await ok(`/communities/${cid}/subcommunities`,owner,'POST',{name:'Community life'})).subcommunity.id;
     secondSub = (await ok(`/communities/${cid}/subcommunities`,owner,'POST',{name:'Other space'})).subcommunity.id;
     gid = (await ok(`/subcommunities/${sid}/groups`,owner,'POST',{name:'The daily catch-up'})).group.id;
@@ -63,7 +63,7 @@ test('real accounts, scoped permissions, messaging, and durable storage', async 
   await t.test('scoped admins inherit rights only within their assigned branch', async () => {
     await ok(`/admins/subcommunity/${sid}/${alice.id}`,owner,'PUT',{enabled:true});
     assert.equal((await request(`/subcommunities/${sid}/groups`,alice,'POST',{name:'Local announcements',admin_only:true})).status,201);
-    assert.equal((await request(`/subcommunities/${secondSub}/groups`,alice,'POST',{name:'Out of scope'})).status,403);
+    assert.equal((await request(`/subcommunities/${secondSub}/groups`,alice,'POST',{name:'Out of scope'})).status,202);
     assert.equal((await request(`/communities/${cid}`,alice,'PATCH',{name:'Not allowed'})).status,403);
     await ok(`/admins/group/${gid}/${bob.id}`,alice,'PUT',{enabled:true});
     await ok(`/groups/${gid}`,bob,'PATCH',{description:'A friendly place to catch up.'});
