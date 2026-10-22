@@ -211,25 +211,24 @@ input::placeholder, textarea::placeholder { color: #92917f; }
 .group-children { animation: branch-unfold 180ms ease-out; }
 @keyframes branch-unfold { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: translateY(0); } }
 
-/* Sparse artwork fades away behind the Tree name. The bird stays separate. */
+/* The perch follows the Tree title instead of the far edge of the banner. */
 .community-banner { position: relative; overflow: hidden; isolation: isolate; }
-.banner-branch-art { position: absolute; pointer-events: none; inset: 0 0 0 auto; width: min(100%,500px); z-index: -1; background: url('/brand/churp-branch.png') right 72% / auto 155px no-repeat; opacity: .8; mask-image: linear-gradient(to right,transparent 0%,#0001 25%,#000 83%); }
-.community-banner>h1 { position: relative; text-shadow: 0 1px 10px #e5edcfee; padding-right: 65px; }
+.tree-banner-title { flex: 1; display: flex; align-items: center; gap: 12px; min-width: 0; }
+.tree-banner-title>h1 { flex: 0 1 auto; min-width: 0; font-size: 28px; line-height: 1.25; color: #49632f; font-weight: 800; overflow-wrap: anywhere; text-shadow: 0 1px 10px #e5edcfee; position: relative; z-index: 1; }
+.banner-perch { position: relative; display: block; width: 88px; height: 70px; flex-shrink: 0; pointer-events: none; }
+.banner-branch-art { position: absolute; left: -200px; bottom: -52px; width: 320px; height: 130px; z-index: -1; background: url('/brand/churp-branch.png') right center / auto 130px no-repeat; opacity: .8; mask-image: linear-gradient(to right,transparent 0%,#0001 25%,#000 83%); }
 .community-banner>.avatar, .banner-actions { position: relative; z-index: 1; }
 .banner-actions { align-self: stretch; justify-content: center; background: #e5edcfb8; border-radius: 20px; }
-.banner-bird { position: absolute; width: 64px; height: 58px; right: 108px; bottom: 37px; pointer-events: none; }
+.banner-bird { position: absolute; width: 104px; height: 104px; left: -8px; top: -19px; pointer-events: none; }
 .churp-bird { width: 100%; height: 100%; display: block; overflow: visible; filter: drop-shadow(0 2px 1px #73552a18); }
-.bird-wing { transform-box: fill-box; transform-origin: 75% 25%; }
 .bird-flight { position: fixed; inset: 0; z-index: 70; pointer-events: none; overflow: hidden; }
-.travelling-bird { position: absolute; left: 0; top: 0; width: 64px; height: 58px; will-change: transform; }
-.is-flying .bird-wing { animation: wingbeat 120ms ease-in-out infinite alternate; }
-@keyframes wingbeat { from { transform: rotate(-45deg) scaleY(.55); } to { transform: rotate(55deg) scaleY(1.12); } }
-.chat-landing-nest { flex-shrink: 0; position: relative; width: 46px; height: 44px; display: block; pointer-events: none; }
-.landing-nest-art { position: absolute; bottom: -3px; left: 0; width: 100%; height: 34px; }
-.chat-landing-nest .resident-bird { position: absolute; width: 43px; height: 39px; top: -10px; left: 1px; }
+.travelling-bird { position: absolute; left: 0; top: 0; will-change: transform; }
+.chat-landing-nest { flex-shrink: 0; position: relative; width: 54px; height: 48px; display: block; pointer-events: none; }
+.landing-nest-art { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+.chat-landing-nest .resident-bird { position: absolute; width: 54px; height: 54px; top: -9px; left: 0; }
 .bird-in-transit .resident-bird { opacity: 0; }
-.chat-layout { animation: enter-nest 300ms cubic-bezier(.2,.7,.25,1) both; }
-@keyframes enter-nest { from { opacity: .4; transform: translateX(-32px); } to { opacity: 1; transform: translateX(0); } }
+.chat-layout { animation: enter-nest var(--nest-entry-duration,1400ms) cubic-bezier(.2,.7,.25,1) both; }
+@keyframes enter-nest { from { opacity: .25; transform: translateX(-56px); } to { opacity: 1; transform: translateX(0); } }
 .chat-heading h1:focus { outline: none; }
 
 .request-count { margin-left: auto; font-size: 11px; background: #e5d49c; color: #695b2d; border-radius: 12px; padding: 1px 7px; }
@@ -249,20 +248,21 @@ input::placeholder, textarea::placeholder { color: #92917f; }
 .requests-empty p { margin: 12px 0 7px; }
 .requests-empty small { font-size: 12px; }
 @media(max-width:640px) {
-  .banner-bird { right: 65px; width: 53px; height: 48px; bottom: 46px; }
-  .banner-branch-art { background-size: auto 135px; background-position: right 70%; }
-  .community-banner>h1 { padding-right: 66px; font-size: 22px; }
+  .tree-banner-title { gap: 8px; }
+  .tree-banner-title>h1 { font-size: 22px; letter-spacing: -.7px; }
+  .banner-perch { width: 66px; height: 70px; }
+  .banner-bird { left: -8px; top: -10px; width: 90px; height: 90px; }
+  .banner-branch-art { left: -190px; bottom: -46px; width: 280px; height: 115px; background-size: auto 115px; }
   .compact-home .community-banner { gap: 10px; }
   .banner-actions { background: #e5edcfd9; }
   .chat-header { gap: 7px; }
-  .chat-landing-nest { width: 32px; height: 34px; }
-  .chat-landing-nest .resident-bird { width: 32px; height: 30px; top: -6px; }
-  .chat-landing-nest .landing-nest-art { height: 26px; }
+  .chat-landing-nest { width: 38px; height: 38px; }
+  .chat-landing-nest .resident-bird { width: 38px; height: 38px; top: -7px; }
   .chat-header-actions .header-divider { display: none; }
   .request-heading { flex-wrap: wrap; }
 }
 @media(prefers-reduced-motion:reduce) {
-  .chat-layout, .group-children, .is-flying .bird-wing { animation: none; }
+  .chat-layout, .group-children { animation: none; }
   .compact-home .circle-row-content, .circle-row.is-opening { transition: none; }
   .bird-flight { display: none; }
 }

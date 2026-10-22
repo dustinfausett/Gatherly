@@ -46,7 +46,7 @@ Branches can be joined independently. Joining a Nest adds its parent Branch to y
 
 Anyone allowed to post can send urgent messages and replies. Authors and applicable admins with posting rights can change urgency. Unread urgent messages turn the Nest row red until read. Muting suppresses device alerts even for urgent messages; unread indicators still update.
 
-The Tree banner has a subtle branch illustration and a perched blue bird. Tapping a Nest briefly highlights its row, then slides into the chat while the bird flies to the small nest in the chat header. Reduced-motion preferences skip the flight and slide. The shared `Bird` component accepts a skin palette for future customization; no purchases or premium settings are enabled.
+The Tree banner places the approved blue bird artwork and branch immediately after the Tree name, keeping them together on smaller screens and when the name changes. Tapping a Nest highlights its row for 220 ms, then opens the chat with a 1.4-second slide and a 2.4-second flight. The flight uses the approved takeoff, wingbeat, glide, and landing poses; the chat header uses the same artwork. Reduced-motion preferences skip the flight and slide. The shared `Bird` component accepts an artwork sheet and frame definitions for future skins; no purchases or premium settings are enabled.
 
 ## Member creation and approvals
 

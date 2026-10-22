@@ -82,6 +82,24 @@ test('Nest feedback, bird flight, keyboard return and reduced motion',async({pag
   const nest=(await (await page.request.post(`/api/communities/${tree.id}/circles`,{data:{name:'Morning songs'}})).json()).group;
   await page.goto('/');
   await expect(page.locator('.banner-bird')).toBeVisible();
+  await expect(page.locator('.banner-bird image')).toHaveAttribute('href','/brand/previews/churp-bird-poses.png');
+  await expect(page.locator('.banner-bird [data-bird-pose]')).toHaveAttribute('data-bird-pose','perched');
+  const title=await page.locator('.tree-banner-title h1').boundingBox();
+  const perch=await page.locator('.banner-perch').boundingBox();
+  expect(perch.x-title.x-title.width).toBeGreaterThanOrEqual(6);
+  expect(perch.x-title.x-title.width).toBeLessThanOrEqual(14);
+  // The perch moves with short/long names and responsive layout, keeping text clear.
+  for(const name of ['Oak','The Birdwatchers and Their Extended Family Tree']) {
+    await page.request.patch(`/api/communities/${tree.id}`,{data:{name}});
+    await expect(page.locator('.tree-banner-title h1')).toHaveText(name);
+    const bounds=await page.locator('.tree-banner-title h1').boundingBox();
+    const branch=await page.locator('.banner-perch').boundingBox();
+    expect(branch.x-bounds.x-bounds.width).toBeGreaterThanOrEqual(6);
+    expect(branch.x-bounds.x-bounds.width).toBeLessThanOrEqual(14);
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBeTruthy();
+  }
+  await page.request.patch(`/api/communities/${tree.id}`,{data:{name:'The Birdwatchers'}});
+  await expect(page.locator('.tree-banner-title h1')).toHaveText('The Birdwatchers');
   await expect(page.locator('.branch-row-art')).toHaveCount(1);
   await expect(page.locator('.group-row .row-kind')).toHaveText('Branch');
   await expect(page.locator('.group-row .circle-row-content')).toHaveCSS('background-color','rgb(233, 238, 219)');
@@ -100,10 +118,18 @@ test('Nest feedback, bird flight, keyboard return and reduced motion',async({pag
   const row=page.locator(`[data-circle-id="${nest.id}"]`);
   await row.getByRole('button',{name:'Open Nest Morning songs',exact:true}).click();
   await expect(page.locator('.chat-landing-nest')).toBeVisible();
+  await expect(page.locator('.chat-layout')).toHaveCSS('animation-duration','1.4s');
+  // The flight remains visible long enough for multiple approved wing poses.
+  await expect(page.locator('.bird-flight')).toBeVisible();
+  const duration=await page.locator('.travelling-bird').evaluate(el=>el.getAnimations()[0].effect.getTiming().duration);
+  expect(duration).toBeGreaterThanOrEqual(2000);
+  await expect(page.locator('.travelling-bird [data-bird-pose]')).not.toHaveAttribute('data-bird-pose','takeoff');
+  await page.screenshot({path:info.outputPath('bird-in-flight.png'),fullPage:true});
   await expect.poll(()=>page.evaluate(()=>window.motionPhases)).toEqual({pressed:true,flight:true});
   await expect(page.locator('.bird-flight')).toHaveCount(0);
   await expect(page.locator('.chat-heading h1')).toBeFocused();
   await expect(page.locator('.resident-bird')).toHaveCSS('opacity','1');
+  await expect(page.locator('.resident-bird image')).toHaveAttribute('href','/brand/previews/churp-bird-poses.png');
   await page.screenshot({path:info.outputPath('bird-at-nest.png'),fullPage:true});
   if(info.project.name!=='desktop')await page.getByRole('button',{name:'Back to Nests',exact:true}).click();
   else await page.getByRole('button',{name:'Tree home',exact:true}).click();

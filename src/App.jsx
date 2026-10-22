@@ -7,7 +7,7 @@ import Chat from './Chat';
 import CommunityHome from './CommunityHome';
 import CommunityDetails from './CommunityDetails';
 import CreationRequests from './CreationRequests';
-import BirdJourney from './BirdJourney';
+import BirdJourney, { NEST_MOTION } from './BirdJourney';
 import { InviteDialog, JoinDialog, MembersDialog, ProfileDialog, SpaceDialog } from './Dialogs';
 
 const initialParams = new URLSearchParams(window.location.search);
@@ -102,9 +102,9 @@ export default function App() {
     returnFocus.current=id; setOpeningId(id); setMobileNav(false);
     navigationTimer.current=setTimeout(()=>{
       if(token !== navigationToken.current) return;
-      if(!reduced && bird && bird.bottom>0 && bird.top<innerHeight) setJourney({id, start:{x:bird.x,y:bird.y}});
+      if(!reduced && bird && bird.bottom>0 && bird.top<innerHeight) setJourney({id, start:{x:bird.x,y:bird.y,width:bird.width,height:bird.height}});
       setView(prev=>({...prev,gid:id,page:null}));setOpeningId(null);
-    },reduced ? 0 : 140);
+    },reduced ? 0 : NEST_MOTION.press);
   };
   useEffect(()=>{
     if(!view.gid) {
@@ -133,7 +133,7 @@ export default function App() {
   if (booting) return <div className="boot-screen"><Logo /><span className="loading-dot" /><p>Making room for you…</p></div>;
   if (!user && error) return <div className="boot-screen"><Logo /><p className="error-banner">{error}</p><button className="button primary" onClick={boot}>Try again</button></div>;
   if (!user) return <Auth config={config} onLogin={u => { setUser(u); setView({ cid: u.last_community_id, gid: null }); }} />;
-  return <div className={`app ${group ? 'showing-chat' : ''} ${journey ? 'bird-in-transit' : ''}`}>
+  return <div className={`app ${group ? 'showing-chat' : ''} ${journey ? 'bird-in-transit' : ''}`} style={{'--nest-entry-duration':`${NEST_MOTION.slide}ms`}}>
     <header className="topbar"><div className="brand-zone"><button className="icon-button mobile-only" aria-label="Open navigation" onClick={() => setMobileNav(true)}><Menu size={22} /></button><span className={community ? 'desktop-logo' : ''}><Logo /></span>{community && <div className="mobile-community-switcher" ref={mobileSwitcherRef}>
         <button className="mobile-community-button" aria-label="My Orchard" aria-expanded={mobileSwitcher} onClick={() => setMobileSwitcher(!mobileSwitcher)}><Avatar name={community.name} id={community.avatar_id} size={30} square /><span><strong>{community.name}</strong><small>YOUR TREE</small></span><ChevronDown size={13} /></button>
         {mobileSwitcher && <div className="switcher-menu"><div className="menu-label">My Orchard</div>{communities.map(c => <button className="switcher-item" key={c.id} onClick={() => chooseCommunity(c.id)}><Avatar name={c.name} id={c.avatar_id} size={30} square /><span>{c.name}</span>{view.cid === c.id && <Check size={15} />}</button>)}<div className="menu-divider" /><button onClick={() => { setMobileSwitcher(false); setModal({ kind: 'space', type: 'community' }); }}><Plus size={16} />Create a Tree</button><button onClick={() => { setMobileSwitcher(false); setModal({ kind: 'join' }); }}><Link size={16} />Join with an invitation</button></div>}

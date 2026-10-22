@@ -1,31 +1,43 @@
-import React, { useEffect, useId, useRef } from 'react';
+import React, { useEffect, useId, useRef, useState } from 'react';
 
-// A single appearance contract for perched, travelling and landed birds.
-// Future skin selection can supply this prop without changing navigation.
-export const defaultBirdSkin = { body:'#75c4d7', wing:'#49a9c2', belly:'#fff1c5', beak:'#efa83b' };
-export function Bird({ className='', skin=defaultBirdSkin }) {
-  const gradient=useId();
-  return <svg className={`churp-bird ${className}`} viewBox="0 0 80 72" fill="none" aria-hidden="true">
-    <defs><linearGradient id={gradient} x1="30" y1="15" x2="61" y2="65" gradientUnits="userSpaceOnUse"><stop stopColor={skin.body}/><stop offset="1" stopColor={skin.wing}/></linearGradient></defs>
-    <path d="M25 54 9 48 17 63 34 60" fill={skin.wing}/>
-    <path d="M34 16 Q27 3 34 4 L40 14 Q39 0 45 3 L46 16" fill={skin.wing}/>
-    <path d="M21 43C21 24 30 13 44 13c18 0 25 15 25 30 0 15-10 22-25 22S21 59 21 43Z" fill={`url(#${gradient})`}/>
-    <ellipse cx="48" cy="51" rx="15" ry="14" fill={skin.belly}/>
-    <path className="bird-wing" d="M36 36C23 30 17 36 21 48c3 9 11 12 16 9 5-3 8-16-1-21Z" fill={skin.wing}/>
-    <path d="m63 31 13 6-13 6Z" fill={skin.beak}/>
-    <path d="M51 30q3-6 7 0" stroke="#3d5045" strokeWidth="3" strokeLinecap="round"/>
-    <path d="m38 64-2 5m15-5 2 5M32 69h8m9 0h8" stroke="#bb803a" strokeWidth="2.5" strokeLinecap="round"/>
+export const NEST_MOTION = { press:220, slide:1400, flight:2400 };
+// Display the approved artwork itself. Clip the perch/landing supports away from
+// moving poses in SVG, preserving the original PNG and its transparent edges.
+// A future skin can supply a different sheet and corresponding frame definitions.
+export const defaultBirdSkin = {
+  src:'/brand/previews/churp-bird-poses.png',
+  frames:{
+    perched:{x:0,y:0,dx:0,dy:0,clip:'M0 0H390V250H367L363 285L353 330L337 369L321 398H330V411Q331 428 318 437L278 437L267 418H262V433Q263 448 249 448H216Q198 445 198 428V403H0Z'},
+    takeoff:{x:512,y:0,dx:-45,dy:34,clip:'M0 0H512V416H0Z'},
+    up:{x:1024,y:0,dx:-30,dy:18},
+    down:{x:0,y:512,dx:-35,dy:20},
+    glide:{x:512,y:512,dx:-40,dy:20},
+    landing:{x:1024,y:512,dx:-40,dy:20,clip:'M0 0H512V302H383V326H348V356H207V326H179V302H0Z'},
+  },
+};
+
+function Artwork({ frame, src, className='', pose }) {
+  const id=useId();
+  return <svg className={className} viewBox="0 0 512 512" fill="none" aria-hidden="true" data-bird-pose={pose}>
+    <defs><clipPath id={id}>{frame.clip ? <path d={frame.clip}/> : <rect width="512" height="512"/>}</clipPath></defs>
+    <g transform={`translate(${frame.dx || 0} ${frame.dy || 0})`}>
+      <g clipPath={`url(#${id})`}>
+        <image href={src} x={-frame.x} y={-frame.y} width="1536" height="1024"/>
+      </g>
+    </g>
   </svg>;
+}
+export function Bird({ className='', skin=defaultBirdSkin, pose='perched' }) {
+  return <Artwork className={`churp-bird ${className}`} frame={skin.frames[pose] || skin.frames.perched} src={skin.src} pose={pose}/>;
 }
 export function LandingNest() {
-  return <svg viewBox="0 0 90 65" className="landing-nest-art" fill="none" aria-hidden="true">
-    <path d="M6 31q38 15 78 0c-2 23-19 30-39 30S10 54 6 31Z" fill="#a76e37"/>
-    <ellipse cx="45" cy="32" rx="38" ry="10" fill="#795335"/>
-    <g strokeLinecap="round" strokeWidth="5"><path d="M9 34q38 27 72 5M12 43q35 24 61 4M17 52q29 14 49 2" stroke="#d5a45e"/><path d="M7 37q35 9 74-2M17 48q33 4 59-6M28 56q24-3 40-8" stroke="#b47d40"/><path d="m10 31-5-9m73 11 7-12M17 34l-7-12" stroke="#c59755"/></g>
-  </svg>;
+  const frame={x:1024,y:512,clip:'M98 330Q120 303 156 325L191 355H370L419 307Q457 313 460 346L477 363Q485 443 431 478Q284 532 158 486Q103 465 98 390Z'};
+  return <Artwork className="landing-nest-art" src={defaultBirdSkin.src} frame={frame}/>;
 }
+
 export default function BirdJourney({ journey, onDone }) {
   const ref=useRef();
+  const [pose,setPose]=useState('takeoff');
   useEffect(() => {
     const node=ref.current, destination=document.querySelector('[data-bird-landing]');
     const motion=window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -33,25 +45,33 @@ export default function BirdJourney({ journey, onDone }) {
     const target=destination.getBoundingClientRect(), start=journey.start;
     // The chat is sliding right when mounted. Land at its final coordinates.
     const chatTransform=new DOMMatrix(getComputedStyle(destination.closest('.chat-layout')).transform);
-    const end={x:target.left-chatTransform.m41+target.width/2-32,y:target.top-chatTransform.m42-20};
+    const resident=destination.querySelector('.resident-bird');
+    const residentSize=resident?.getBoundingClientRect().width || target.width;
+    const residentTop=resident ? parseFloat(getComputedStyle(resident).top) : -9;
+    const size=start.width;
+    const end={x:target.left-chatTransform.m41+(target.width-size)/2,y:target.top-chatTransform.m42+residentTop-(size-residentSize)/2};
     const panelLeft=document.querySelector('.main-content').getBoundingClientRect().left;
     node.parentElement.style.clipPath=`inset(0 0 0 ${panelLeft}px)`;
-    const startX=Math.min(start.x,innerWidth-65), startY=Math.max(0,start.y);
-    const flightY=Math.max(64,Math.min(startY,end.y)-30);
-    const landingScale=Math.min(.72,target.width/64);
+    const startX=Math.min(start.x,innerWidth-size), startY=Math.max(0,start.y);
+    const flightY=Math.max(64,Math.min(startY,end.y)-34);
+    const landingScale=residentSize/size;
     const animation=node.animate([
-      {offset:0,transform:`translate(${startX}px,${startY}px) rotate(-8deg) scale(1)`,opacity:1},
-      {offset:.3,transform:`translate(${innerWidth+70}px,${flightY}px) rotate(-15deg) scale(1)`,opacity:1},
-      {offset:.31,transform:`translate(${innerWidth+70}px,${flightY}px) scale(1)`,opacity:0},
-      {offset:.32,transform:`translate(${panelLeft-70}px,${flightY}px) scale(1)`,opacity:0},
-      {offset:.34,transform:`translate(${panelLeft-60}px,${flightY}px) rotate(-5deg) scale(1)`,opacity:1},
-      {offset:.8,transform:`translate(${end.x-40}px,${end.y-18}px) rotate(5deg) scale(.85)`,opacity:1},
+      {offset:0,transform:`translate(${startX}px,${startY}px) rotate(-6deg) scale(1)`,opacity:1},
+      {offset:.27,transform:`translate(${innerWidth+size}px,${flightY}px) rotate(-12deg) scale(1)`,opacity:1},
+      {offset:.28,transform:`translate(${innerWidth+size}px,${flightY}px) scale(1)`,opacity:0},
+      {offset:.30,transform:`translate(${panelLeft-size}px,${flightY}px) scale(1)`,opacity:0},
+      {offset:.32,transform:`translate(${panelLeft-size*.9}px,${flightY}px) rotate(-4deg) scale(1)`,opacity:1},
+      {offset:.8,transform:`translate(${end.x-36}px,${end.y-22}px) rotate(4deg) scale(.85)`,opacity:1},
       {offset:1,transform:`translate(${end.x}px,${end.y}px) rotate(0deg) scale(${landingScale})`,opacity:1},
-    ],{duration:800,easing:'ease-in-out',fill:'forwards'});
+    ],{duration:NEST_MOTION.flight,easing:'ease-in-out',fill:'forwards'});
+    // Change only the pose; navigation and the smooth flight path remain independent.
+    const sequence=[[.10,'up'],[.20,'down'],[.30,'up'],[.40,'down'],[.50,'up'],[.60,'down'],[.70,'glide'],[.82,'landing'],[.96,'perched']];
+    const timers=sequence.map(([at,frame])=>setTimeout(()=>setPose(frame),NEST_MOTION.flight*at));
     animation.onfinish=onDone;
-    const resize=()=>onDone(); window.addEventListener('resize',resize,{once:true});
-    motion.addEventListener('change',resize,{once:true});
-    return () => {animation.cancel();window.removeEventListener('resize',resize);motion.removeEventListener('change',resize);};
+    const stop=()=>onDone();
+    window.addEventListener('resize',stop,{once:true});
+    motion.addEventListener('change',stop,{once:true});
+    return () => {animation.cancel();timers.forEach(clearTimeout);window.removeEventListener('resize',stop);motion.removeEventListener('change',stop);};
   },[journey,onDone]);
-  return <div className="bird-flight" aria-hidden="true"><div className="travelling-bird" ref={ref}><Bird className="is-flying"/></div></div>;
+  return <div className="bird-flight" aria-hidden="true"><div className="travelling-bird" ref={ref} style={{width:journey.start.width,height:journey.start.height}}><Bird pose={pose}/></div></div>;
 }

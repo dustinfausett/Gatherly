@@ -120,7 +120,7 @@ export default function CommunityHome({ community: c, search, onModal, onCircle,
     </div>;
   });
   return <div className="community-home circle-home compact-home">
-    <header className="community-banner"><div className="banner-branch-art" aria-hidden="true"/><span className="banner-bird" data-bird-perch aria-hidden="true"><Bird/></span><Avatar name={c.name} id={c.avatar_id} size={56} /><h1>{c.name}</h1><div className="banner-actions">
+    <header className="community-banner"><Avatar name={c.name} id={c.avatar_id} size={56} /><div className="tree-banner-title"><h1>{c.name}</h1><span className="banner-perch" aria-hidden="true"><span className="banner-branch-art"/><span className="banner-bird" data-bird-perch><Bird/></span></span></div><div className="banner-actions">
       <button className="icon-button" aria-label="Search Branches and Nests" aria-expanded={searchOpen} onClick={() => { if (searchOpen) setSearch(''); setSearchOpen(!searchOpen); }}><Search size={19} /></button>
       {c.is_admin && <button className="icon-button" aria-label="Tree settings" onClick={() => onModal({kind:'space',type:'community',entity:c})}><Settings2 size={19} /></button>}
     </div></header>
