@@ -28,10 +28,10 @@ test('admin deletion, themed icons and live unread egg arrivals',async({page,bro
       },true);
     });
     await page.goto('/');
-    await expect(page.locator('.group-row .group-avatar-symbol .space-art-tree')).toBeVisible();
+    await expect(page.locator('.group-row .row-art .space-art-branch')).toBeVisible();
     await expect(page.locator('.group-row .lucide-git-branch')).toHaveCount(0);
     await page.getByRole('button',{name:'Open Branch Family life',exact:true}).click();
-    await expect(page.locator(`[data-circle-id="${nest.id}"] .nest-avatar-symbol .space-art-nest`)).toBeVisible();
+    await expect(page.locator(`[data-circle-id="${nest.id}"] .nest-row-art .space-art-nest`)).toBeVisible();
     await page.getByRole('button',{name:'Branch settings for Family life',exact:true}).click();
     await page.getByRole('button',{name:'Delete Branch',exact:true}).click();
     const confirm=page.locator('.delete-space-confirm');

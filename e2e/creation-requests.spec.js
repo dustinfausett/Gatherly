@@ -101,7 +101,7 @@ test('Nest feedback, bird flight, keyboard return and reduced motion',async({pag
   await page.request.patch(`/api/communities/${tree.id}`,{data:{name:'The Birdwatchers'}});
   await expect(page.locator('.tree-banner-title h1')).toHaveText('The Birdwatchers');
   await expect(page.locator('.branch-row-art')).toHaveCount(1);
-  await expect(page.locator('.group-row .row-kind')).toHaveText('Branch');
+  await expect(page.locator('.group-row .row-kind')).toHaveCount(0);
   await expect(page.locator('.group-row .circle-row-content')).toHaveCSS('background-color','rgb(233, 238, 219)');
   await expect(page.locator('.circle-row:not(.group-row) .circle-row-content')).toHaveCSS('background-color','rgb(238, 227, 211)');
   await expect(page.locator('.banner-branch-art')).toHaveCSS('background-image',/churp-branch/);

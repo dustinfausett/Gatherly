@@ -24,14 +24,16 @@ test('Tree, Branch and Nest artwork keeps privacy locks and hidden Nest access',
   };
   for (const nest of [root, nested]) {
     const row = page.locator(`[data-circle-id="${nest.id}"]`);
-    await assertLockBeforeNest(row.locator('.nest-avatar-symbol .space-icon'));
-    const badge = await row.locator('.nest-avatar-symbol').boundingBox();
+    await expect(row.locator('.nest-privacy-lock')).toBeVisible();
+    await expect(row.locator('.nest-row-art .space-art-nest')).toBeVisible();
+    const badge = await row.locator('.nest-privacy-lock').boundingBox();
     const egg = await row.locator('.avatar-status-egg').boundingBox();
     expect(badge.y + badge.height).toBeLessThanOrEqual(egg.y);
     await expect(row.getByRole('button', { name: `Open Nest ${nest.name}`, exact: true })).toHaveAccessibleDescription('Private Nest · Unread · Marked unread');
   }
   await expect(page.getByRole('button', { name: 'Open Nest Daily news', exact: true }).locator('.space-lock')).toHaveCount(0);
-  await expect(page.locator('.group-avatar-symbol .space-art-branch')).toBeVisible();
+  await expect(page.locator('.group-row .row-art .space-art-branch')).toBeVisible();
+  await expect(page.locator('.circle-list .nest-avatar-symbol, .circle-list .group-avatar-symbol, .circle-list .row-kind')).toHaveCount(0);
   await page.screenshot({ path: info.outputPath('nest-icons-home.png'), fullPage: true });
 
   if (info.project.name !== 'desktop') await page.getByRole('button', { name: 'Open navigation', exact: true }).click();

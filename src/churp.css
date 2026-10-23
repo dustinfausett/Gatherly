@@ -196,7 +196,15 @@ input::placeholder, textarea::placeholder { color: #92917f; }
 /* A leafy Branch is a container; a warm Nest is a conversation. */
 .compact-home .group-row .circle-row-content { background: #e9eedb; border-color: #ced9b8; border-left: 4px solid #8fa568; }
 .compact-home .group-row .circle-open { padding-left: 13px; position: relative; z-index: 1; }
-.branch-row-art { position: absolute; pointer-events: none; width: 100px; height: 78px; right: 36px; bottom: 0; background: url('/brand/previews/churp-branch-proposed.png') right center / contain no-repeat; mask-image: linear-gradient(to right,transparent,#000); opacity: .3; }
+/* Large cropped art sits behind the avatar and name, fading before row controls. */
+.compact-home .circle-open { position: relative; overflow: hidden; isolation: isolate; }
+.compact-home .circle-open>.row-avatar, .compact-home .circle-open>.circle-copy, .compact-home .circle-open>.group-row-chevron { position: relative; z-index: 1; }
+.row-art { position: absolute; inset: 0 auto 0 0; width: min(100%,360px); overflow: hidden; pointer-events: none; opacity: .12; mask-image: linear-gradient(to right,#000 0%,#000 55%,transparent 100%); }
+.row-art>.space-icon { position: absolute; left: -35px; top: 50%; transform: translateY(-50%); }
+.nest-row-art { opacity: .09; }
+.nest-privacy-lock { position: absolute; right: -3px; top: -3px; display: inline-flex; align-items: center; justify-content: center; width: 23px; height: 23px; border: 2px solid var(--churp-brown); border-radius: 50%; background: #fff9eb; color: #786848; }
+.compact-home .is-unread .nest-privacy-lock { border-color: #fff5d3; }
+.compact-home .is-urgent .nest-privacy-lock { border-color: #ffebe8; }
 .row-kind { display: flex; align-items: center; gap: 4px; font-size: 10px; font-weight: 800; color: #627b43; letter-spacing: .07em; text-transform: uppercase; margin-bottom: 2px; }
 .nest-avatar-symbol { position: absolute; right: -2px; bottom: -1px; width: 19px; height: 19px; display: grid; place-items: center; border-radius: 50%; background: #f9f0e1; color: #947043; border: 2px solid var(--churp-brown); }
 .compact-home .is-unread .nest-avatar-symbol { border-color: #fff5d3; }

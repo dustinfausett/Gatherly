@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { ArrowDown, ArrowUp, Bell, BellOff, CheckCheck, ChevronRight, MoreHorizontal, Pin, PinOff, Plus, Search, Settings2, Trash2, Users } from 'lucide-react';
+import { ArrowDown, ArrowUp, Bell, BellOff, CheckCheck, ChevronRight, LockKeyhole, MoreHorizontal, Pin, PinOff, Plus, Search, Settings2, Trash2, Users } from 'lucide-react';
 import { api, patch } from './api';
 import { Avatar, Modal } from './components';
 import { Bird } from './BirdJourney';
@@ -9,6 +9,10 @@ import PrivacyShield from './encryption/PrivacyShield';
 
 const unread = circle => circle.unread > 0 || circle.marked_unread;
 const alphabetic = (a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base', numeric: true }) || a.id.localeCompare(b.id);
+
+function RowArtwork({ kind }) {
+  return <span className={`row-art ${kind}-row-art`} aria-hidden="true"><SpaceIcon kind={kind} size={320} /></span>;
+}
 
 function CircleRow({ circle: c, onOpen, onOptions, onChange, openingId }) {
   const [offset, setOffset] = useState(0), [revealed, setRevealed] = useState(false), [busy, setBusy] = useState(false);
@@ -46,7 +50,8 @@ function CircleRow({ circle: c, onOpen, onOptions, onChange, openingId }) {
       onPointerCancel={() => { gesture.current = null; setOffset(0); }}
       onClickCapture={e => { if (suppressClick.current) { e.preventDefault(); e.stopPropagation(); suppressClick.current = false; } }}>
       <button className="circle-open" aria-label={`Open Nest ${c.name}`} aria-description={c.private ? 'Private Nest' : undefined} aria-describedby={unread(c) ? `circle-state-${c.id}` : undefined} onClick={() => { if (revealed) setRevealed(false); else onOpen(c.id); }}>
-        <span className="row-avatar"><Avatar name={c.name} id={c.avatar_id} size={50} /><span className={`nest-avatar-symbol ${c.private ? 'private-symbol' : ''}`}><SpaceIcon size={18} locked={!!c.private}/></span><UnreadEgg active={!!unread(c)} urgent={c.urgent_unread > 0}/></span>
+        <RowArtwork kind="nest" />
+        <span className="row-avatar"><Avatar name={c.name} id={c.avatar_id} size={50} />{!!c.private && <span className="nest-privacy-lock" aria-hidden="true"><LockKeyhole size={13} /></span>}<UnreadEgg active={!!unread(c)} urgent={c.urgent_unread > 0}/></span>
         <span className="circle-copy"><span className="circle-name">{c.name}<PrivacyShield active={c.self_encrypted}/>{c.pin_position !== null && <Pin size={13} aria-label="Pinned" />}</span></span>
         {unread(c) && <span id={`circle-state-${c.id}`} className="visually-hidden">{!!c.private && 'Private Nest · '}{c.urgent_unread > 0 ? 'Urgent and unread' : 'Unread'} · {c.unread || 'Marked unread'}</span>}
       </button>
@@ -59,10 +64,11 @@ function CircleRow({ circle: c, onOpen, onOptions, onChange, openingId }) {
 
 function GroupRow({ group: g, expanded, onToggle }) {
   return <div className={`circle-row group-row ${unread(g) ? 'is-unread' : ''} ${g.urgent_unread > 0 ? 'is-urgent' : ''}`} data-group-id={g.id} data-unread={unread(g)} data-urgent={g.urgent_unread > 0}>
-    <div className="circle-row-content"><span className="branch-row-art" aria-hidden="true"/>
+    <div className="circle-row-content">
       <button className="circle-open" aria-label={`Open Branch ${g.name}`} aria-expanded={expanded} aria-controls={`group-circles-${g.id}`} aria-describedby={unread(g) ? `group-state-${g.id}` : undefined} onClick={() => onToggle(g.id)}>
-        <span className="row-avatar"><Avatar name={g.name} id={g.avatar_id} size={50} /><span className="group-avatar-symbol" aria-hidden="true"><SpaceIcon kind="branch" size={18}/></span><UnreadEgg active={!!unread(g)} urgent={g.urgent_unread > 0}/></span>
-        <span className="circle-copy"><small className="row-kind"><SpaceIcon kind="branch" size={16}/>Branch</small><span className="circle-name">{g.name}</span></span><ChevronRight size={20} className={`group-row-chevron ${expanded ? 'expanded' : ''}`} />
+        <RowArtwork kind="branch" />
+        <span className="row-avatar"><Avatar name={g.name} id={g.avatar_id} size={50} /><UnreadEgg active={!!unread(g)} urgent={g.urgent_unread > 0}/></span>
+        <span className="circle-copy"><span className="circle-name">{g.name}</span></span><ChevronRight size={20} className={`group-row-chevron ${expanded ? 'expanded' : ''}`} />
         {unread(g) && <span id={`group-state-${g.id}`} className="visually-hidden">{g.urgent_unread > 0 ? 'Urgent and unread' : 'Unread'} Nests in this Branch</span>}
       </button>
     </div>
