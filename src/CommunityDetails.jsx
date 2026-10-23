@@ -1,5 +1,6 @@
+import SpaceIcon from './SpaceIcon';
 import React from 'react';
-import { ArrowLeft, MessageCircle, Settings2, Users } from 'lucide-react';
+import { ArrowLeft, Settings2, Users } from 'lucide-react';
 import { Avatar } from './components';
 
 export default function CommunityDetails({ community: c, onBack, onModal }) {
@@ -14,6 +15,6 @@ export default function CommunityDetails({ community: c, onBack, onModal }) {
     {c.description && <p className="community-description">{c.description}</p>}
     <dl className="community-details-stats">{counts.map(([label,value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>
     <div className="details-actions"><button className="button secondary" onClick={() => onModal({kind:'members'})}><Users size={18} />View members</button>{c.is_admin && <button className="button secondary" onClick={() => onModal({kind:'space',type:'community',entity:c})}><Settings2 size={18} />Tree settings</button>}</div>
-    <p className="details-hierarchy"><MessageCircle size={18} />A Tree brings everyone together. Branches organize Nests. Nests are where you chat.</p>
+    <p className="details-hierarchy"><SpaceIcon kind="tree" size={24}/>A Tree brings everyone together. Branches organize Nests. Nests are where you chat.</p>
   </div>;
 }

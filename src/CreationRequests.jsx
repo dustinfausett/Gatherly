@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { Check, Clock, TreeDeciduous, X } from 'lucide-react';
+import { Check, Clock, X } from 'lucide-react';
+import SpaceIcon from './SpaceIcon';
 import { api, post } from './api';
 import { Avatar, Modal } from './components';
 
@@ -22,7 +23,7 @@ export default function CreationRequests({ community, version, onClose, onRefres
   return <Modal title="Creation requests" subtitle="Review new spaces and follow the requests you’ve submitted." onClose={onClose}>
     {error && <div className="error-banner" role="alert">{error}<button className="text-button" onClick={()=>{setError('');setRevision(n=>n+1);}}>Retry</button></div>}
     {!requests ? <p className="muted" role="status">Loading requests…</p> : !requests.length ? <div className="requests-empty"><Clock size={27}/><p>No requests yet.</p><small>New Branch and Nest requests will appear here.</small></div> : <div className="creation-requests">{[...requests].sort((a,b)=>Number(b.status === 'pending')-Number(a.status === 'pending')).map(r=><article className="creation-request" key={r.id} data-request-id={r.id}>
-      <div className="request-heading"><Avatar name={r.payload.name} id={r.payload.avatar_id} size={42}/><div><span className="request-kind">{r.kind === 'branch' ? <TreeDeciduous size={12}/> : null}{r.kind === 'branch' ? 'Branch' : 'Nest'} · {r.parent_name || 'Tree level'}</span><h3>{r.payload.name}</h3></div><span className={`request-status ${r.status}`}>{r.status === 'rejected' ? 'Declined' : r.status}</span></div>
+      <div className="request-heading"><Avatar name={r.payload.name} id={r.payload.avatar_id} size={42}/><div><span className="request-kind"><SpaceIcon kind={r.kind === 'branch' ? 'tree' : 'nest'} size={18} locked={r.kind === 'nest' && !!r.payload.private}/>{r.kind === 'branch' ? 'Branch' : 'Nest'} · {r.parent_name || 'Tree level'}</span><h3>{r.payload.name}</h3></div><span className={`request-status ${r.status}`}>{r.status === 'rejected' ? 'Declined' : r.status}</span></div>
       <p className="request-author">Requested by {r.requester_name} · {new Date(r.created_at).toLocaleDateString()}</p>
       {r.payload.description && <p>{r.payload.description}</p>}
       {r.kind === 'nest' && <p className="small-text muted">{r.payload.private ? 'Private · invitation only' : 'Public'} · {r.payload.admin_only ? 'Only admins can post' : 'Members can post'}</p>}

@@ -201,6 +201,19 @@ input::placeholder, textarea::placeholder { color: #92917f; }
 .nest-avatar-symbol { position: absolute; right: -2px; bottom: -1px; width: 19px; height: 19px; display: grid; place-items: center; border-radius: 50%; background: #f9f0e1; color: #947043; border: 2px solid var(--churp-brown); }
 .compact-home .is-unread .nest-avatar-symbol { border-color: #fff5d3; }
 .compact-home .is-urgent .nest-avatar-symbol { border-color: #ffebe8; }
+
+/* Approved tree and woven Nest artwork, including a leading privacy lock. */
+.space-icon { display: inline-flex; align-items: center; justify-content: center; gap: 3px; flex: none; vertical-align: middle; line-height: 1; }
+.space-icon .space-art { display: block; flex: none; overflow: hidden; }
+.space-icon .space-lock { flex: none; color: #786848; }
+.tree-group>span.space-icon { flex: none; overflow: visible; }
+.tree-group>.tree-space-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tree-label>.avatar { flex: none; }
+.group-avatar-symbol, .nest-avatar-symbol { width: 23px; height: 23px; display: inline-flex; align-items: center; justify-content: center; }
+.nest-avatar-symbol.private-symbol { width: auto; min-width: 23px; padding: 0 3px; border-radius: 12px; top: -3px; bottom: auto; }
+.nest-avatar-symbol .space-icon { gap: 1px; }
+.chat-heading h1>.space-icon { flex: none; }
+.conversation-start-icon:has(.is-private) { width: auto; min-width: 50px; padding: 0 8px; }
 .compact-home .circle-row-content { transition: transform 160ms ease, background-color 160ms ease, box-shadow 160ms ease; }
 .compact-home .circle-open:active { background: #65843c1c; }
 .compact-home .circle-row.is-opening .circle-row-content { box-shadow: inset 0 0 0 2px #8fa568; filter: brightness(.94); }
