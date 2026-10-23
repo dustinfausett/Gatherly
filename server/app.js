@@ -10,11 +10,11 @@ import { existsSync, mkdirSync, openSync, readSync, closeSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { openDatabase } from './database.js';
 import { token, hash, passwordHash, passwordMatches } from './security.js';
+import { BIRDS, getBird } from '../shared/birds.js';
 
 if (existsSync('.env')) process.loadEnvFile('.env');
 const SESSION_AGE = 30 * 86400 * 1000;
 const imageTypes = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
-const publicUser = u => ({ id: u.id, username: u.username, name: u.name, avatar_id: u.avatar_id, last_community_id: u.last_community_id });
 const fail = (status, message) => { throw Object.assign(new Error(message), { status }); };
 function text(value, label, max = 80) {
   if (typeof value !== 'string' || !value.trim() || value.trim().length > max) fail(400, `${label} must be between 1 and ${max} characters.`);
@@ -50,6 +50,12 @@ export function createApp(options = {}) {
   const one = (sql, ...args) => db.prepare(sql).get(...args);
   const all = (sql, ...args) => db.prepare(sql).all(...args);
   const run = (sql, ...args) => db.prepare(sql).run(...args);
+  const unlockedBirds = userId => {
+    const earned = new Set(all('SELECT bird_id FROM bird_unlocks WHERE user_id=?', userId).map(b => b.bird_id));
+    return BIRDS.filter(b => b.free || earned.has(b.id)).map(b => b.id);
+  };
+  const publicUser = u => ({ id: u.id, username: u.username, name: u.name, avatar_id: u.avatar_id,
+    bird_id: u.bird_id, avatar_style: u.avatar_style, unlocked_birds: unlockedBirds(u.id), last_community_id: u.last_community_id });
   const transaction = fn => {
     db.exec('BEGIN');
     try { const result = fn(); db.exec('COMMIT'); return result; }
@@ -140,7 +146,7 @@ export function createApp(options = {}) {
     const hashed = await passwordHash(password);
     if (one('SELECT 1 FROM users WHERE username=?', username)) fail(409, 'That username is already taken.');
     const id = randomUUID();
-    run('INSERT INTO users(id,username,name,password) VALUES (?,?,?,?)', id, username, name, hashed);
+    run("INSERT INTO users(id,username,name,password,avatar_style) VALUES (?,?,?,?,'bird')", id, username, name, hashed);
     res.status(201).json({ user: session(res, one('SELECT * FROM users WHERE id=?', id)) });
   });
   app.post('/api/auth/login', authLimit, async (req, res) => {
@@ -163,7 +169,7 @@ export function createApp(options = {}) {
     let user = one('SELECT * FROM users WHERE google_id=?', payload.sub);
     if (!user) {
       const id = randomUUID();
-      run('INSERT INTO users(id,username,name,google_id) VALUES (?,?,?,?)', id, `g_${id.replaceAll('-', '').slice(0,20)}`, (payload.name || 'New member').slice(0,80), payload.sub);
+      run("INSERT INTO users(id,username,name,google_id,avatar_style) VALUES (?,?,?,?,'bird')", id, `g_${id.replaceAll('-', '').slice(0,20)}`, (payload.name || 'New member').slice(0,80), payload.sub);
       user = one('SELECT * FROM users WHERE id=?', id);
     }
     res.json({ user: session(res, user) });
@@ -176,12 +182,26 @@ export function createApp(options = {}) {
   });
   app.use('/api', auth);
   app.get('/api/me', (req, res) => res.json({ user: publicUser(req.user) }));
+  app.post('/api/me/birds/unlock', rateLimit({ windowMs: 15 * 60 * 1000, limit: options.testing ? 1000 : 10,
+    keyGenerator: req => req.user.id, message: { error: 'Too many code attempts. Please try again in 15 minutes.' } }), (req, res) => {
+    if (typeof req.body.code !== 'string' || req.body.code.trim() !== (process.env.BIRD_UNLOCK_CODE || 'Churp')) fail(400, 'That code was not recognized. Please try again.');
+    transaction(() => {
+      for (const bird of BIRDS.filter(b => !b.free)) run("INSERT OR IGNORE INTO bird_unlocks(user_id,bird_id,source) VALUES (?,?,'code')",req.user.id,bird.id);
+    });
+    refreshUser(req.user.id);
+    res.json({ user: publicUser(req.user) });
+  });
   app.patch('/api/me', (req, res) => {
     const name = req.body.name === undefined ? req.user.name : text(req.body.name, 'Display name');
     const avatarId = req.body.avatar_id === undefined ? req.user.avatar_id : avatar(req.user.id, req.body.avatar_id);
+    const birdId = req.body.bird_id === undefined ? req.user.bird_id : req.body.bird_id;
+    if (!getBird(birdId)) fail(400, 'Choose a bird from the collection.');
+    if (!unlockedBirds(req.user.id).includes(birdId)) fail(403, 'Unlock this bird before selecting it.');
+    const style = req.body.avatar_style ?? (req.body.avatar_id === undefined ? req.user.avatar_style : 'photo');
+    if (!['photo','bird'].includes(style)) fail(400, 'Choose a bird avatar or profile photo.');
     const last = req.body.last_community_id === undefined ? req.user.last_community_id : req.body.last_community_id;
     if (last !== null) membership(req.user.id, last);
-    run('UPDATE users SET name=?,avatar_id=?,last_community_id=? WHERE id=?', name, avatarId, last, req.user.id);
+    run('UPDATE users SET name=?,avatar_id=?,bird_id=?,avatar_style=?,last_community_id=? WHERE id=?', name, avatarId, birdId, style, last, req.user.id);
     refresh();
     res.json({ user: publicUser(one('SELECT * FROM users WHERE id=?', req.user.id)) });
   });
@@ -301,6 +321,23 @@ export function createApp(options = {}) {
   }
   app.delete('/api/subcommunities/:id',(req,res)=>deleteSpace(req,res,'subcommunity'));
   app.delete('/api/groups/:id',(req,res)=>deleteSpace(req,res,'group'));
+  app.delete('/api/communities/:id', (req,res) => {
+    const c = community(req.params.id);
+    if (c.owner_id !== req.user.id) fail(403,'Only the Tree owner can delete this Tree.');
+    if (req.body?.confirm_name !== c.name) fail(409,'Type the current Tree name exactly to confirm deletion.');
+    const affected = all('SELECT user_id FROM community_members WHERE community_id=?',c.id);
+    transaction(() => {
+      // Polymorphic scoped roles do not have foreign keys; remove them explicitly.
+      run(`DELETE FROM scoped_admins WHERE
+        (scope_type='subcommunity' AND scope_id IN (SELECT id FROM subcommunities WHERE community_id=?)) OR
+        (scope_type='group' AND scope_id IN (SELECT id FROM groups WHERE community_id=?))`,c.id,c.id);
+      run('UPDATE users SET last_community_id=NULL WHERE last_community_id=?',c.id);
+      run('DELETE FROM communities WHERE id=?',c.id);
+    });
+    // Memberships have been removed, so notify the captured members directly.
+    for (const {user_id} of affected) refreshUser(user_id);
+    res.json({ok:true});
+  });
   // Creation and review share the same validated draft and atomic insert path.
   function canReview(userId, request) {
     if (!one('SELECT 1 FROM community_members WHERE community_id=? AND user_id=?',request.community_id,userId)) return false;
@@ -388,7 +425,7 @@ export function createApp(options = {}) {
   app.post('/api/communities/:id/circles', (req,res) => createSpace(req,res,req.params.id,'nest',req.body.subcommunity_id ?? null));
   app.get('/api/communities/:id/members', (req, res) => {
     membership(req.user.id, req.params.id);
-    res.json({ members: all(`SELECT u.id,u.name,u.username,u.avatar_id,m.role FROM users u
+    res.json({ members: all(`SELECT u.id,u.name,u.username,u.avatar_id,u.bird_id,u.avatar_style,m.role FROM users u
       JOIN community_members m ON m.user_id=u.id WHERE m.community_id=? ORDER BY u.name`, req.params.id),
       assignments: all(`SELECT a.* FROM scoped_admins a WHERE
         (a.scope_type='subcommunity' AND a.scope_id IN (SELECT id FROM subcommunities WHERE community_id=?)) OR
@@ -532,7 +569,7 @@ export function createApp(options = {}) {
     visibleCircle(req.user.id, req.params.id);
     const before = req.query.before === undefined ? Number.MAX_SAFE_INTEGER : Number(req.query.before);
     if (!Number.isSafeInteger(before) || before < 1) fail(400, 'Invalid message cursor.');
-    const messages = all(`SELECT m.*,u.name,u.avatar_id,p.body AS parent_body,pu.name AS parent_name FROM messages m JOIN users u ON u.id=m.user_id
+    const messages = all(`SELECT m.*,u.name,u.avatar_id,u.bird_id,u.avatar_style,p.body AS parent_body,pu.name AS parent_name FROM messages m JOIN users u ON u.id=m.user_id
       LEFT JOIN messages p ON p.id=m.reply_to LEFT JOIN users pu ON pu.id=p.user_id
       WHERE m.group_id=? AND m.id<? ORDER BY m.id DESC LIMIT 100`, req.params.id, before).reverse();
     for (const m of messages) m.files = all('SELECT f.id,f.name,f.mime,f.size FROM files f JOIN message_files mf ON mf.file_id=f.id WHERE mf.message_id=?', m.id);
@@ -542,7 +579,7 @@ export function createApp(options = {}) {
     visibleCircle(req.user.id, req.params.id);
     const root = one('SELECT * FROM messages WHERE id=? AND group_id=?', req.params.messageId, req.params.id) || fail(404, 'Thread not found.');
     const rootId = root.reply_to || root.id;
-    const messages = all('SELECT m.*,u.name,u.avatar_id FROM messages m JOIN users u ON u.id=m.user_id WHERE m.group_id=? AND (m.id=? OR m.reply_to=?) ORDER BY m.id LIMIT 500', req.params.id, rootId, rootId);
+    const messages = all('SELECT m.*,u.name,u.avatar_id,u.bird_id,u.avatar_style FROM messages m JOIN users u ON u.id=m.user_id WHERE m.group_id=? AND (m.id=? OR m.reply_to=?) ORDER BY m.id LIMIT 500', req.params.id, rootId, rootId);
     for (const m of messages) m.files = all('SELECT f.id,f.name,f.mime,f.size FROM files f JOIN message_files mf ON mf.file_id=f.id WHERE mf.message_id=?', m.id);
     res.json({ messages });
   });

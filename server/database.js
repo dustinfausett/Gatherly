@@ -105,6 +105,15 @@ export function openDatabase(path) {
   addColumn('group_members', 'pin_position', 'INTEGER');
   addColumn('group_members', 'marked_unread', 'INTEGER NOT NULL DEFAULT 0');
   addColumn('messages', 'urgent', 'INTEGER NOT NULL DEFAULT 0');
+  addColumn('users', 'bird_id', "TEXT NOT NULL DEFAULT 'blue'");
+  // Keep existing profile pictures. New accounts start with a Bluebird avatar.
+  addColumn('users', 'avatar_style', "TEXT NOT NULL DEFAULT 'photo'");
+  db.exec(`CREATE TABLE IF NOT EXISTS bird_unlocks (
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    bird_id TEXT NOT NULL, source TEXT NOT NULL CHECK(source IN ('code','purchase')),
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+    PRIMARY KEY(user_id,bird_id)
+  );`);
   // Existing Trees stay moderated when member creation is introduced.
   addColumn('communities', 'branch_approval_required', 'INTEGER NOT NULL DEFAULT 1');
   addColumn('communities', 'nest_approval_required', 'INTEGER NOT NULL DEFAULT 1');

@@ -4,6 +4,7 @@ COPY package.json package-lock.json ./
 RUN npm ci --no-audit --no-fund --fetch-timeout=30000 --fetch-retries=1
 COPY index.html vite.config.js ./
 COPY src ./src
+COPY shared ./shared
 COPY public ./public
 RUN npm run build && npm prune --omit=dev --no-audit --no-fund
 
@@ -17,6 +18,7 @@ COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
 COPY package.json ./
 COPY server ./server
+COPY shared ./shared
 RUN mkdir -p /data
 EXPOSE 3000
 CMD ["node", "server/index.js"]

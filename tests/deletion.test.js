@@ -126,4 +126,50 @@ test('admin deletion respects scope, preserves Branch chats, and removes deleted
     assert.equal((await ok(`/groups/${privateNest.id}/messages`,member)).messages[0].body,'Keep this history');
     assert.deepEqual(runtime.db.prepare('PRAGMA foreign_key_check').all(),[]);
   });
+  await t.test('only the current owner can delete an entire Tree; all descendants and access disappear',async()=>{
+    const otherTree=(await ok('/communities',owner,'POST',{name:'Keep this Tree'})).community;
+    const otherNest=(await ok(`/communities/${otherTree.id}/circles`,owner,'POST',{name:'Keep this chat'})).group;
+    await ok(`/groups/${otherNest.id}/messages`,owner,'POST',{body:'Still here'});
+    await ok('/me',member,'PATCH',{last_community_id:cid});
+    await ok(`/communities/${cid}/members/${branchAdmin.id}`,owner,'PATCH',{role:'admin'});
+    const invitation=(await ok('/invitations',owner,'POST',{community_id:cid,group_id:publicNest.id})).path.split('invite=')[1];
+    const form=new FormData();form.append('file',new Blob(['Tree attachment']), 'tree-notes.txt');
+    const file=(await ok('/uploads',owner,'POST',form)).file;
+    const root=(await ok(`/groups/${publicNest.id}/messages`,owner,'POST',{body:'Tree history',files:[file.id]})).id;
+    await ok(`/groups/${publicNest.id}/messages`,owner,'POST',{body:'A reply',reply_to:root});
+    await ok(`/communities/${cid}/circles`,member,'POST',{name:'Pending before Tree removal'});
+    for(const actor of [branchAdmin,nestAdmin,member,outsider])assert.equal((await req(`/communities/${cid}`,actor,'DELETE',{confirm_name:'Home'})).status,403);
+    assert.equal((await req(`/communities/${cid}`,owner,'DELETE',{confirm_name:'wrong'})).status,409);
+    assert.equal((await req(`/communities/${cid}`,owner,'DELETE')).status,409);
+    assert.ok((await snapshot(member)).circles.length);
+    // Ownership transfer immediately revokes the previous owner's deletion right.
+    await ok(`/communities/${cid}/transfer`,owner,'POST',{user_id:branchAdmin.id});
+    assert.equal((await req(`/communities/${cid}`,owner,'DELETE',{confirm_name:'Home'})).status,403);
+    const controller=new AbortController();
+    const stream=await fetch(`${base}/events`,{headers:{cookie:member.cookie},signal:controller.signal});
+    const reader=stream.body.getReader();await reader.read();
+    try {
+      assert.equal((await req(`/communities/${cid}`,branchAdmin,'DELETE',{confirm_name:'Home'})).status,200);
+      const event=await Promise.race([reader.read(),new Promise((_,reject)=>setTimeout(()=>reject(new Error('No deletion refresh')),2000).unref())]);
+      assert.match(new TextDecoder().decode(event.value),/event: refresh/);
+    }finally{controller.abort();}
+    for(const table of ['communities','subcommunities','groups','community_members','invitations','creation_requests']){
+      const column=table==='communities' ? 'id' : 'community_id';
+      assert.equal(runtime.db.prepare(`SELECT COUNT(*) AS n FROM ${table} WHERE ${column}=?`).get(cid).n,0,table);
+    }
+    assert.equal(runtime.db.prepare('SELECT COUNT(*) AS n FROM messages WHERE id=?').get(root).n,0);
+    assert.equal(runtime.db.prepare('SELECT COUNT(*) AS n FROM message_files WHERE file_id=?').get(file.id).n,0);
+    assert.equal(runtime.db.prepare('SELECT COUNT(*) AS n FROM scoped_admins WHERE user_id=?').get(nestAdmin.id).n,0);
+    assert.equal((await req(`/groups/${publicNest.id}/messages`,member)).status,404);
+    assert.equal((await req(`/files/${file.id}`,member)).status,404);
+    assert.equal((await req('/invitations/accept',outsider,'POST',{token:invitation})).status,410);
+    assert.equal((await ok('/me',member)).user.last_community_id,null);
+    assert.equal((await ok('/me',owner)).user.last_community_id,otherTree.id);
+    assert.deepEqual(runtime.db.prepare('PRAGMA foreign_key_check').all(),[]);
+    runtime.close();await new Promise(r=>server.close(r));runtime=createApp({dataDir:dir,testing:true,googleClientId:'',pushEnabled:false});server=createServer(runtime.app);await listen();
+    assert.equal((await req(`/communities/${cid}`,owner)).status,404);
+    assert.equal((await ok(`/groups/${otherNest.id}/messages`,owner)).messages[0].body,'Still here');
+    assert.equal((await ok('/communities',member)).communities.length,0);
+  });
+
 });

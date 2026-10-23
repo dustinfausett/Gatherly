@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { ArrowDown, ArrowUp, Bell, BellOff, CheckCheck, ChevronRight, MoreHorizontal, Pin, PinOff, Plus, Search, Settings2, Users } from 'lucide-react';
+import { ArrowDown, ArrowUp, Bell, BellOff, CheckCheck, ChevronRight, MoreHorizontal, Pin, PinOff, Plus, Search, Settings2, Trash2, Users } from 'lucide-react';
 import { api, patch } from './api';
 import { Avatar, Modal } from './components';
 import { Bird } from './BirdJourney';
@@ -68,7 +68,7 @@ function GroupRow({ group: g, expanded, onToggle }) {
   </div>;
 }
 
-export default function CommunityHome({ community: c, search, onModal, onCircle, onRefresh, notify, expandedGroups, onToggleGroup, openingId }) {
+export default function CommunityHome({ community: c, birdId, search, onModal, onCircle, onRefresh, notify, expandedGroups, onToggleGroup, openingId }) {
   const [localSearch, setSearch] = useState(''), [searchOpen, setSearchOpen] = useState(false), [optionsId, setOptionsId] = useState(null), [busy, setBusy] = useState(false), [confirmLeave, setConfirmLeave] = useState(false);
   const query = (localSearch || search).trim().toLowerCase();
   const matches = item => !query || item.name.toLowerCase().includes(query);
@@ -116,13 +116,13 @@ export default function CommunityHome({ community: c, search, onModal, onCircle,
         {!children.length && <p className="list-empty">{item.groups.some(g => g.pin_position !== null) ? 'Your pinned Nests from this Branch are shown above.' : query ? 'No Nests match your search.' : 'No Nests here yet.'}</p>}
         <div className="inline-group-actions">
           <button className="text-button" disabled={busy} onClick={() => groupMembership(item)}>{item.joined ? 'Leave Branch' : 'Join Branch'}</button>
-          <button className="text-button" aria-label={`Add Nest to ${item.name}`} onClick={() => createCircle(item)}><Plus size={15} />Add Nest</button>{item.is_admin && <button className="icon-button" aria-label={`Branch settings for ${item.name}`} onClick={() => onModal({kind:'space',type:'subcommunity',entity:item})}><Settings2 size={16} /></button>}
+          <button className="text-button" aria-label={`Add Nest to ${item.name}`} onClick={() => createCircle(item)}><Plus size={15} />Add Nest</button>{item.is_admin && <><button className="text-button danger" aria-label={`Delete Branch ${item.name}`} onClick={() => onModal({kind:'space',type:'subcommunity',entity:item,delete:true})}><Trash2 size={14}/>Delete Branch</button><button className="icon-button" aria-label={`Branch settings for ${item.name}`} onClick={() => onModal({kind:'space',type:'subcommunity',entity:item})}><Settings2 size={16} /></button></>}
         </div>
       </div>}
     </div>;
   });
   return <div className="community-home circle-home compact-home">
-    <header className="community-banner"><Avatar name={c.name} id={c.avatar_id} size={56} /><div className="tree-banner-title"><h1>{c.name}</h1><span className="banner-perch" aria-hidden="true"><span className="banner-branch-art"/><span className="banner-bird" data-bird-perch><Bird/></span></span></div><div className="banner-actions">
+    <header className="community-banner"><Avatar name={c.name} id={c.avatar_id} size={56} /><div className="tree-banner-title"><h1>{c.name}</h1><span className="banner-perch" aria-hidden="true"><span className="banner-branch-art"/><span className="banner-bird" data-bird-perch><Bird birdId={birdId}/></span></span></div><div className="banner-actions">
       <button className="icon-button" aria-label="Search Branches and Nests" aria-expanded={searchOpen} onClick={() => { if (searchOpen) setSearch(''); setSearchOpen(!searchOpen); }}><Search size={19} /></button>
       {c.is_admin && <button className="icon-button" aria-label="Tree settings" onClick={() => onModal({kind:'space',type:'community',entity:c})}><Settings2 size={19} /></button>}
     </div></header>
@@ -141,6 +141,7 @@ export default function CommunityHome({ community: c, search, onModal, onCircle,
           <button disabled={busy} onClick={() => action({ muted: !options.muted })}>{options.muted ? <Bell size={18} /> : <BellOff size={18} />}{options.muted ? 'Unmute notifications' : 'Mute notifications'}</button>
         </>}
         {options.is_admin && <button onClick={() => { setOptionsId(null); onModal({ kind: 'space', type: 'group', entity: options }); }}><Settings2 size={18} />Nest settings</button>}
+        {options.is_admin && <button className="danger" onClick={() => {setOptionsId(null);onModal({kind:'space',type:'group',entity:options,delete:true});}}><Trash2 size={18}/>Delete Nest</button>}
         {options.joined && <button className="danger" disabled={busy} onClick={() => setConfirmLeave(true)}>Leave Nest</button>}
         {confirmLeave && <div className="confirmation"><p>Leave {options.name}? Private Nests require an admin invitation to rejoin.</p><div className="button-row"><button className="button secondary" disabled={busy} onClick={() => setConfirmLeave(false)}>Cancel</button><button className="button danger-button" disabled={busy} onClick={async () => { setBusy(true); try { await api(`/groups/${options.id}/join`, { method: 'DELETE' }); setOptionsId(null); await onRefresh(); } catch (err) { notify(err.message, true); } finally { setBusy(false); } }}>Leave Nest</button></div></div>}
       </div>

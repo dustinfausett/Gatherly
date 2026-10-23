@@ -1,4 +1,6 @@
 import React, { useEffect, useId, useRef, useState } from 'react';
+import { getBird } from '../shared/birds';
+import { birdFrame } from './birdArtwork';
 
 export const NEST_MOTION = { press:220, slide:1400, flight:2400 };
 // Display the approved artwork itself. Clip the perch/landing supports away from
@@ -27,8 +29,20 @@ function Artwork({ frame, src, className='', pose }) {
     </g>
   </svg>;
 }
-export function Bird({ className='', skin=defaultBirdSkin, pose='perched' }) {
-  return <Artwork className={`churp-bird ${className}`} frame={skin.frames[pose] || skin.frames.perched} src={skin.src} pose={pose}/>;
+export function Bird({ className='', birdId='blue', pose='perched' }) {
+  const clipId = useId();
+  const bird = getBird(birdId) || getBird('blue');
+  if (bird.id === 'blue') return <span className={`bird-artwork ${className}`} data-bird-id="blue"><Artwork className="churp-bird" frame={defaultBirdSkin.frames[pose] || defaultBirdSkin.frames.perched} src={defaultBirdSkin.src} pose={pose}/></span>;
+  const frame = birdFrame(bird,pose);
+  return <span className={`bird-artwork ${className}`} data-bird-id={bird.id}><svg className="churp-bird" viewBox="0 0 512 512" fill="none" aria-hidden="true" data-bird-pose={pose}>
+    <svg x="36" y="0" width="440" height="440" viewBox={`${frame.x} ${frame.y} ${frame.width} ${frame.height}`} preserveAspectRatio="xMidYMax meet" overflow="hidden">
+      <defs>
+        <clipPath id={clipId}><rect x={frame.x} y={frame.y} width={frame.width} height={frame.height}/></clipPath>
+        {frame.clip && <clipPath id={`${clipId}-outline`}><path d={frame.clip}/></clipPath>}
+      </defs>
+      <g clipPath={`url(#${clipId})`}><image href={frame.src} width="1254" height="1254" clipPath={frame.clip ? `url(#${clipId}-outline)` : undefined}/></g>
+    </svg>
+  </svg></span>;
 }
 export function LandingNest() {
   const frame={x:1024,y:512,clip:'M98 330Q120 303 156 325L191 355H370L419 307Q457 313 460 346L477 363Q485 443 431 478Q284 532 158 486Q103 465 98 390Z'};
@@ -73,5 +87,5 @@ export default function BirdJourney({ journey, onDone }) {
     motion.addEventListener('change',stop,{once:true});
     return () => {animation.cancel();timers.forEach(clearTimeout);window.removeEventListener('resize',stop);motion.removeEventListener('change',stop);};
   },[journey,onDone]);
-  return <div className="bird-flight" aria-hidden="true"><div className="travelling-bird" ref={ref} style={{width:journey.start.width,height:journey.start.height}}><Bird pose={pose}/></div></div>;
+  return <div className="bird-flight" aria-hidden="true"><div className="travelling-bird" ref={ref} style={{width:journey.start.width,height:journey.start.height}}><Bird birdId={journey.birdId} pose={pose}/></div></div>;
 }

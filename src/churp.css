@@ -232,6 +232,36 @@ input::placeholder, textarea::placeholder { color: #92917f; }
 .banner-actions { align-self: stretch; justify-content: center; background: #e5edcfb8; border-radius: 20px; }
 .banner-bird { position: absolute; width: 104px; height: 104px; left: -8px; top: -19px; pointer-events: none; }
 .churp-bird { width: 100%; height: 100%; display: block; overflow: visible; filter: drop-shadow(0 2px 1px #73552a18); }
+.bird-artwork { display: block; width: 100%; height: 100%; flex: none; }
+.avatar .avatar-bird { width: 100%; height: 100%; padding: 1px; }
+
+/* One account companion, from the profile to the perch and the flight. */
+.profile-bird-preview { display: flex; align-items: center; gap: 16px; margin-bottom: 4px; }
+.profile-bird-preview strong { color: #5b783c; font-family: 'Nunito', sans-serif; font-size: 19px; }
+.profile-bird-preview p { margin-top: 5px; }
+.form fieldset.bird-picker { display: block; border: 0; padding: 0; min-width: 0; margin: 0; }
+.bird-picker legend { font-size: 14px; color: #657745; font-weight: 800; margin-bottom: 7px; }
+.bird-picker>p { margin-bottom: 13px; }
+.bird-grid { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 9px; }
+.bird-choice { display: flex; flex-direction: column; align-items: center; position: relative; padding: 7px 3px 9px; border: 1px solid #e5dac5; background: #f9f3e7; border-radius: 13px; cursor: pointer; text-align: center; min-width: 0; }
+.bird-choice input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; z-index: 1; cursor: inherit; }
+.bird-choice:has(input:focus-visible) { outline: 3px solid #6794ac; outline-offset: 2px; }
+.bird-choice.chosen { border-color: #6b8844; background: #edf3dc; box-shadow: 0 0 0 1px #6b8844; }
+.bird-choice>.bird-artwork { width: 72px; max-width: 100%; height: 72px; }
+.bird-choice strong { font-size: 11px; line-height: 1.5; color: #695b42; overflow-wrap: anywhere; }
+.bird-choice small { display: inline-flex; align-items: center; justify-content: center; gap: 3px; font-size: 10px; line-height: 1.5; color: #92856d; margin-top: 2px; }
+.bird-choice.locked { cursor: default; }
+.bird-choice.locked>.bird-artwork { opacity: .8; filter: saturate(.75); }
+.bird-choice.chosen small { color: #587637; }
+.bird-unlock .form { margin: 12px 0 15px; }
+.bird-unlock .form-footer { margin-top: 0; }
+.bird-unlocked-message { display: flex; gap: 7px; color: #5b783c; font-size: 13px; margin-bottom: 14px; }
+.profile-photo-option { border: 1px solid #e8ddc9; padding: 12px; border-radius: 12px; }
+.profile-photo-option summary { font-size: 12px; color: #82714f; cursor: pointer; }
+.profile-photo-option p { margin-top: 10px; }
+.profile-photo-option .avatar-editor { margin-top: 14px; }
+.inline-group-actions { flex-wrap: wrap; }
+@media(max-width:600px) { .bird-grid { grid-template-columns: repeat(3,minmax(0,1fr)); } }
 .bird-flight { position: fixed; inset: 0; z-index: 70; pointer-events: none; overflow: hidden; }
 .travelling-bird { position: absolute; left: 0; top: 0; will-change: transform; }
 .chat-landing-nest { flex-shrink: 0; position: relative; width: 54px; height: 48px; display: block; pointer-events: none; }
