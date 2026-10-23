@@ -105,6 +105,19 @@ export function openDatabase(path) {
   addColumn('group_members', 'pin_position', 'INTEGER');
   addColumn('group_members', 'marked_unread', 'INTEGER NOT NULL DEFAULT 0');
   addColumn('messages', 'urgent', 'INTEGER NOT NULL DEFAULT 0');
+  addColumn('messages', 'message_kind', "TEXT NOT NULL DEFAULT 'chat'");
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS polls (
+      message_id INTEGER PRIMARY KEY REFERENCES messages(id) ON DELETE CASCADE,
+      closed INTEGER NOT NULL DEFAULT 0 CHECK(closed IN (0,1))
+    );
+    CREATE TABLE IF NOT EXISTS poll_votes (
+      poll_id INTEGER NOT NULL REFERENCES polls(message_id) ON DELETE CASCADE,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      message_id INTEGER NOT NULL UNIQUE REFERENCES messages(id) ON DELETE CASCADE,
+      PRIMARY KEY(poll_id,user_id)
+    );
+  `);
   addColumn('messages', 'ciphertext', 'TEXT');
   addColumn('messages', 'client_id', 'TEXT');
   addColumn('messages', 'encrypted_by', 'TEXT REFERENCES users(id)');

@@ -4,6 +4,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import assert from 'node:assert/strict';
 import * as enc from '../shared/encryption.js';
+import { validatePoll,encodeVote,parseVote } from '../shared/polls.js';
 import { mkdtempSync,readFileSync,rmSync,existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -68,7 +69,12 @@ async function browserCheck(cid,gid,recovery,managedFixture){
     await page.goto(`${origin}/?community=${cid}&group=${gid}`);
     await page.getByRole('textbox',{name:'Recovery key',exact:true}).fill(`CHURP1-${recovery}`);
     await page.getByRole('button',{name:'Restore with recovery key',exact:true}).click();
-    await expect(page.locator('.message-bubble')).toContainText('A durable message.');
+    await expect(page.locator('.message-bubble').filter({hasText:'A durable message.'})).toBeVisible();
+    await page.getByRole('button',{name:'Open poll: Container planning poll',exact:true}).click();
+    await expect(page.getByRole('dialog')).toContainText('Closed');
+    await expect(page.getByRole('radio',{name:/^Saturday/})).toBeChecked();
+    await expect.poll(()=>page.locator('.poll-choice-egg').evaluate(img=>img.naturalWidth)).toBeGreaterThan(0);
+    await page.getByRole('button',{name:'Close dialog',exact:true}).click();
     await expect(page.locator('.file-attachment')).toHaveAttribute('href',/^blob:/);
     const picture=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aWQ0AAAAASUVORK5CYII=','base64');
     await page.locator('.composer input[type=file]').first().setInputFiles({name:'container-private.png',mimeType:'image/png',buffer:picture});
@@ -136,6 +142,16 @@ try {
   const ciphertext=await enc.seal(keys.privateKey,roster.readers.map(r=>r.public_key),{version:1,kind:'nest-message',groupId:gid,clientId,senderId:registered.data.user.id,signerId:registered.data.user.id,rosterHash:roster.roster_hash,replyTo:null,migrated:false,body:'A durable message.',attachments:[attachment]});
   const send=enc.sendPayload({groupId:gid,clientId,rosterHash:roster.roster_hash,cipherHash:await enc.digest(ciphertext),files:[fileId],replyTo:null});
   const mid = (await request(`/groups/${gid}/messages`, 'POST', {ciphertext,clientId,rosterHash:roster.roster_hash,files:[fileId],signature:await enc.sign(keys.privateKey,'send',send)})).data.id;
+  const poll=validatePoll({title:'Container planning poll',questions:[{text:'Which day?',type:'single',options:['Saturday','Sunday']}]});
+  async function pollWrite(kind,body,replyTo=null){
+    const rs=(await request(`/groups/${gid}/e2ee/roster`)).data,clientId=randomUUID();
+    const ciphertext=await enc.seal(keys.privateKey,rs.readers.map(r=>r.public_key),{version:1,kind:'nest-message',groupId:gid,clientId,senderId:registered.data.user.id,signerId:registered.data.user.id,rosterHash:rs.roster_hash,replyTo,migrated:false,selfEncrypted:rs.self_encrypted,contentType:kind,body,attachments:[]});
+    const payload=enc.sendPayload({groupId:gid,clientId,rosterHash:rs.roster_hash,cipherHash:await enc.digest(ciphertext),files:[],replyTo});
+    return (await request(kind==='poll' ? `/groups/${gid}/messages` : `/messages/${replyTo}/poll/vote`,'POST',{ciphertext,clientId,rosterHash:rs.roster_hash,reply_to:replyTo,files:[],...(kind==='poll' ? {message_kind:'poll'} : {}),signature:await enc.sign(keys.privateKey,'send',payload)})).data.id;
+  }
+  const pollId=await pollWrite('poll',JSON.stringify(poll));
+  await pollWrite('poll_vote',encodeVote(pollId,poll,[[0]]),pollId);
+  await request(`/messages/${pollId}/poll`,'PATCH',{closed:true});
   const keyBefore = (await request('/config')).data.vapidPublicKey;
   assert.ok(keyBefore);
   assert.deepEqual(await enc.decryptFile((await request(`/files/${fileId}`)).data,attachment),filePlain);
@@ -156,6 +172,9 @@ try {
   assert.equal((await enc.open(restored,keys.publicKey,saved.ciphertext)).body,'A durable message.');
   assert.deepEqual(await enc.decryptFile((await request(`/files/${fileId}`)).data,attachment),filePlain);
   assert.equal((await request('/config')).data.vapidPublicKey, keyBefore);
+  const savedPoll=(await request(`/messages/${pollId}/poll`)).data;
+  assert.equal(savedPoll.closed,true);assert.equal(savedPoll.votes.length,1);
+  assert.deepEqual(parseVote((await enc.open(restored,keys.publicKey,savedPoll.votes[0].ciphertext)).body,pollId,poll),[[0]]);
   cookie=managedCookie;deviceId=randomUUID();
   const restoredManaged=(await request('/e2ee/managed-device','POST',{deviceId,deviceName:'After replacement'})).data;
   assert.equal(restoredManaged.identity.fingerprint,managedFingerprint);assert.equal((await enc.readPrivate(restoredManaged.privateKey)).getFingerprint(),managedFingerprint);
@@ -163,6 +182,7 @@ try {
   await browserCheck(cid,gid,recovery,{cookie:managedCookie});
   console.log('PASS: production container, HTTPS proxy headers, secure sessions, encrypted Nest messages/files, recovery backup and volume persistence across replacement.');
   console.log('PASS: push keys persist; local .env is excluded; Railway startup requires a Volume.');
+  console.log('PASS: encrypted poll definitions, answers and closure survive replacement; envelope and basket artwork render under production CSP.');
 } finally {
   for(const name of containers)spawnSync('docker', ['rm', '-f', name], { stdio: 'ignore' });
   spawnSync('docker', ['volume', 'rm', volume], { stdio: 'ignore' });

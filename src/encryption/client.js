@@ -136,12 +136,12 @@ function validateContents(value){
   if(typeof value.body!=='string' || value.body.length>10000 || !Array.isArray(value.attachments) || value.attachments.length>5 || (!value.body.trim() && !value.attachments.length))throw new Error('Invalid message contents.');
   for(const f of value.attachments)if(typeof f.id!=='string' || typeof f.name!=='string' || f.name.length>200 || !Number.isSafeInteger(f.size) || f.size<0 || f.size>enc.FILE_LIMIT || !/^[0-9a-f]{64}$/.test(f.key) || !/^[0-9a-f]{64}$/.test(f.sha256) || typeof f.mime!=='string' || f.mime.length>100)throw new Error('Invalid encrypted attachment.');
 }
-export async function sealMessage(groupId,body,attachments,replyTo,legacy=null){
+export async function sealMessage(groupId,body,attachments,replyTo,legacy=null,contentType='chat'){
   const self=getCurrent(),rs=legacy ? {...legacy.roster,readers:await Promise.all(legacy.roster.readers.map(trustedReader))} : await getRoster(groupId);
   if(rs.missing?.length)throw new Error(`Waiting for ${rs.missing.map(u=>u.name).join(', ')} to set up encrypted messaging.`);
   const clientId=legacy ? `legacy-${legacy.id}` : crypto.randomUUID();
   const payload={version:enc.VERSION,kind:'nest-message',groupId,clientId,senderId:legacy?.user_id ?? self.userId,signerId:self.userId,
-    rosterHash:rs.roster_hash,replyTo:replyTo ?? null,migrated:!!legacy,selfEncrypted:!legacy && !!rs.self_encrypted,body,attachments};
+    rosterHash:rs.roster_hash,replyTo:replyTo ?? null,migrated:!!legacy,selfEncrypted:!legacy && !!rs.self_encrypted,contentType,body,attachments};
   validateContents(payload);
   const ciphertext=await enc.seal(self.privateKey,rs.readers.map(u=>u.public_key),payload),files=attachments.map(f=>f.id);
   const signed=enc.sendPayload({groupId,clientId,rosterHash:rs.roster_hash,cipherHash:await enc.digest(ciphertext),files,replyTo});
@@ -159,6 +159,7 @@ export async function decryptMessages(groupId,messages){
       if(!value){for(const privateKey of [self.privateKey,...self.previousPrivateKeys]){try{value=await enc.open(privateKey,signer.public_key,m.ciphertext);break;}catch{}}if(!value)throw new Error('This device cannot decrypt the message.');decryptedCache.set(cacheKey,value);if(decryptedCache.size>500)decryptedCache.delete(decryptedCache.keys().next().value);}
       if(value.version!==enc.VERSION || value.kind!=='nest-message' || value.groupId!==groupId || value.clientId!==m.client_id || value.senderId!==m.user_id || value.signerId!==m.encrypted_by || value.rosterHash!==m.recipient_hash || value.replyTo!==(m.reply_to ?? null) || !!value.migrated!==m.client_id.startsWith('legacy-'))throw new Error('The message context does not match.');
       validateContents(value);
+      if((value.contentType || 'chat')!==(m.message_kind || 'chat'))throw new Error('The message type was changed.');
       if(value.selfEncrypted!==undefined && value.selfEncrypted!==!!m.self_encrypted)throw new Error('The message protection status was changed.');
       if(enc.canonical(value.attachments.map(f=>f.id).sort())!==enc.canonical(m.files.map(f=>f.id).sort()))throw new Error('The attachment list was changed.');
       return {...m,body:value.body,files:value.attachments,identityVerified:signer.verified,migrated:value.migrated};
@@ -196,7 +197,7 @@ export function convertHistory(groupId){
           if(!response.ok)throw new Error('An earlier attachment could not be converted.');
           files.push(await uploadEncrypted(new File([await response.arrayBuffer()],f.name,{type:f.mime})));
         }
-        const body=await sealMessage(groupId,m.body,files,m.reply_to,m);
+        const body=await sealMessage(groupId,m.body,files,m.reply_to,m,m.message_kind || 'chat');
         try{await api(`/e2ee/legacy/${m.id}`,{method:'PUT',body});converted++;}catch(e){if(e.status!==409)throw e;return {converted,pending:1};}
       }
       if(pending)return {converted,pending};

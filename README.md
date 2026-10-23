@@ -29,6 +29,8 @@ Production requires HTTPS because cookies use `Secure`. A reverse proxy must for
 
 ## Accounts, permissions, and conversations
 
+Nest chats include **+ → Poll**: a single- or multi-question choice poll delivered as an animated envelope, with eggs marking basket selections. Polls and responses use the existing encrypted messaging system. See [poll behavior and implementation](docs/POLLS.md).
+
 - Username/password authentication uses salted scrypt hashes and HttpOnly cookie sessions. Optional Google Sign-in verifies ID tokens on the server.
 - Trees can be created or joined through invitations. The owner appoints Tree admins and can transfer ownership, remaining an admin afterward. Tree admins assign Branch admins. Rights inherit down to Nests; Nest admins manage only their assigned Nests. All Tree members can propose new Branches and Nests; the Tree’s creation settings determine whether approval is needed.
 - Tree admins can remove members and revoke all Nest memberships and scoped admin roles. Only the owner can remove another Tree admin; the owner cannot be removed.
