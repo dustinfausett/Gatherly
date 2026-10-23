@@ -61,8 +61,8 @@ function GroupRow({ group: g, expanded, onToggle }) {
   return <div className={`circle-row group-row ${unread(g) ? 'is-unread' : ''} ${g.urgent_unread > 0 ? 'is-urgent' : ''}`} data-group-id={g.id} data-unread={unread(g)} data-urgent={g.urgent_unread > 0}>
     <div className="circle-row-content"><span className="branch-row-art" aria-hidden="true"/>
       <button className="circle-open" aria-label={`Open Branch ${g.name}`} aria-expanded={expanded} aria-controls={`group-circles-${g.id}`} aria-describedby={unread(g) ? `group-state-${g.id}` : undefined} onClick={() => onToggle(g.id)}>
-        <span className="row-avatar"><Avatar name={g.name} id={g.avatar_id} size={50} /><span className="group-avatar-symbol" aria-hidden="true"><SpaceIcon kind="tree" size={18}/></span><UnreadEgg active={!!unread(g)} urgent={g.urgent_unread > 0}/></span>
-        <span className="circle-copy"><small className="row-kind"><SpaceIcon kind="tree" size={16}/>Branch</small><span className="circle-name">{g.name}</span></span><ChevronRight size={20} className={`group-row-chevron ${expanded ? 'expanded' : ''}`} />
+        <span className="row-avatar"><Avatar name={g.name} id={g.avatar_id} size={50} /><span className="group-avatar-symbol" aria-hidden="true"><SpaceIcon kind="branch" size={18}/></span><UnreadEgg active={!!unread(g)} urgent={g.urgent_unread > 0}/></span>
+        <span className="circle-copy"><small className="row-kind"><SpaceIcon kind="branch" size={16}/>Branch</small><span className="circle-name">{g.name}</span></span><ChevronRight size={20} className={`group-row-chevron ${expanded ? 'expanded' : ''}`} />
         {unread(g) && <span id={`group-state-${g.id}`} className="visually-hidden">{g.urgent_unread > 0 ? 'Urgent and unread' : 'Unread'} Nests in this Branch</span>}
       </button>
     </div>
@@ -131,7 +131,7 @@ export default function CommunityHome({ community: c, birdId, search, onModal, o
     <section className="circle-section pinned-circles" aria-label="Pinned Nests"><h2><Pin size={14} />Pinned Nests</h2><div className="circle-list">{scopePins.map(circleRow)}</div>{!scopePins.length && <p className="list-empty">{query ? 'No pinned Nests match your search.' : 'Pin your favorite Nests from Options.'}</p>}</section>
     <section className="circle-section joined-circles" aria-label="Joined Branches and Nests"><h2>Branches &amp; Nests you’ve joined</h2><div className="circle-list">{list(yourEntries)}</div>{!yourEntries.length && <p className="list-empty">{query ? 'No matches here.' : 'Join a Branch or Nest from Explore below.'}</p>}</section>
     <section className="circle-section explore-circles" aria-label="Explore Branches and Nests"><h2>Explore Branches &amp; Nests</h2><div className="circle-list">{list(exploreEntries)}</div>{!exploreEntries.length && <p className="list-empty">{query ? 'No matches here.' : 'You’re all caught up. More spaces can be added as your Tree grows.'}</p>}</section>
-    <div className="space-create-actions"><button className="button primary" onClick={() => createCircle()}><Plus size={17} />New Nest</button><button className="button secondary" onClick={() => onModal({kind:'space',type:'subcommunity'})}><SpaceIcon kind="tree"/>New Branch</button></div>
+    <div className="space-create-actions"><button className="button primary" onClick={() => createCircle()}><Plus size={17} />New Nest</button><button className="button secondary" onClick={() => onModal({kind:'space',type:'subcommunity'})}><SpaceIcon kind="branch"/>New Branch</button></div>
     {options && <Modal title={options.name} subtitle="Nest options · your preferences are saved across devices." onClose={() => setOptionsId(null)}>
       <div className="circle-options">
         <button disabled={busy} onClick={() => { setOptionsId(null); onCircle(options.id); }}><SpaceIcon />Open Nest</button>

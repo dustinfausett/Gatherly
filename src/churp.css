@@ -196,15 +196,15 @@ input::placeholder, textarea::placeholder { color: #92917f; }
 /* A leafy Branch is a container; a warm Nest is a conversation. */
 .compact-home .group-row .circle-row-content { background: #e9eedb; border-color: #ced9b8; border-left: 4px solid #8fa568; }
 .compact-home .group-row .circle-open { padding-left: 13px; position: relative; z-index: 1; }
-.branch-row-art { position: absolute; pointer-events: none; width: 200px; height: 78px; right: 36px; bottom: 0; background: url('/brand/churp-branch.png') right center / 200px auto no-repeat; mask-image: linear-gradient(to right,transparent,#000); opacity: .3; }
+.branch-row-art { position: absolute; pointer-events: none; width: 100px; height: 78px; right: 36px; bottom: 0; background: url('/brand/previews/churp-branch-proposed.png') right center / contain no-repeat; mask-image: linear-gradient(to right,transparent,#000); opacity: .3; }
 .row-kind { display: flex; align-items: center; gap: 4px; font-size: 10px; font-weight: 800; color: #627b43; letter-spacing: .07em; text-transform: uppercase; margin-bottom: 2px; }
 .nest-avatar-symbol { position: absolute; right: -2px; bottom: -1px; width: 19px; height: 19px; display: grid; place-items: center; border-radius: 50%; background: #f9f0e1; color: #947043; border: 2px solid var(--churp-brown); }
 .compact-home .is-unread .nest-avatar-symbol { border-color: #fff5d3; }
 .compact-home .is-urgent .nest-avatar-symbol { border-color: #ffebe8; }
 
-/* Approved tree and woven Nest artwork, including a leading privacy lock. */
+/* Approved Tree, Branch and Nest artwork, including a leading privacy lock. */
 .space-icon { display: inline-flex; align-items: center; justify-content: center; gap: 3px; flex: none; vertical-align: middle; line-height: 1; }
-.space-icon .space-art { display: block; flex: none; overflow: hidden; }
+.space-icon .space-art { display: block; flex: none; overflow: hidden; object-fit: contain; }
 .space-icon .space-lock { flex: none; color: #786848; }
 .tree-group>span.space-icon { flex: none; overflow: visible; }
 .tree-group>.tree-space-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
 
-test('tree and Nest artwork keeps privacy locks and hidden Nest access', async ({ page, browser }, info) => {
+test('Tree, Branch and Nest artwork keeps privacy locks and hidden Nest access', async ({ page, browser }, info) => {
   const suffix = randomUUID().slice(0, 8);
   await page.request.post('/api/auth/register', { data: { username: `icons_${suffix}`, name: 'Tree admin', password: 'test artwork password' } });
   const tree = (await (await page.request.post('/api/communities', { data: { name: 'Our family' } })).json()).community;
@@ -31,11 +31,11 @@ test('tree and Nest artwork keeps privacy locks and hidden Nest access', async (
     await expect(row.getByRole('button', { name: `Open Nest ${nest.name}`, exact: true })).toHaveAccessibleDescription('Private Nest · Unread · Marked unread');
   }
   await expect(page.getByRole('button', { name: 'Open Nest Daily news', exact: true }).locator('.space-lock')).toHaveCount(0);
-  await expect(page.locator('.group-avatar-symbol .space-art-tree')).toBeVisible();
+  await expect(page.locator('.group-avatar-symbol .space-art-branch')).toBeVisible();
   await page.screenshot({ path: info.outputPath('nest-icons-home.png'), fullPage: true });
 
   if (info.project.name !== 'desktop') await page.getByRole('button', { name: 'Open navigation', exact: true }).click();
-  await expect(page.locator('.tree-label .space-art-tree')).toBeVisible();
+  await expect(page.locator('.tree-label .space-art-branch')).toBeVisible();
   for (const name of [root.name, nested.name]) {
     const entry = page.locator('.tree-group').filter({ hasText: name });
     await assertLockBeforeNest(entry.locator('.space-icon'));
