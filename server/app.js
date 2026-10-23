@@ -267,6 +267,40 @@ export function createApp(options = {}) {
   app.patch('/api/communities/:id', (req, res) => updateSpace(req, res, 'community'));
   app.patch('/api/subcommunities/:id', (req, res) => updateSpace(req, res, 'subcommunity'));
   app.patch('/api/groups/:id', (req, res) => updateSpace(req, res, 'group'));
+  function deleteSpace(req,res,type) {
+    const branch=type === 'subcommunity';
+    const entity=branch ? sub(req.params.id) : group(req.params.id);
+    if (!(branch ? subAdmin(req.user.id,entity) : groupAdmin(req.user.id,entity))) fail(403,'Only an admin of this space can delete it.');
+    if (req.body?.confirm_name !== entity.name) fail(409,'Type the current name exactly to confirm deletion. Refresh if the name has changed.');
+    const cid=entity.community_id;
+    const preserved=branch ? one('SELECT COUNT(*) AS n FROM groups WHERE subcommunity_id=?',entity.id).n : 0;
+    transaction(() => {
+      if (branch) {
+        // Remove the container without cascading into its conversations.
+        run('UPDATE groups SET subcommunity_id=NULL WHERE subcommunity_id=?',entity.id);
+        run(`UPDATE creation_requests SET deleted_parent_name=?,parent_id=NULL,
+          status=CASE WHEN status='pending' THEN 'cancelled' ELSE status END,
+          reviewed_by=CASE WHEN status='pending' THEN ? ELSE reviewed_by END,
+          reviewed_at=CASE WHEN status='pending' THEN strftime('%Y-%m-%dT%H:%M:%fZ','now') ELSE reviewed_at END
+          WHERE parent_id=?`,entity.name,req.user.id,entity.id);
+      }
+      run('DELETE FROM scoped_admins WHERE scope_type=? AND scope_id=?',type,entity.id);
+      run('UPDATE creation_requests SET result_deleted=1 WHERE kind=? AND result_id=?',branch ? 'branch' : 'nest',entity.id);
+      // Nest deletion cascades messages, threads, attachment links, invitations,
+      // notification records, memberships and personal preferences in SQLite.
+      run(`DELETE FROM ${branch ? 'subcommunities' : 'groups'} WHERE id=?`,entity.id);
+      if (!branch) {
+        const users=all('SELECT DISTINCT gm.user_id FROM group_members gm JOIN groups g ON g.id=gm.group_id WHERE g.community_id=? AND gm.pin_position IS NOT NULL',cid);
+        for (const {user_id} of users) {
+          const pins=all('SELECT gm.group_id FROM group_members gm JOIN groups g ON g.id=gm.group_id WHERE gm.user_id=? AND g.community_id=? AND gm.pin_position IS NOT NULL ORDER BY gm.pin_position,g.id',user_id,cid);
+          pins.forEach((p,i)=>run('UPDATE group_members SET pin_position=? WHERE group_id=? AND user_id=?',i,p.group_id,user_id));
+        }
+      }
+    });
+    refresh(cid); res.json({ok:true,preserved_nests:preserved});
+  }
+  app.delete('/api/subcommunities/:id',(req,res)=>deleteSpace(req,res,'subcommunity'));
+  app.delete('/api/groups/:id',(req,res)=>deleteSpace(req,res,'group'));
   // Creation and review share the same validated draft and atomic insert path.
   function canReview(userId, request) {
     if (!one('SELECT 1 FROM community_members WHERE community_id=? AND user_id=?',request.community_id,userId)) return false;
@@ -276,7 +310,7 @@ export function createApp(options = {}) {
   function requestView(r, userId) {
     return { ...r, payload:JSON.parse(r.payload), can_review:canReview(userId,r),
       requester_name:one('SELECT name FROM users WHERE id=?',r.requester_id).name,
-      parent_name:r.parent_id ? sub(r.parent_id).name : null };
+      parent_name:r.parent_id ? sub(r.parent_id).name : r.deleted_parent_name ? `${r.deleted_parent_name} (deleted)` : null };
   }
   function insertSpace(cid, kind, parentId, draft, creatorId) {
     const id = randomUUID();

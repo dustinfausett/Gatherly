@@ -95,9 +95,9 @@ test('compact Tree home, Branch navigation, photos, and menu details', async ({ 
     await gp.getByRole('button',{name:'Mark as urgent',exact:true}).click();
     await gp.getByRole('button',{name:'Send message',exact:true}).click();
     await expect(group('Family life')).toHaveAttribute('data-urgent','true');
-    await expect(group('Family life').locator('.avatar-status-dot.urgent')).toBeVisible();
+    await expect(group('Family life').locator('.avatar-status-egg.urgent')).toBeVisible();
     await expect(group('Family life').locator('.circle-row-content')).toHaveCSS('background-color','rgb(255, 235, 232)');
-    await expect(circle('Family plans').locator('.avatar-status-dot.urgent')).toBeVisible();
+    await expect(circle('Family plans').locator('.avatar-status-egg.urgent')).toBeVisible();
     await expect(page.locator('.joined-circles .circle-name')).toHaveText(['Family life','Announcements']);
     expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBeTruthy();
     expect(errors).toEqual([]);

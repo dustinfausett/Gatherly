@@ -50,7 +50,7 @@ test('Nest inbox supports personal pins, unread swipes, urgency, and one-tap mut
   await expect(row('Delta')).toHaveAttribute('data-unread','true');
   await expect(row('Delta').locator('.circle-row-content')).toHaveCSS('background-color','rgb(255, 245, 211)');
   await expect(names('.joined-circles')).toHaveText(['Delta','Beta']);
-  await expect(row('Delta').locator('.avatar-status-dot')).toHaveCSS('background-color','rgb(224, 174, 32)');
+  await expect(row('Delta').locator('.avatar-status-egg')).toHaveCSS('background-color','rgb(224, 174, 32)');
   await expect(page.getByRole('heading',{name:'Our Tree',exact:true})).toBeVisible();
   await swipe(page,row('Delta'),'left',testInfo.project.name!=='desktop');
   await row('Delta').getByRole('button',{name:'Options',exact:true}).click();
@@ -69,7 +69,7 @@ test('Nest inbox supports personal pins, unread swipes, urgency, and one-tap mut
     await other.request.post(`http://127.0.0.1:3100/api/groups/${delta.id}/join`);
     await other.request.post(`http://127.0.0.1:3100/api/groups/${delta.id}/messages`,{data:{body:'Please check this urgent update.',urgent:true}});
     await expect(row('Delta')).toHaveAttribute('data-urgent','true');
-    await expect(row('Delta').locator('.avatar-status-dot')).toHaveCSS('background-color','rgb(207, 91, 78)');
+    await expect(row('Delta').locator('.avatar-status-egg')).toHaveCSS('background-color','rgb(207, 91, 78)');
     await expect(row('Delta').locator('.circle-row-content')).toHaveCSS('background-color','rgb(255, 235, 232)');
     await expect(names('.pinned-circles')).toHaveText(['Alpha','Zulu']);
     await expect(names('.joined-circles')).toHaveText(['Delta','Beta']);

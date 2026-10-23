@@ -1,8 +1,9 @@
 import React, { useRef, useState } from 'react';
-import { ArrowDown, ArrowUp, Bell, BellOff, CheckCheck, ChevronRight, LockKeyhole, MessageCircle, MoreHorizontal, Pin, PinOff, Plus, Search, Settings2, GitBranch, Bird as BirdIcon, Users } from 'lucide-react';
+import { ArrowDown, ArrowUp, Bell, BellOff, CheckCheck, ChevronRight, LockKeyhole, MessageCircle, MoreHorizontal, Pin, PinOff, Plus, Search, Settings2, TreeDeciduous, Bird as BirdIcon, Users } from 'lucide-react';
 import { api, patch } from './api';
 import { Avatar, Modal } from './components';
 import { Bird } from './BirdJourney';
+import UnreadEgg from './UnreadEgg';
 
 const unread = circle => circle.unread > 0 || circle.marked_unread;
 const alphabetic = (a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base', numeric: true }) || a.id.localeCompare(b.id);
@@ -43,7 +44,7 @@ function CircleRow({ circle: c, onOpen, onOptions, onChange, openingId }) {
       onPointerCancel={() => { gesture.current = null; setOffset(0); }}
       onClickCapture={e => { if (suppressClick.current) { e.preventDefault(); e.stopPropagation(); suppressClick.current = false; } }}>
       <button className="circle-open" aria-label={`Open Nest ${c.name}`} aria-describedby={unread(c) ? `circle-state-${c.id}` : undefined} onClick={() => { if (revealed) setRevealed(false); else onOpen(c.id); }}>
-        <span className="row-avatar"><Avatar name={c.name} id={c.avatar_id} size={50} /><span className="nest-avatar-symbol" aria-hidden="true"><BirdIcon size={12}/></span>{unread(c) && <span className={`avatar-status-dot ${c.urgent_unread > 0 ? 'urgent' : ''}`} aria-hidden="true" />}</span>
+        <span className="row-avatar"><Avatar name={c.name} id={c.avatar_id} size={50} /><span className="nest-avatar-symbol" aria-hidden="true"><BirdIcon size={12}/></span><UnreadEgg active={!!unread(c)} urgent={c.urgent_unread > 0}/></span>
         <span className="circle-copy"><span className="circle-name">{c.name}{!!c.private && <LockKeyhole size={13} aria-label="Private Nest" />}{c.pin_position !== null && <Pin size={13} aria-label="Pinned" />}</span></span>
         {unread(c) && <span id={`circle-state-${c.id}`} className="visually-hidden">{c.urgent_unread > 0 ? 'Urgent and unread' : 'Unread'} · {c.unread || 'Marked unread'}</span>}
       </button>
@@ -58,8 +59,8 @@ function GroupRow({ group: g, expanded, onToggle }) {
   return <div className={`circle-row group-row ${unread(g) ? 'is-unread' : ''} ${g.urgent_unread > 0 ? 'is-urgent' : ''}`} data-group-id={g.id} data-unread={unread(g)} data-urgent={g.urgent_unread > 0}>
     <div className="circle-row-content"><span className="branch-row-art" aria-hidden="true"/>
       <button className="circle-open" aria-label={`Open Branch ${g.name}`} aria-expanded={expanded} aria-controls={`group-circles-${g.id}`} aria-describedby={unread(g) ? `group-state-${g.id}` : undefined} onClick={() => onToggle(g.id)}>
-        <span className="row-avatar"><Avatar name={g.name} id={g.avatar_id} size={50} /><span className="group-avatar-symbol" aria-hidden="true"><GitBranch size={11} /></span>{unread(g) && <span className={`avatar-status-dot ${g.urgent_unread > 0 ? 'urgent' : ''}`} aria-hidden="true" />}</span>
-        <span className="circle-copy"><small className="row-kind"><GitBranch size={11}/>Branch</small><span className="circle-name">{g.name}</span></span><ChevronRight size={20} className={`group-row-chevron ${expanded ? 'expanded' : ''}`} />
+        <span className="row-avatar"><Avatar name={g.name} id={g.avatar_id} size={50} /><span className="group-avatar-symbol" aria-hidden="true"><TreeDeciduous size={13} /></span><UnreadEgg active={!!unread(g)} urgent={g.urgent_unread > 0}/></span>
+        <span className="circle-copy"><small className="row-kind"><TreeDeciduous size={11}/>Branch</small><span className="circle-name">{g.name}</span></span><ChevronRight size={20} className={`group-row-chevron ${expanded ? 'expanded' : ''}`} />
         {unread(g) && <span id={`group-state-${g.id}`} className="visually-hidden">{g.urgent_unread > 0 ? 'Urgent and unread' : 'Unread'} Nests in this Branch</span>}
       </button>
     </div>
@@ -128,7 +129,7 @@ export default function CommunityHome({ community: c, search, onModal, onCircle,
     <section className="circle-section pinned-circles" aria-label="Pinned Nests"><h2><Pin size={14} />Pinned Nests</h2><div className="circle-list">{scopePins.map(circleRow)}</div>{!scopePins.length && <p className="list-empty">{query ? 'No pinned Nests match your search.' : 'Pin your favorite Nests from Options.'}</p>}</section>
     <section className="circle-section joined-circles" aria-label="Joined Branches and Nests"><h2>Branches &amp; Nests you’ve joined</h2><div className="circle-list">{list(yourEntries)}</div>{!yourEntries.length && <p className="list-empty">{query ? 'No matches here.' : 'Join a Branch or Nest from Explore below.'}</p>}</section>
     <section className="circle-section explore-circles" aria-label="Explore Branches and Nests"><h2>Explore Branches &amp; Nests</h2><div className="circle-list">{list(exploreEntries)}</div>{!exploreEntries.length && <p className="list-empty">{query ? 'No matches here.' : 'You’re all caught up. More spaces can be added as your Tree grows.'}</p>}</section>
-    <div className="space-create-actions"><button className="button primary" onClick={() => createCircle()}><Plus size={17} />New Nest</button><button className="button secondary" onClick={() => onModal({kind:'space',type:'subcommunity'})}><GitBranch size={17} />New Branch</button></div>
+    <div className="space-create-actions"><button className="button primary" onClick={() => createCircle()}><Plus size={17} />New Nest</button><button className="button secondary" onClick={() => onModal({kind:'space',type:'subcommunity'})}><TreeDeciduous size={17} />New Branch</button></div>
     {options && <Modal title={options.name} subtitle="Nest options · your preferences are saved across devices." onClose={() => setOptionsId(null)}>
       <div className="circle-options">
         <button disabled={busy} onClick={() => { setOptionsId(null); onCircle(options.id); }}><MessageCircle size={18} />Open Nest</button>

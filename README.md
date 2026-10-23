@@ -2,7 +2,7 @@
 
 A warm, responsive messaging app organized as **Tree → optional Branch → Nest**. A Tree is the whole workspace, a Branch organizes Nests and delegates admin rights, and a Nest is where conversations happen. **My Orchard** labels the Tree chooser; it is not another tier.
 
-The Churp wordmark and birds-and-nest mark appear on sign-in, navigation, browser icons, and Home Screen icons. Self-hosted Nunito and Nunito Sans fonts pair with leafy greens, cream backgrounds, and soft brown Nest rows. Read Nest rows are brown; unread rows remain yellow with a yellow dot, and urgent unread rows remain red with a red dot. Received messages use blue bubbles; your own use gold bubbles. Urgent messages keep their bubble color and have an urgent label and outline.
+The Churp wordmark and birds-and-nest mark appear on sign-in, navigation, browser icons, and Home Screen icons. Self-hosted Nunito and Nunito Sans fonts pair with leafy greens, cream backgrounds, and soft brown Nest rows. Read Nest rows are brown; unread rows remain yellow with a yellow egg, and urgent unread rows remain red with a red egg. Received messages use blue bubbles; your own use gold bubbles. Urgent messages keep their bubble color and have an urgent label and outline.
 
 ## Run locally
 
@@ -38,15 +38,23 @@ Production requires HTTPS because cookies use `Secure`. A reverse proxy must for
 
 ## Tree home
 
-A compact Tree banner sits above three sections: Pinned Nests, joined Branches/Nests, and Explore. Nest rows show the name and profile image. Branch rows have a leafy background, a green accent, and a Branch label. Branches expand in place, with Nests slightly indented below them. Expansion remains while opening and returning from chats. Pinned Nests stay in the top section. Descriptions, counts, and member details are available under **Menu → Tree details**.
+A compact Tree banner sits above three sections: Pinned Nests, joined Branches/Nests, and Explore. Nest rows show the name and profile image. Branch rows have a leafy background, a green accent, a tree icon, and a Branch label; Nest badges keep their bird icon. Branches expand in place, with Nests slightly indented below them. Expansion remains while opening and returning from chats. Pinned Nests stay in the top section. Descriptions, counts, and member details are available under **Menu → Tree details**.
 
-Pins have a personal order saved across devices. Use Nest Options to pin/unpin or move a pin up/down. Other joined Branches and Nests sort unread first, then alphabetically within unread/read lists. Branch indicators summarize unread and urgent messages in joined child Nests. Swipe right to mark unread; swipe left to reveal Options. The bell on each Nest row toggles muting without opening the chat; the global notification bell has been removed. Opening a Nest or selecting Mark as read clears its unread reminder.
+Pins have a personal order saved across devices. Use Nest Options to pin/unpin or move a pin up/down. Other joined Branches and Nests sort unread first, then alphabetically within unread/read lists. Branch indicators summarize unread and urgent messages in joined child Nests. Swipe right to mark unread; swipe left to reveal Options. The bell on each Nest row toggles muting without opening the chat; the global notification bell has been removed. Opening a Nest or selecting Mark as read clears its unread reminder. Yellow unread eggs and red urgent eggs sit at the bottom-left of each avatar. Eggs appear with a short 460 ms pop when an already visible row becomes unread or its status escalates to urgent. Existing unread status stays still on initial load or navigation, unchanged updates do not repeat the animation, and reduced-motion preferences keep eggs static.
 
 Branches can be joined independently. Joining a Nest adds its parent Branch to your list. Joining a Branch does not join any Nests or grant extra access. Leaving a Branch retains Nest memberships, pins, and notification settings. Existing Branch memberships are seeded once from Nest membership and Branch admin roles.
 
 Anyone allowed to post can send urgent messages and replies. Authors and applicable admins with posting rights can change urgency. Unread urgent messages turn the Nest row red until read. Muting suppresses device alerts even for urgent messages; unread indicators still update.
 
 The Tree banner places the approved blue bird artwork and branch immediately after the Tree name, keeping them together on smaller screens and when the name changes. Tapping a Nest highlights its row for 220 ms, then opens the chat with a 1.4-second slide and a 2.4-second flight. The flight uses the approved takeoff, wingbeat, glide, and landing poses; the chat header uses the same artwork. Reduced-motion preferences skip the flight and slide. The shared `Bird` component accepts an artwork sheet and frame definitions for future skins; no purchases or premium settings are enabled.
+
+## Deleting Branches and Nests
+
+Applicable admins can open **Branch settings** or **Nest settings** and select **Delete**. Confirmation requires typing the current name exactly. Ordinary members cannot delete spaces, and admin powers stay limited to their assigned scope.
+
+Deleting a Branch removes the container and its Branch admin assignments, while keeping all its Nests at Tree level. Nest messages, explicit Nest admins, memberships, privacy, pins, and mute preferences stay intact. Pending Nest requests in that Branch are cancelled, and request history retains the deleted Branch name. Inherited Branch admin access ends when the Branch is removed.
+
+Deleting a Nest removes its messages, replies, attachment-sharing links, invitations, notifications, scoped admin assignments, memberships and personal preferences. Other Nests are preserved, with remaining pins keeping their order. The conversation is removed for everyone, including users who currently have it open. Uploads remain independent of message-sharing links: an uploader’s own files and files reused as profile pictures are not physically erased by this operation. Approved creation requests indicate when their resulting space has been deleted.
 
 ## Member creation and approvals
 
@@ -119,6 +127,6 @@ npm run check      # Production build and real HTTP server tests
 npm run test:e2e   # Desktop, iPhone-size, and Android-size browser workflows
 ```
 
-The browser tests use `/usr/bin/chromium` when available. Otherwise install Chromium with `npx playwright install chromium` or supply `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH`. Tests run a separate server on port 3100, use temporary storage, and remove it afterward.
+The browser tests use `/usr/bin/chromium` when available. Otherwise install Chromium with `npx playwright install chromium` or supply `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH`. Tests run a separate server on port 3100, use temporary storage, and remove it afterward. The browser server uses NODE_ENV=test and the existing test-only rate limits to permit account fixtures; production authentication limits remain unchanged.
 
-Tests cover real accounts, invitations, live messaging, files, scoped administration, private access, pin order, touch swipes, unread/urgent colors, branching in place, image uploads, the Tree chooser, Churp branding, message bubble colors, creation approvals and scope boundaries, bird navigation, reduced motion, and persistence. Emulation does not prove actual Safari rendering, device keyboards, Home Screen installation, or system push delivery; check those on real phones. `GET /api/health` verifies SQLite access, not the full workflow.
+Tests cover real accounts, invitations, live messaging, files, scoped administration, private access, pin order, touch swipes, unread/urgent colors, branching in place, image uploads, the Tree chooser, Churp branding, message bubble colors, creation approvals and scope boundaries, bird navigation, reduced motion, scoped deletion and confirmation, retained Branch conversations, live egg indicators, and persistence. Emulation does not prove actual Safari rendering, device keyboards, Home Screen installation, or system push delivery; check those on real phones. `GET /api/health` verifies SQLite access, not the full workflow.

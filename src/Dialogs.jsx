@@ -3,10 +3,11 @@ import { Check, Copy, Crown, Link, LogOut, Shield, UserPlus, BellRing, BellOff, 
 import { api, post, patch } from './api';
 import { Avatar, AvatarEditor, Empty, Field, Form, Modal, Toggle } from './components';
 
-export function SpaceDialog({ modal, community, onClose, onSave }) {
+export function SpaceDialog({ modal, community, onClose, onSave, onDelete }) {
   const { type, entity, parent } = modal;
   const editing = !!entity;
   const [avatarId, setAvatarId] = useState(entity?.avatar_id || null);
+  const [deleting,setDeleting]=useState(false);
   const [privateCircle, setPrivate] = useState(!!entity?.private);
   const [adminOnly, setAdminOnly] = useState(!!entity?.admin_only);
   const [branchApproval, setBranchApproval] = useState(!!(entity?.branch_approval_required ?? true));
@@ -16,7 +17,8 @@ export function SpaceDialog({ modal, community, onClose, onSave }) {
   const label = { community: 'Tree', subcommunity: 'Branch', group: 'Nest' }[type];
   const parentAdmin = type === 'group' && location ? community?.subcommunities.find(s => s.id === location)?.is_admin : false;
   const needsApproval = !editing && type !== 'community' && !community.is_admin && !parentAdmin && (type === 'subcommunity' ? community.branch_approval_required : community.nest_approval_required);
-  return <Modal title={`${editing ? 'Edit' : 'Create a'} ${label}`} subtitle={type === 'community' ? 'Give your people a place to gather.' : type === 'subcommunity' ? 'A little organization for a growing Tree.' : 'A dedicated space for a conversation.'} onClose={onClose}>
+  return <Modal title={deleting ? `Delete ${label}` : `${editing ? 'Edit' : 'Create a'} ${label}`} subtitle={deleting ? entity.name : type === 'community' ? 'Give your people a place to gather.' : type === 'subcommunity' ? 'A little organization for a growing Tree.' : 'A dedicated space for a conversation.'} onClose={onClose}>
+    {deleting ? <DeleteSpaceForm type={type} entity={entity} onCancel={()=>setDeleting(false)} onDeleted={async result=>{await onDelete(result,type,entity);onClose();}}/> : <>
     <Form submit={editing ? 'Save changes' : needsApproval ? 'Submit for Approval' : `Create ${label}`} onSubmit={async form => {
       const payload = { name: form.get('name'), description: form.get('description'), avatar_id: avatarId };
       if (type === 'community' && editing) Object.assign(payload,{branch_approval_required:branchApproval,nest_approval_required:nestApproval});
@@ -48,7 +50,30 @@ export function SpaceDialog({ modal, community, onClose, onSave }) {
         <Toggle label="Only admins can post" description="Members can read. Only admins can send messages or replies." checked={adminOnly} onChange={setAdminOnly} />
       </div>}
     </Form>
+    {editing && type !== 'community' && <div className="delete-space-section"><h4>Delete this {label.toLowerCase()}</h4><p>{type === 'subcommunity' ? 'Remove the Branch and keep its Nests at Tree level.' : 'Remove this Nest and its chat history for everyone.'}</p><button className="button danger-button" onClick={()=>setDeleting(true)}><Trash2 size={16}/>Delete {label}</button></div>}
+    </>}
   </Modal>;
+}
+function DeleteSpaceForm({ type, entity, onCancel, onDeleted }) {
+  const branch=type === 'subcommunity', label=branch ? 'Branch' : 'Nest';
+  const [confirmation,setConfirmation]=useState('');
+  const [busy,setBusy]=useState(false), [error,setError]=useState('');
+  const same=confirmation === entity.name;
+  return <form className="form delete-space-confirm" onSubmit={async e=>{
+    e.preventDefault();if(busy || !same)return;
+    setBusy(true);setError('');
+    try {
+      const result=await api(`/${branch ? 'subcommunities' : 'groups'}/${entity.id}`,{method:'DELETE',body:{confirm_name:confirmation}});
+      await onDeleted(result);
+    } catch(err){setError(err.message);}finally{setBusy(false);}
+  }}>
+    <div className="deletion-warning"><strong>{branch ? 'Your Nests and conversations will be kept.' : 'This removes the Nest and its chat history for everyone.'}</strong>
+      <p>{branch ? 'Its Nests move to Tree level, keeping their messages, members, privacy, pins and mute preferences. Branch admin roles are removed; explicit Nest admins and Tree admins keep their rights. Pending Nest requests in this Branch are cancelled.' : 'Messages, replies, memberships, invitations, unread indicators and pinned preferences for this Nest will be removed. This action cannot be undone.'}</p>
+    </div>
+    <Field label={`Type “${entity.name}” to confirm`} hint="Enter the name exactly as shown."><input autoFocus value={confirmation} onChange={e=>setConfirmation(e.target.value)} autoComplete="off" disabled={busy}/></Field>
+    {error && <div className="error-banner" role="alert">{error}</div>}
+    <div className="button-row"><button className="button secondary" type="button" disabled={busy} onClick={onCancel}>Cancel</button><button className="button danger-button" type="submit" disabled={busy || !same}><Trash2 size={16}/>{busy ? 'Deleting…' : `Delete ${label}`}</button></div>
+  </form>;
 }
 export function InviteDialog({ community, group, onClose }) {
   const [link, setLink] = useState(''), [copied, setCopied] = useState(false);

@@ -117,6 +117,8 @@ export function openDatabase(path) {
     reviewed_by TEXT REFERENCES users(id), reviewed_at TEXT, result_id TEXT
   );
   CREATE INDEX IF NOT EXISTS creation_requests_tree ON creation_requests(community_id,status);`);
+  addColumn('creation_requests', 'deleted_parent_name', 'TEXT');
+  addColumn('creation_requests', 'result_deleted', 'INTEGER NOT NULL DEFAULT 0');
   db.exec(`CREATE INDEX IF NOT EXISTS circles_community ON groups(community_id);
     CREATE TRIGGER IF NOT EXISTS circle_parent_insert BEFORE INSERT ON groups
     WHEN NEW.subcommunity_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM subcommunities WHERE id=NEW.subcommunity_id AND community_id=NEW.community_id)

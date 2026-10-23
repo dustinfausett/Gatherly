@@ -1,0 +1,94 @@
+import { test, expect } from '@playwright/test';
+import { randomUUID } from 'node:crypto';
+
+test('admin deletion, themed icons and live unread egg arrivals',async({page,browser},info)=>{
+  const errors=[];page.on('pageerror',e=>errors.push(e.message));
+  const suffix=randomUUID().slice(0,8);
+  expect((await page.request.post('/api/auth/register',{data:{username:`eggs_${suffix}`,name:'Tree admin',password:'deletion browser password'}})).status()).toBe(201);
+  const tree=(await (await page.request.post('/api/communities',{data:{name:'Our family'}})).json()).community;
+  const branch=(await (await page.request.post(`/api/communities/${tree.id}/subcommunities`,{data:{name:'Family life'}})).json()).subcommunity;
+  const nest=(await (await page.request.post(`/api/communities/${tree.id}/circles`,{data:{name:'Daily news',subcommunity_id:branch.id}})).json()).group;
+  await page.request.post(`/api/communities/${tree.id}/circles`,{data:{name:'Keep this Nest'}});
+  const invite=(await (await page.request.post('/api/invitations',{data:{community_id:tree.id}})).json()).path.split('invite=')[1];
+  const guest=await browser.newContext({viewport:info.project.use.viewport,baseURL:'http://127.0.0.1:3100'});
+  try{
+    expect((await guest.request.post('/api/auth/register',{data:{username:`egg_guest_${suffix}`,name:'A member',password:'deletion browser password'}})).status()).toBe(201);
+    await guest.request.post('/api/invitations/accept',{data:{token:invite}});
+    await guest.request.post(`/api/groups/${nest.id}/join`);
+    const gp=await guest.newPage();gp.on('pageerror',e=>errors.push(e.message));
+    await gp.goto(`/?community=${tree.id}&group=${nest.id}`);
+    await expect(gp.getByRole('textbox',{name:'Write a message',exact:true})).toBeVisible();
+    await gp.getByRole('button',{name:'Nest information',exact:true}).click();
+    await expect(gp.getByRole('button',{name:'Nest settings',exact:true})).toHaveCount(0);
+    await gp.getByRole('button',{name:'Close Nest information',exact:true}).click();
+    await page.addInitScript(()=>{
+      window.eggArrivals=[];
+      document.addEventListener('animationstart',e=>{
+        if(e.animationName==='egg-arrive')window.eggArrivals.push({id:e.target.closest('[data-circle-id]')?.dataset.circleId,urgent:e.target.classList.contains('urgent')});
+      },true);
+    });
+    await page.goto('/');
+    await expect(page.locator('.group-row .group-avatar-symbol .lucide-tree-deciduous')).toBeVisible();
+    await expect(page.locator('.group-row .lucide-git-branch')).toHaveCount(0);
+    await page.getByRole('button',{name:'Open Branch Family life',exact:true}).click();
+    await expect(page.locator(`[data-circle-id="${nest.id}"] .nest-avatar-symbol .lucide-bird`)).toBeVisible();
+    await page.getByRole('button',{name:'Branch settings for Family life',exact:true}).click();
+    await page.getByRole('button',{name:'Delete Branch',exact:true}).click();
+    const confirm=page.locator('.delete-space-confirm');
+    await expect(confirm).toContainText('Its Nests move to Tree level');
+    await expect(confirm.getByRole('button',{name:'Delete Branch',exact:true})).toBeDisabled();
+    await confirm.locator('input').fill('wrong name');
+    await expect(confirm.getByRole('button',{name:'Delete Branch',exact:true})).toBeDisabled();
+    await confirm.getByRole('button',{name:'Cancel',exact:true}).click();
+    await page.getByRole('button',{name:'Delete Branch',exact:true}).click();
+    await confirm.locator('input').fill('Family life');
+    await confirm.getByRole('button',{name:'Delete Branch',exact:true}).click();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect(page.getByRole('button',{name:'Open Branch Family life',exact:true})).toHaveCount(0);
+    const row=page.locator(`[data-circle-id="${nest.id}"]`);
+    await expect(row).toBeVisible();
+    await expect(gp.getByRole('heading',{name:'Daily news',exact:true})).toBeVisible();
+    await expect(gp.locator('.breadcrumb')).not.toContainText('Family life');
+    // A live unread arrival animates once. The egg shape is taller than it is wide.
+    await guest.request.post(`/api/groups/${nest.id}/messages`,{data:{body:'An ordinary update'}});
+    await expect(row.locator('.avatar-status-egg')).toBeVisible();
+    await expect(row.locator('.circle-row-content')).toHaveCSS('background-color','rgb(255, 245, 211)');
+    await expect.poll(()=>page.evaluate(()=>window.eggArrivals.filter(e=>e.id && !e.urgent).length)).toBe(1);
+    const egg=await row.locator('.avatar-status-egg').boundingBox();expect(egg.height).toBeGreaterThan(egg.width);
+    await expect(row.locator('.egg-arriving')).toHaveCount(0);
+    // Initial rendering of existing unread status stays still.
+    await page.reload();await expect(row.locator('.avatar-status-egg')).toBeVisible();
+    expect(await page.evaluate(()=>window.eggArrivals)).toEqual([]);
+    await guest.request.post(`/api/groups/${nest.id}/messages`,{data:{body:'An urgent update',urgent:true}});
+    await expect(row.locator('.avatar-status-egg.urgent')).toBeVisible();
+    await expect(row.locator('.circle-row-content')).toHaveCSS('background-color','rgb(255, 235, 232)');
+    await expect.poll(()=>page.evaluate(()=>window.eggArrivals.filter(e=>e.urgent).length)).toBe(1);
+    await expect(row.locator('.egg-arriving')).toHaveCount(0);
+    await page.screenshot({path:info.outputPath('unread-eggs.png'),fullPage:true});
+    await row.getByRole('button',{name:'Mute Daily news',exact:true}).click();
+    await expect(row.getByRole('button',{name:'Unmute Daily news',exact:true})).toBeVisible();
+    expect((await page.evaluate(()=>window.eggArrivals)).length).toBe(1);
+    await page.emulateMedia({reducedMotion:'reduce'});
+    await row.getByRole('button',{name:'Options for Daily news',exact:true}).click();
+    await page.getByRole('button',{name:'Mark as read',exact:true}).click();
+    await expect(row.locator('.avatar-status-egg')).toHaveCount(0);
+    await guest.request.post(`/api/groups/${nest.id}/messages`,{data:{body:'Reduced motion update'}});
+    await expect(row.locator('.avatar-status-egg')).toBeVisible();
+    await expect(row.locator('.avatar-status-egg')).toHaveCSS('animation-name','none');
+    expect((await page.evaluate(()=>window.eggArrivals)).length).toBe(1);
+    await row.getByRole('button',{name:'Options for Daily news',exact:true}).click();
+    await page.getByRole('button',{name:'Nest settings',exact:true}).click();
+    await page.getByRole('button',{name:'Delete Nest',exact:true}).click();
+    await expect(confirm).toContainText('This action cannot be undone');
+    await expect(confirm.getByRole('button',{name:'Delete Nest',exact:true})).toBeDisabled();
+    await confirm.locator('input').fill('Daily news');
+    await confirm.getByRole('button',{name:'Delete Nest',exact:true}).click();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect(row).toHaveCount(0);
+    await expect(gp.locator('.tree-banner-title h1')).toHaveText('Our family');
+    await expect(gp.getByRole('heading',{name:'Daily news',exact:true})).toHaveCount(0);
+    await expect(page.getByRole('button',{name:'Open Nest Keep this Nest',exact:true})).toBeVisible();
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBeTruthy();
+    expect(errors).toEqual([]);
+  }finally{await guest.close();}
+});
