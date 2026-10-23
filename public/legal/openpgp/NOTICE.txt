@@ -1,0 +1,15 @@
+Churp uses OpenPGP.js 6.3.2, without modifications to that library.
+Copyright OpenPGP.js contributors. Licensed under GNU LGPL version 3 or later.
+
+License: /legal/openpgp/LICENSE.txt
+Exact package and source:
+https://registry.npmjs.org/openpgp/-/openpgp-6.3.2.tgz
+https://github.com/openpgpjs/openpgpjs/tree/v6.3.2
+https://github.com/openpgpjs/openpgpjs
+
+The library is imported as an npm dependency. To replace it, edit the pinned
+openpgp dependency in package.json, install the replacement, and rebuild the
+frontend with npm run build. The Churp integration source is available in the
+Gatherly repository's shared/encryption.js and src/encryption directory.
+
+This notice does not assert an independent security audit of Churp.

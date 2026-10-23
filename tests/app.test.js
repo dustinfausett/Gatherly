@@ -8,7 +8,7 @@ import { createApp } from '../server/app.js';
 
 test('real accounts, scoped permissions, messaging, and durable storage', async t => {
   const dir = mkdtempSync(join(tmpdir(), 'gatherly-test-'));
-  let runtime = createApp({ dataDir: dir, testing: true, googleClientId: '', pushEnabled: false });
+  let runtime = createApp({ encryptionRequired:false, dataDir: dir, testing: true, googleClientId: '', pushEnabled: false });
   let server = createServer(runtime.app);
   await new Promise(r => server.listen(0, '127.0.0.1', r));
   let base = `http://127.0.0.1:${server.address().port}`;
@@ -161,7 +161,7 @@ test('real accounts, scoped permissions, messaging, and durable storage', async 
   });
   await t.test('server restart retains sessions, messages, members, ownership, and files', async () => {
     runtime.close(); await new Promise(r=>server.close(r));
-    runtime=createApp({dataDir:dir,testing:true,googleClientId:'',pushEnabled:false}); server=createServer(runtime.app);
+    runtime=createApp({ encryptionRequired:false,dataDir:dir,testing:true,googleClientId:'',pushEnabled:false}); server=createServer(runtime.app);
     await new Promise(r=>server.listen(0,'127.0.0.1',r)); base=`http://127.0.0.1:${server.address().port}`;
     assert.equal((await ok('/me',alice)).user.name,'Alice Rivera');
     assert.equal((await ok(`/communities/${cid}`,alice)).community.owner_id,alice.id);

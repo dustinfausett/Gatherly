@@ -4,5 +4,6 @@ dist/
 .env
 .env.local
 test-results/
+test-results-encryption/
 playwright-report/
 *.log

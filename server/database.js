@@ -105,6 +105,50 @@ export function openDatabase(path) {
   addColumn('group_members', 'pin_position', 'INTEGER');
   addColumn('group_members', 'marked_unread', 'INTEGER NOT NULL DEFAULT 0');
   addColumn('messages', 'urgent', 'INTEGER NOT NULL DEFAULT 0');
+  addColumn('messages', 'ciphertext', 'TEXT');
+  addColumn('messages', 'client_id', 'TEXT');
+  addColumn('messages', 'encrypted_by', 'TEXT REFERENCES users(id)');
+  addColumn('messages', 'e2ee_version', 'INTEGER NOT NULL DEFAULT 0');
+  addColumn('messages', 'recipient_hash', 'TEXT');
+  addColumn('files', 'encrypted', 'INTEGER NOT NULL DEFAULT 0');
+  addColumn('group_members', 'joined_after', 'INTEGER NOT NULL DEFAULT 0');
+  addColumn('group_members', 'join_token', 'TEXT');
+  db.exec(`
+    CREATE UNIQUE INDEX IF NOT EXISTS messages_client_id ON messages(client_id) WHERE client_id IS NOT NULL;
+    CREATE TABLE IF NOT EXISTS e2ee_meta (key TEXT PRIMARY KEY,value TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS e2ee_identities (
+      user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      public_key TEXT NOT NULL, fingerprint TEXT NOT NULL UNIQUE, backup TEXT NOT NULL,
+      created_at INTEGER NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS e2ee_devices (
+      id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      name TEXT NOT NULL,created_at INTEGER NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS e2ee_transfers (
+      id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      device_id TEXT NOT NULL,device_name TEXT NOT NULL,public_key TEXT NOT NULL,
+      nonce TEXT NOT NULL,expires_at INTEGER NOT NULL,grant_ciphertext TEXT
+    );
+    CREATE TABLE IF NOT EXISTS e2ee_recipients (
+      message_id INTEGER NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,PRIMARY KEY(message_id,user_id)
+    );
+    CREATE TABLE IF NOT EXISTS e2ee_legacy_readers (
+      message_id INTEGER NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,PRIMARY KEY(message_id,user_id)
+    );
+    CREATE TABLE IF NOT EXISTS e2ee_plaintext_cleanup (disk_name TEXT PRIMARY KEY);
+    CREATE TRIGGER IF NOT EXISTS e2ee_join_floor AFTER INSERT ON group_members
+      WHEN EXISTS(SELECT 1 FROM e2ee_meta WHERE key='active' AND value='1')
+      BEGIN
+        UPDATE group_members SET
+          joined_after=COALESCE((SELECT MAX(id) FROM messages WHERE group_id=NEW.group_id),0),
+          last_read=MAX(last_read,COALESCE((SELECT MAX(id) FROM messages WHERE group_id=NEW.group_id),0)),
+          join_token=lower(hex(randomblob(16)))
+          WHERE group_id=NEW.group_id AND user_id=NEW.user_id;
+      END;
+  `);
   addColumn('users', 'bird_id', "TEXT NOT NULL DEFAULT 'blue'");
   // Keep existing profile pictures. New accounts start with a Bluebird avatar.
   addColumn('users', 'avatar_style', "TEXT NOT NULL DEFAULT 'photo'");

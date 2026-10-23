@@ -1,7 +1,7 @@
 import { createServer } from 'node:http';
 import { createServer as createViteServer } from 'vite';
 import { createApp } from './app.js';
-const { app } = createApp({ testing: process.env.NODE_ENV === 'test' });
+const { app } = createApp({ testing: process.env.NODE_ENV === 'test', encryptionRequired: !(process.env.NODE_ENV === 'test' && process.env.E2EE_TEST_LEGACY === '1') });
 const server = createServer(app);
 const vite = await createViteServer({ server: { middlewareMode: true, hmr: { server } }, appType: 'spa' });
 app.use(vite.middlewares);

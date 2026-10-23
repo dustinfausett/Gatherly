@@ -34,7 +34,7 @@ test('legacy hierarchy migration retains conversations, invitations, files, sess
       assert.ok(!backup.prepare('PRAGMA table_info(groups)').all().some(c=>c.name==='community_id'));
     } finally { backup.close(); }
     assert.deepEqual({ ...db.prepare('SELECT * FROM groups').get() }, { id:'g', community_id:'c', subcommunity_id:'s', name:'Existing conversation', description:'Chat description', avatar_id:null, private:1, admin_only:1 });
-    assert.deepEqual({ ...db.prepare('SELECT * FROM group_members').get() }, { group_id:'g', user_id:'u', muted:1, last_read:3, pin_position:null, marked_unread:0 });
+    assert.deepEqual({ ...db.prepare('SELECT * FROM group_members').get() }, { group_id:'g', user_id:'u', muted:1, last_read:3, pin_position:null, marked_unread:0, joined_after:0, join_token:null });
     assert.equal(db.prepare('SELECT reply_to FROM messages WHERE id=4').get().reply_to,3);
     for (const table of ['sessions','invitations','scoped_admins','message_files','notifications','files']) assert.equal(db.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get().n,1);
     assert.equal(db.prepare('SELECT urgent FROM messages WHERE id=3').get().urgent,0);
@@ -53,7 +53,7 @@ test('legacy hierarchy migration retains conversations, invitations, files, sess
 
 test('standalone Circles, personal preferences, urgency, and scoped administration', async t => {
   const dir = mkdtempSync(join(tmpdir(), 'gatherly-circles-'));
-  let runtime = createApp({ dataDir:dir, testing:true, googleClientId:'', pushEnabled:false });
+  let runtime = createApp({ encryptionRequired:false, dataDir:dir, testing:true, googleClientId:'', pushEnabled:false });
   let server = createServer(runtime.app);
   await new Promise(r => server.listen(0,'127.0.0.1',r));
   let base = `http://127.0.0.1:${server.address().port}`;
@@ -171,7 +171,7 @@ test('standalone Circles, personal preferences, urgency, and scoped administrati
   await t.test('restart retains pins, unread flags, muting, sessions, and the migrated hierarchy',async () => {
     await ok(`/groups/${direct}/membership`,member,'PATCH',{marked_unread:true});
     runtime.close(); await new Promise(r=>server.close(r));
-    runtime=createApp({dataDir:dir,testing:true,googleClientId:'',pushEnabled:false});server=createServer(runtime.app);
+    runtime=createApp({ encryptionRequired:false,dataDir:dir,testing:true,googleClientId:'',pushEnabled:false});server=createServer(runtime.app);
     await new Promise(r=>server.listen(0,'127.0.0.1',r));base=`http://127.0.0.1:${server.address().port}`;
     const g=await circle(member);
     assert.equal(g.pin_position,0);assert.equal(g.muted,true);assert.equal(g.marked_unread,true);assert.equal(g.subcommunity_id,null);

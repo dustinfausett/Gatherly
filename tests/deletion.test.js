@@ -8,7 +8,7 @@ import { createApp } from '../server/app.js';
 
 test('admin deletion respects scope, preserves Branch chats, and removes deleted Nest access',async t=>{
   const dir=mkdtempSync(join(tmpdir(),'churp-deletion-'));
-  let runtime=createApp({dataDir:dir,testing:true,googleClientId:'',pushEnabled:false}),server=createServer(runtime.app),base;
+  let runtime=createApp({ encryptionRequired:false,dataDir:dir,testing:true,googleClientId:'',pushEnabled:false}),server=createServer(runtime.app),base;
   async function listen(){await new Promise(r=>server.listen(0,'127.0.0.1',r));base=`http://127.0.0.1:${server.address().port}/api`;}
   await listen();
   t.after(async()=>{runtime.close();await new Promise(r=>server.close(r));rmSync(dir,{recursive:true,force:true});});
@@ -117,7 +117,7 @@ test('admin deletion respects scope, preserves Branch chats, and removes deleted
     const nestRequest=(await ok(`/communities/${cid}/circles`,member,'POST',{name:'Approved Nest'})).request;
     const approvedNest=(await ok(`/creation-requests/${nestRequest.id}/review`,owner,'POST',{decision:'approve'})).request;
     assert.equal((await remove('groups',{id:approvedNest.result_id,name:'Approved Nest'},member)).status,200);
-    runtime.close();await new Promise(r=>server.close(r));runtime=createApp({dataDir:dir,testing:true,googleClientId:'',pushEnabled:false});server=createServer(runtime.app);await listen();
+    runtime.close();await new Promise(r=>server.close(r));runtime=createApp({ encryptionRequired:false,dataDir:dir,testing:true,googleClientId:'',pushEnabled:false});server=createServer(runtime.app);await listen();
     const c=await snapshot(member);assert.ok(!c.subcommunities.some(s=>s.id===branch.id));assert.ok(!c.circles.some(g=>g.id===doomed.id));
     assert.equal(c.circles.find(g=>g.id===privateNest.id).private,1);assert.equal(c.circles.find(g=>g.id===publicNest.id).subcommunity_id,null);
     const requests=(await ok(`/communities/${cid}/creation-requests`,member)).requests;
@@ -166,7 +166,7 @@ test('admin deletion respects scope, preserves Branch chats, and removes deleted
     assert.equal((await ok('/me',member)).user.last_community_id,null);
     assert.equal((await ok('/me',owner)).user.last_community_id,otherTree.id);
     assert.deepEqual(runtime.db.prepare('PRAGMA foreign_key_check').all(),[]);
-    runtime.close();await new Promise(r=>server.close(r));runtime=createApp({dataDir:dir,testing:true,googleClientId:'',pushEnabled:false});server=createServer(runtime.app);await listen();
+    runtime.close();await new Promise(r=>server.close(r));runtime=createApp({ encryptionRequired:false,dataDir:dir,testing:true,googleClientId:'',pushEnabled:false});server=createServer(runtime.app);await listen();
     assert.equal((await req(`/communities/${cid}`,owner)).status,404);
     assert.equal((await ok(`/groups/${otherNest.id}/messages`,owner)).messages[0].body,'Still here');
     assert.equal((await ok('/communities',member)).communities.length,0);

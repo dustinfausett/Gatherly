@@ -1,9 +1,11 @@
+let encryptionDevice = null;
+export function setEncryptionDevice(id) { encryptionDevice = id; }
 export async function api(path, options = {}) {
   const isForm = options.body instanceof FormData;
   let res;
   try {
     res = await fetch(`/api${path}`, { credentials: 'same-origin', ...options,
-      headers: { ...(!isForm && options.body ? { 'Content-Type': 'application/json' } : {}), ...options.headers },
+      headers: { ...(encryptionDevice ? {'x-churp-device':encryptionDevice} : {}), ...(!isForm && options.body ? { 'Content-Type': 'application/json' } : {}), ...options.headers },
       body: options.body ? (isForm ? options.body : JSON.stringify(options.body)) : undefined,
     });
   } catch { throw new Error('You appear to be offline. Check your connection and try again.'); }

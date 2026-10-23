@@ -10,6 +10,7 @@ import { existsSync, mkdirSync, openSync, readSync, closeSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { openDatabase } from './database.js';
 import { token, hash, passwordHash, passwordMatches } from './security.js';
+import { installEncryption } from './encryption.js';
 import { BIRDS, getBird } from '../shared/birds.js';
 
 if (existsSync('.env')) process.loadEnvFile('.env');
@@ -35,6 +36,9 @@ export function createApp(options = {}) {
   mkdirSync(uploadDir, { recursive: true });
   const db = openDatabase(options.database || join(dataDir, 'gatherly.sqlite'));
   const app = express();
+  // Plaintext transport exists only for explicit legacy test fixtures. The
+  // production entry point, including a caller passing false, always encrypts.
+  const encryptionRequired = !(options.testing === true && options.encryptionRequired === false && !(options.production ?? (process.env.NODE_ENV === 'production')));
   const trustProxy = options.trustProxy ?? process.env.TRUST_PROXY ?? '0';
   if (!/^\d+$/.test(String(trustProxy)) || Number(trustProxy) > 10) throw new Error('TRUST_PROXY must be a proxy hop count between 0 and 10.');
   app.set('trust proxy', Number(trustProxy));
@@ -122,7 +126,7 @@ export function createApp(options = {}) {
       imgSrc: ["'self'", 'data:', 'blob:'], upgradeInsecureRequests: null,
     },
   } : false, crossOriginOpenerPolicy: { policy: 'same-origin-allow-popups' }, strictTransportSecurity: production }));
-  app.use(express.json({ limit: '64kb' }));
+  app.use(express.json({ limit: '1mb' }));
   app.use(cookieParser());
   app.use('/api', (req, res, next) => {
     res.setHeader('Cache-Control', 'no-store');
@@ -136,7 +140,7 @@ export function createApp(options = {}) {
   });
   const authLimit = rateLimit({ windowMs: 15 * 60 * 1000, limit: options.testing ? 1000 : 30, standardHeaders: 'draft-8', legacyHeaders: false, message: { error: 'Too many attempts. Please try again in 15 minutes.' } });
   app.get('/api/health', (req, res) => res.json({ status: one('SELECT 1 AS ok').ok === 1 ? 'ok' : 'error' }));
-  app.get('/api/config', (req, res) => res.json({ googleClientId: googleClientId || null, vapidPublicKey: pushEnabled ? vapidPublic : null }));
+  app.get('/api/config', (req, res) => res.json({ googleClientId: googleClientId || null, vapidPublicKey: pushEnabled ? vapidPublic : null, encryptionRequired }));
   app.post('/api/auth/register', authLimit, async (req, res) => {
     const username = text(req.body.username, 'Username', 30).toLowerCase();
     if (!/^[a-z0-9_]{3,30}$/.test(username)) fail(400, 'Use 3–30 letters, numbers, or underscores for your username.');
@@ -181,6 +185,7 @@ export function createApp(options = {}) {
     res.json({ ok: true });
   });
   app.use('/api', auth);
+  const encryption = installEncryption({app,db,uploadDir,enabled:encryptionRequired,transaction,refresh,refreshUser,group,membership,visibleCircle,testing:options.testing});
   app.get('/api/me', (req, res) => res.json({ user: publicUser(req.user) }));
   app.post('/api/me/birds/unlock', rateLimit({ windowMs: 15 * 60 * 1000, limit: options.testing ? 1000 : 10,
     keyGenerator: req => req.user.id, message: { error: 'Too many code attempts. Please try again in 15 minutes.' } }), (req, res) => {
@@ -239,9 +244,9 @@ export function createApp(options = {}) {
       const gm = joined(req.user.id, g.id), admin = groupAdmin(req.user.id, g);
       if (g.private && !gm && !admin) return null;
       const counts = gm ? one(`SELECT COUNT(*) AS unread,COALESCE(SUM(urgent),0) AS urgent_unread FROM messages
-        WHERE group_id=? AND id>? AND user_id<>? AND deleted=0`, g.id, gm.last_read, req.user.id) : { unread: 0, urgent_unread: 0 };
+        WHERE group_id=? AND id>? AND user_id<>? AND deleted=0 ${encryptionRequired ? 'AND e2ee_version=1 AND id>?' : ''}`, g.id, gm.last_read, req.user.id,...(encryptionRequired ? [gm.joined_after] : [])) : { unread: 0, urgent_unread: 0 };
       return { ...g, is_admin: !!admin, joined: !!gm, muted: !!gm?.muted, pin_position: gm?.pin_position ?? null,
-        marked_unread: !!gm?.marked_unread, ...counts };
+        marked_unread: !!gm?.marked_unread, joined_after: gm?.joined_after ?? null, ...counts };
     }).filter(Boolean);
     const subs = all('SELECT * FROM subcommunities WHERE community_id=? ORDER BY name COLLATE NOCASE', c.id)
       .map(s => {
@@ -569,9 +574,13 @@ export function createApp(options = {}) {
     visibleCircle(req.user.id, req.params.id);
     const before = req.query.before === undefined ? Number.MAX_SAFE_INTEGER : Number(req.query.before);
     if (!Number.isSafeInteger(before) || before < 1) fail(400, 'Invalid message cursor.');
-    const messages = all(`SELECT m.*,u.name,u.avatar_id,u.bird_id,u.avatar_style,p.body AS parent_body,pu.name AS parent_name FROM messages m JOIN users u ON u.id=m.user_id
+    const floor=encryptionRequired ? encryption.reader(req,req.params.id).gm.joined_after : -1;
+    const messages = all(`SELECT m.*,u.name,u.avatar_id,u.bird_id,u.avatar_style,${encryptionRequired ? "''" : 'p.body'} AS parent_body,${encryptionRequired ? 'NULL' : 'pu.name'} AS parent_name,
+      ei.public_key AS signer_key,ei.fingerprint AS signer_fingerprint,signer.name AS signer_name FROM messages m JOIN users u ON u.id=m.user_id
+      LEFT JOIN e2ee_identities ei ON ei.user_id=m.encrypted_by LEFT JOIN users signer ON signer.id=m.encrypted_by
       LEFT JOIN messages p ON p.id=m.reply_to LEFT JOIN users pu ON pu.id=p.user_id
-      WHERE m.group_id=? AND m.id<? ORDER BY m.id DESC LIMIT 100`, req.params.id, before).reverse();
+      WHERE m.group_id=? AND m.id<? AND m.id>? ${encryptionRequired ? 'AND m.e2ee_version=1 AND EXISTS(SELECT 1 FROM e2ee_recipients er WHERE er.message_id=m.id AND er.user_id=?)' : ''}
+      ORDER BY m.id DESC LIMIT 100`, req.params.id, before,floor,...(encryptionRequired ? [req.user.id] : [])).reverse();
     for (const m of messages) m.files = all('SELECT f.id,f.name,f.mime,f.size FROM files f JOIN message_files mf ON mf.file_id=f.id WHERE mf.message_id=?', m.id);
     res.json({ messages, has_more: messages.length === 100 });
   });
@@ -579,32 +588,47 @@ export function createApp(options = {}) {
     visibleCircle(req.user.id, req.params.id);
     const root = one('SELECT * FROM messages WHERE id=? AND group_id=?', req.params.messageId, req.params.id) || fail(404, 'Thread not found.');
     const rootId = root.reply_to || root.id;
-    const messages = all('SELECT m.*,u.name,u.avatar_id,u.bird_id,u.avatar_style FROM messages m JOIN users u ON u.id=m.user_id WHERE m.group_id=? AND (m.id=? OR m.reply_to=?) ORDER BY m.id LIMIT 500', req.params.id, rootId, rootId);
+    const floor=encryptionRequired ? encryption.reader(req,req.params.id).gm.joined_after : -1;
+    const messages = all(`SELECT m.*,u.name,u.avatar_id,u.bird_id,u.avatar_style,ei.public_key AS signer_key,ei.fingerprint AS signer_fingerprint,signer.name AS signer_name FROM messages m JOIN users u ON u.id=m.user_id
+      LEFT JOIN e2ee_identities ei ON ei.user_id=m.encrypted_by LEFT JOIN users signer ON signer.id=m.encrypted_by WHERE m.group_id=? AND (m.id=? OR m.reply_to=?) AND m.id>?
+      ${encryptionRequired ? 'AND m.e2ee_version=1 AND EXISTS(SELECT 1 FROM e2ee_recipients er WHERE er.message_id=m.id AND er.user_id=?)' : ''} ORDER BY m.id LIMIT 500`, req.params.id, rootId, rootId,floor,...(encryptionRequired ? [req.user.id] : []));
     for (const m of messages) m.files = all('SELECT f.id,f.name,f.mime,f.size FROM files f JOIN message_files mf ON mf.file_id=f.id WHERE mf.message_id=?', m.id);
     res.json({ messages });
   });
-  app.post('/api/groups/:id/messages', rateLimit({ windowMs: 60_000, limit: options.testing ? 1000 : 90, keyGenerator: req => req.user.id, message: { error: 'Please slow down and try again in a moment.' } }), (req, res) => {
+  app.post('/api/groups/:id/messages', rateLimit({ windowMs: 60_000, limit: options.testing ? 1000 : 90, keyGenerator: req => req.user.id, message: { error: 'Please slow down and try again in a moment.' } }), async (req, res) => {
     const g = visibleCircle(req.user.id, req.params.id);
     if (!joined(req.user.id, g.id)) fail(403, 'Join this Nest to send messages.');
     if (g.admin_only && !groupAdmin(req.user.id, g)) fail(403, 'Only admins can post or reply in this Nest.');
-    const body = req.body.body ?? '';
+    if(encryptionRequired && req.body.body !== undefined)fail(400,'Message text must be encrypted on your device. Update the app before sending.');
+    if(encryptionRequired && typeof req.body.clientId==='string'){
+      const existing=one('SELECT * FROM messages WHERE client_id=?',req.body.clientId);
+      if(existing){if(existing.group_id!==g.id || existing.user_id!==req.user.id || existing.ciphertext!==req.body.ciphertext)fail(409,'That encrypted message ID is already in use.');return res.status(201).json({id:existing.id});}
+    }
+    const checked=encryptionRequired ? await encryption.validateSend(req,g.id) : null;
+    const body = encryptionRequired ? '' : req.body.body ?? '';
     const files = req.body.files ?? [];
     const urgent = boolean(req.body.urgent ?? false, 'Urgent');
     if (typeof body !== 'string' || body.length > 10000) fail(400, 'Messages can contain up to 10,000 characters.');
     if (!Array.isArray(files) || files.length > 5 || files.some(id => typeof id !== 'string') || new Set(files).size !== files.length) fail(400, 'Attach up to five files.');
-    if (!body.trim() && !files.length) fail(400, 'Write a message or attach a file.');
+    if (!encryptionRequired && !body.trim() && !files.length) fail(400, 'Write a message or attach a file.');
     for (const id of files) if (!one('SELECT 1 FROM files WHERE id=? AND user_id=?', id, req.user.id) || one('SELECT 1 FROM message_files WHERE file_id=?', id)) fail(400, 'An attachment is unavailable. Please upload it again.');
     let reply = req.body.reply_to ?? null;
     if (reply !== null) {
       if (!Number.isSafeInteger(reply)) fail(400, 'Invalid reply.');
       const parent = one('SELECT * FROM messages WHERE id=? AND group_id=?', reply, g.id);
       if (!parent || parent.deleted) fail(400, 'That message is no longer available to reply to.');
+      if(encryptionRequired && !encryption.canRead(req.user.id,parent))fail(404,'You cannot reply to a message from before you joined.');
+      if(encryptionRequired && parent.reply_to)fail(400,'Reply to the visible root message of this thread.');
       reply = parent.reply_to || parent.id;
     }
     let id;
     const recipients = all('SELECT user_id FROM group_members WHERE group_id=? AND user_id<>? AND muted=0', g.id, req.user.id);
     transaction(() => {
-      id = Number(run('INSERT INTO messages(group_id,user_id,body,reply_to,urgent) VALUES (?,?,?,?,?)', g.id, req.user.id, body.trim(), reply, urgent).lastInsertRowid);
+      if(checked)encryption.assertRoster(req,g.id,checked.rosterHash);
+      if(group(g.id).admin_only && !groupAdmin(req.user.id,group(g.id)))fail(403,'Only admins can post or reply in this Nest.');
+      id = Number(run('INSERT INTO messages(group_id,user_id,body,reply_to,urgent,ciphertext,client_id,encrypted_by,e2ee_version,recipient_hash) VALUES (?,?,?,?,?,?,?,?,?,?)', g.id, req.user.id, body.trim(), reply, urgent,
+        checked?.ciphertext ?? null,checked?.clientId ?? null,checked ? req.user.id : null,checked ? 1 : 0,checked?.rosterHash ?? null).lastInsertRowid);
+      if(checked)encryption.recordRecipients(id,checked.rs);
       for (const fid of files) run('INSERT INTO message_files VALUES (?,?)', id, fid);
       run('UPDATE group_members SET last_read=?,marked_unread=0 WHERE group_id=? AND user_id=?', id, g.id, req.user.id);
       for (const r of recipients) run('INSERT INTO notifications(user_id,message_id) VALUES (?,?)', r.user_id, id);
@@ -631,7 +655,7 @@ export function createApp(options = {}) {
     const g = visibleCircle(req.user.id, m.group_id);
     if (m.user_id !== req.user.id && !groupAdmin(req.user.id, g)) fail(403, 'You can only delete your own messages.');
     transaction(() => {
-      run("UPDATE messages SET deleted=1,body='' WHERE id=?", m.id);
+      run("UPDATE messages SET deleted=1,body='',ciphertext=NULL WHERE id=?", m.id);
       run('DELETE FROM message_files WHERE message_id=?', m.id);
       run('DELETE FROM notifications WHERE message_id=?', m.id);
     });
@@ -651,14 +675,14 @@ export function createApp(options = {}) {
     else if (['GIF87a','GIF89a'].includes(header.toString('ascii',0,6))) mime = 'image/gif';
     else if (header.toString('ascii',0,4) === 'RIFF' && header.toString('ascii',8,12) === 'WEBP') mime = 'image/webp';
     const id = randomUUID();
-    run('INSERT INTO files VALUES (?,?,?,?,?,?,?)', id, req.user.id, file.originalname.slice(0,200), file.filename, mime, file.size, Date.now());
+    run('INSERT INTO files(id,user_id,name,disk_name,mime,size,created_at) VALUES (?,?,?,?,?,?,?)', id, req.user.id, file.originalname.slice(0,200), file.filename, mime, file.size, Date.now());
     res.status(201).json({ file: { id, name: file.originalname.slice(0,200), mime, size: file.size } });
   });
   app.get('/api/files/:id', (req, res) => {
     const f = one('SELECT * FROM files WHERE id=?', req.params.id) || fail(404, 'File not found.');
     let allowed = f.user_id === req.user.id;
-    const attached = one('SELECT m.group_id FROM message_files mf JOIN messages m ON m.id=mf.message_id WHERE mf.file_id=? AND m.deleted=0', f.id);
-    if (attached) { try { visibleCircle(req.user.id, attached.group_id); allowed = true; } catch { /* no access */ } }
+    const attached = one('SELECT m.* FROM message_files mf JOIN messages m ON m.id=mf.message_id WHERE mf.file_id=? AND m.deleted=0', f.id);
+    if (attached) { allowed=false;try { visibleCircle(req.user.id, attached.group_id); allowed = encryptionRequired ? !!f.encrypted && encryption.canRead(req.user.id,attached) : true; } catch { /* no access */ } }
     if (!allowed && one('SELECT 1 FROM users WHERE avatar_id=?', f.id)) allowed = true;
     if (!allowed) for (const c of all('SELECT id FROM communities WHERE avatar_id=?', f.id)) if (one('SELECT 1 FROM community_members WHERE community_id=? AND user_id=?', c.id, req.user.id)) allowed = true;
     if (!allowed) for (const s of all('SELECT community_id FROM subcommunities WHERE avatar_id=?', f.id)) if (one('SELECT 1 FROM community_members WHERE community_id=? AND user_id=?', s.community_id, req.user.id)) allowed = true;
@@ -669,12 +693,12 @@ export function createApp(options = {}) {
     res.setHeader('Content-Disposition', `${imageTypes.has(f.mime) ? 'inline' : 'attachment'}; filename*=UTF-8''${encodeURIComponent(f.name).replaceAll("'", '%27')}`);
     res.sendFile(join(uploadDir, f.disk_name));
   });
-  app.get('/api/notifications', (req, res) => res.json({ notifications: all(`SELECT n.id,n.seen,m.body,m.created_at,m.group_id,m.id AS message_id,u.name AS sender,g.name AS group_name,g.community_id
+  app.get('/api/notifications', (req, res) => res.json({ notifications: all(`SELECT n.id,n.seen,${encryptionRequired ? "''" : 'm.body'} AS body,m.created_at,m.group_id,m.id AS message_id,u.name AS sender,g.name AS group_name,g.community_id
     FROM notifications n JOIN messages m ON m.id=n.message_id JOIN users u ON u.id=m.user_id
     JOIN groups g ON g.id=m.group_id
     JOIN group_members gm ON gm.group_id=g.id AND gm.user_id=n.user_id
     JOIN community_members cm ON cm.community_id=g.community_id AND cm.user_id=n.user_id
-    WHERE n.user_id=? AND m.deleted=0 ORDER BY n.id DESC LIMIT 80`, req.user.id) }));
+    WHERE n.user_id=? AND m.deleted=0 ${encryptionRequired ? 'AND m.e2ee_version=1 AND m.id>gm.joined_after AND EXISTS(SELECT 1 FROM e2ee_recipients er WHERE er.message_id=m.id AND er.user_id=n.user_id)' : ''} ORDER BY n.id DESC LIMIT 80`, req.user.id) }));
   app.patch('/api/notifications', (req, res) => { const r = run('UPDATE notifications SET seen=1 WHERE user_id=? AND seen=0', req.user.id); if (r.changes) refreshUser(req.user.id); res.json({ ok: true }); });
   app.post('/api/push/subscribe', (req, res) => {
     if (!pushEnabled) fail(503, 'Push notifications need VAPID configuration. Nest unread indicators are available.');

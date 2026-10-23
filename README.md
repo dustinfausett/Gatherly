@@ -30,11 +30,17 @@ Production requires HTTPS because cookies use `Secure`. A reverse proxy must for
 - Username/password authentication uses salted scrypt hashes and HttpOnly cookie sessions. Optional Google Sign-in verifies ID tokens on the server.
 - Trees can be created or joined through invitations. The owner appoints Tree admins and can transfer ownership, remaining an admin afterward. Tree admins assign Branch admins. Rights inherit down to Nests; Nest admins manage only their assigned Nests. All Tree members can propose new Branches and Nests; the Tree’s creation settings determine whether approval is needed.
 - Tree admins can remove members and revoke all Nest memberships and scoped admin roles. Only the owner can remove another Tree admin; the owner cannot be removed.
-- Public Nests can be read by Tree members. Joining is required to post or receive notifications. Private Nests are hidden except from invited members and applicable admins. A single setting permits all joined members or only applicable admins to post and reply.
+- Public Nests can be discovered by Tree members. Joining is required to read future messages, post, or receive notifications; earlier messages are not shared with later joins. Private Nests are hidden except from invited members and applicable admins. A single setting permits all joined members or only applicable admins to post and reply.
 - Tree, Branch, and Nest admins can edit the names, descriptions, and pictures within their scope. Members can edit their display name and profile picture.
 - Invitations last seven days, grant membership only, and are revoked if their creator loses the relevant admin rights. Nest invitations require existing Tree membership. Links are reusable; member removal is not a permanent ban if another valid link is obtained.
 - Nest conversations support live messages, one-level threads, emoji, photos/files, author/admin deletion, unread indicators and device push. Message history loads 100 messages at a time; search filters loaded messages. Threads show up to 500 messages.
 - Uploads are limited to 15 MB each and five per message. Only recognized PNG, JPEG, GIF, and WebP files render inline. Other files download. Authentication and Nest access protect attachments.
+
+## Encrypted messaging
+
+First sign-in now includes encryption setup and a personal recovery key. Save that key outside the browser: a password or Google login alone cannot restore encrypted history on a replacement device. You can also approve a new device from an existing one. Every joined Nest member must complete setup before sending can resume. Explicit sign-out removes the browser's local key.
+
+New messages, replies, and attachments are encrypted on members' devices. Existing history is converted separately by eligible browsers, with a visible pending banner and converter label. Older backups can still contain plaintext. This version uses long-term account keys without forward secrecy; the Churp protocol has not received an independent security audit. Read [the encryption guide](docs/ENCRYPTION.md) for recovery, identity verification, migration, operator backup responsibilities, and security limits.
 
 ## Tree home
 
@@ -112,7 +118,7 @@ Copy `.env.example` to `.env` if needed. Existing process environment values tak
 | `VAPID_PRIVATE_KEY` | Private push signing key |
 | `VAPID_SUBJECT` | Public contact email (`mailto:`) or HTTPS URL |
 
-Back up the database and uploads together. For a simple consistent backup, stop the app, copy its entire data directory, and restart. Preserve deployment secrets separately. This version does not include password recovery, email delivery, end-to-end encryption, malware scanning, or general backup automation.
+Back up the database and uploads together. For a simple consistent backup, stop the app, copy its entire data directory, and restart. Preserve deployment secrets separately. Encrypted backups require each user's own recovery key to read messages. Older snapshots can retain plaintext; review retention as explained in the encryption guide. This version does not include password recovery, email delivery, malware scanning, or general backup automation.
 
 The Churp rebrand preserves existing data, session cookies, invitations, push subscriptions, and API identifiers. **Do not rename `gatherly.sqlite`, `gatherly_session`, or existing URLs to apply the branding.** The public name is Churp; internal identifiers remain stable to avoid resetting accounts or sessions.
 
@@ -133,8 +139,9 @@ Historical storage/API mapping:
 ```sh
 npm run check      # Production build and real HTTP server tests
 npm run test:e2e   # Desktop, iPhone-size, and Android-size browser workflows
+npm run test:e2e:encryption # Real browser cryptography, recovery, and migration
 ```
 
-The browser tests use `/usr/bin/chromium` when available. Otherwise install Chromium with `npx playwright install chromium` or supply `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH`. Tests run a separate server on port 3100, use temporary storage, and remove it afterward. The browser server uses NODE_ENV=test and the existing test-only rate limits to permit account fixtures; production authentication limits remain unchanged.
+The browser tests use `/usr/bin/chromium` when available. Otherwise install Chromium with `npx playwright install chromium` or supply `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH`. Layout regression tests use a legacy plaintext fixture on port 3100; encryption tests enforce encryption on port 3101. Both use temporary storage and remove it afterward. The browser servers use NODE_ENV=test and test-only rate limits; production cannot opt out of encryption and retains normal authentication limits.
 
 Tests cover real accounts, invitations, live messaging, files, scoped administration, private access, pin order, touch swipes, unread/urgent colors, branching in place, image uploads, the Tree chooser, Churp branding, message bubble colors, creation approvals and scope boundaries, all 12 bird selections and flights, protected account unlocks, photo migration, reduced motion, owner-only Tree deletion, scoped deletion and confirmation, retained Branch conversations, live egg indicators, and persistence. Emulation does not prove actual Safari rendering, device keyboards, Home Screen installation, or system push delivery; check those on real phones. `GET /api/health` verifies SQLite access, not the full workflow.

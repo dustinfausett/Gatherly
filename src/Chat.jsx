@@ -2,28 +2,38 @@ import { Bird, LandingNest } from './BirdJourney';
 import React, { useEffect, useRef, useState } from 'react';
 import { AlertCircle, ArrowDown, ArrowLeft, Bell, BellOff, Download, File, ImagePlus, Info, MessageCircle, Paperclip, Reply, Search, Send, Settings2, ShieldCheck, Smile, Trash2, UserPlus, Users, X } from 'lucide-react';
 import SpaceIcon from './SpaceIcon';
+import { useEncryption } from './encryption/EncryptionGate';
+import { attachmentUrl, uploadEncrypted, sealMessage, decryptMessages, convertHistory } from './encryption/client';
+import NestEncryptionDetails from './encryption/NestEncryptionDetails';
 import { api, patch, post, upload } from './api';
 import { Avatar, Empty, formatDay, formatTime } from './components';
 
 function Attachment({ file }) {
+  const {enabled}=useEncryption();const [url,setUrl]=useState(null),[error,setError]=useState('');
+  useEffect(()=>{if(!enabled)return;let active=true,created;
+    attachmentUrl(file).then(value=>{created=value;if(active)setUrl(value);else URL.revokeObjectURL(value);}).catch(e=>{if(active)setError(e.message);});
+    return()=>{active=false;if(created)URL.revokeObjectURL(created);};
+  },[enabled,file.id,file.key]);
   const image = file.mime.startsWith('image/');
-  return image ? <a className="image-attachment" href={`/api/files/${file.id}`} target="_blank" rel="noreferrer"><img src={`/api/files/${file.id}`} alt={file.name} loading="lazy" /></a> : <a className="file-attachment" href={`/api/files/${file.id}`} download><span><File size={21} /></span><div><strong>{file.name}</strong><small>{file.size < 1024 * 1024 ? `${Math.ceil(file.size / 1024)} KB` : `${(file.size / 1024 / 1024).toFixed(1)} MB`}</small></div><Download size={17} /></a>;
+  if(enabled && !url)return <span className={error ? 'attachment-error' : 'attachment-loading'}>{error || 'Decrypting attachment…'}</span>;
+  return image ? <a className="image-attachment" href={enabled ? url : `/api/files/${file.id}`} target="_blank" rel="noreferrer"><img src={enabled ? url : `/api/files/${file.id}`} alt={file.name} loading="lazy" /></a> : <a className="file-attachment" href={enabled ? url : `/api/files/${file.id}`} download={enabled ? file.name : true}><span><File size={21} /></span><div><strong>{file.name}</strong><small>{file.size < 1024 * 1024 ? `${Math.ceil(file.size / 1024)} KB` : `${(file.size / 1024 / 1024).toFixed(1)} MB`}</small></div><Download size={17} /></a>;
 }
 function Message({ message: m, own, admin, onReply, onThread, onDelete, onUrgency, compact = false }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
   return <article className={`message ${own ? 'own' : ''} ${compact ? 'compact' : ''}`}>
     {!own && <Avatar name={m.name} id={m.avatar_id} birdId={m.avatar_style === 'bird' ? m.bird_id : undefined} size={34} />}
-    <div className="message-content"><div className="message-meta"><strong>{own ? 'You' : m.name}</strong><time dateTime={m.created_at}>{formatTime(m.created_at)}</time></div>
-      <div className={`message-bubble ${m.deleted ? 'deleted' : ''} ${m.urgent && !m.deleted ? 'urgent-message' : ''}`}>
+    <div className="message-content"><div className="message-meta"><strong>{own ? 'You' : m.name}</strong><time dateTime={m.created_at}>{formatTime(m.created_at)}</time>{m.migrated && <small className="migrated-history-label" title="This earlier message was originally stored readable. An existing reader converted it; it does not carry a retroactive signature from its original author.">Converted by {m.signer_name || 'an existing reader'}</small>}</div>
+      <div className={`message-bubble ${m.decryptionError ? 'decryption-failed' : ''} ${m.deleted ? 'deleted' : ''} ${m.urgent && !m.deleted ? 'urgent-message' : ''}`}>
         {m.reply_to && !compact && <button className="reply-preview" onClick={() => onThread(m.reply_to)}><Reply size={13} /><span><strong>{m.parent_name || 'Earlier message'}</strong>{m.parent_body?.slice(0,100) || 'View conversation'}</span></button>}
         {!!m.urgent && !m.deleted && <span className="urgent-label"><AlertCircle size={13} />Urgent</span>}{m.deleted ? <p>This message was deleted.</p> : <><p>{m.body}</p>{m.files?.map(f => <Attachment key={f.id} file={f} />)}</>}
       </div>
-      {!m.deleted && <div className="message-actions"><button aria-label={`Reply to ${m.name}`} onClick={() => onReply(m)}><Reply size={13} />Reply</button>{!compact && <button onClick={() => onThread(m.reply_to || m.id)}><MessageCircle size={13} />Thread</button>}{(own || admin) && onUrgency && <button aria-label={m.urgent ? 'Remove urgency' : 'Mark message urgent'} aria-pressed={!!m.urgent} onClick={() => onUrgency(m)}><AlertCircle size={13} />{m.urgent ? 'Remove urgency' : 'Urgent'}</button>}{(own || admin) && <button className="delete-message" aria-label="Delete message" onClick={() => setConfirmDelete(true)}><Trash2 size={13} /></button>}</div>}
+      {!m.deleted && !m.decryptionError && <div className="message-actions"><button aria-label={`Reply to ${m.name}`} onClick={() => onReply(m)}><Reply size={13} />Reply</button>{!compact && <button onClick={() => onThread(m.reply_to || m.id)}><MessageCircle size={13} />Thread</button>}{(own || admin) && onUrgency && <button aria-label={m.urgent ? 'Remove urgency' : 'Mark message urgent'} aria-pressed={!!m.urgent} onClick={() => onUrgency(m)}><AlertCircle size={13} />{m.urgent ? 'Remove urgency' : 'Urgent'}</button>}{(own || admin) && <button className="delete-message" aria-label="Delete message" onClick={() => setConfirmDelete(true)}><Trash2 size={13} /></button>}</div>}
       {confirmDelete && <div className="inline-confirm"><span>Delete this message?</span><button onClick={() => { onDelete(m.id); setConfirmDelete(false); }}>Delete</button><button onClick={() => setConfirmDelete(false)}>Cancel</button></div>}
     </div>
   </article>;
 }
 function Composer({ group, reply, setReply, onSent, notify, thread = false }) {
+  const {enabled}=useEncryption();const prepared=useRef(null);
   const [body, setBody] = useState(''), [files, setFiles] = useState([]), [uploading, setUploading] = useState(false), [sending, setSending] = useState(false), [emojiOpen, setEmoji] = useState(false);
   const [urgent, setUrgent] = useState(false);
   const textarea = useRef(), picker = useRef(), imagePicker = useRef();
@@ -32,14 +42,19 @@ function Composer({ group, reply, setReply, onSent, notify, thread = false }) {
     const selected = [...event.target.files]; event.target.value = '';
     if (files.length + selected.length > 5) return notify('Attach up to five files per message.', true);
     setUploading(true);
-    try { const results = []; for (const f of selected) results.push(await upload(f)); setFiles(prev => [...prev, ...results]); }
+    try { const results = []; for (const f of selected) results.push(await (enabled ? uploadEncrypted(f) : upload(f))); setFiles(prev => [...prev, ...results]); }
     catch (err) { notify(err.message, true); } finally { setUploading(false); }
   }
   async function send(e) {
     e?.preventDefault(); if (sending || uploading || (!body.trim() && !files.length)) return;
     setSending(true);
-    try { await post(`/groups/${group.id}/messages`, { body, files: files.map(f => f.id), urgent, reply_to: reply?.reply_to || reply?.id || null }); setBody(''); setFiles([]); setUrgent(false); if (!thread) setReply(null); await onSent(); textarea.current?.focus(); }
-    catch (err) { notify(err.message, true); } finally { setSending(false); }
+    try {
+      const replyTo=reply?.reply_to || reply?.id || null,key=JSON.stringify([body,files.map(f=>f.id),replyTo]);
+      let request;
+      if(enabled){if(prepared.current?.key!==key)prepared.current={key,request:await sealMessage(group.id,body,files,replyTo)};request={...prepared.current.request,urgent};}
+      else request={body,files:files.map(f=>f.id),urgent,reply_to:replyTo};
+      await post(`/groups/${group.id}/messages`,request);prepared.current=null;setBody(''); setFiles([]); setUrgent(false); if (!thread) setReply(null); await onSent(); textarea.current?.focus(); }
+    catch (err) { if(err.status===409)prepared.current=null;notify(err.message, true); } finally { setSending(false); }
   }
   return <form className="composer" onSubmit={send}>
     {urgent && <div className="urgent-draft"><AlertCircle size={14} />This message will be marked urgent.</div>}
@@ -54,6 +69,16 @@ function Composer({ group, reply, setReply, onSent, notify, thread = false }) {
   </form>;
 }
 export default function Chat({ community, group, user, version, onRefresh, onModal, notify, onBack }) {
+  const {enabled}=useEncryption();
+  const [migration,setMigration]=useState({checked:false,pending:0,busy:false,error:''}),[migrationRetry,setMigrationRetry]=useState(0);
+  useEffect(()=>{
+    if(!enabled || !group.joined || (migration.checked && !migration.pending))return;let active=true;
+    setMigration(prev=>({...prev,busy:true}));
+    convertHistory(group.id).then(result=>{if(active){setMigration({checked:true,pending:result.pending,busy:false,error:''});if(result.converted)onRefresh();}}).catch(e=>{if(active)setMigration({checked:true,pending:1,busy:false,error:e.message});});
+    return()=>{active=false;};
+  },[enabled,group.id,group.joined,version,migrationRetry]);
+  async function readMessages(path){const result=await api(path);return {...result,messages:enabled ? await decryptMessages(group.id,result.messages) : result.messages};}
+
   const [messages, setMessages] = useState([]), [more, setMore] = useState(false), [loading, setLoading] = useState(true), [error, setError] = useState('');
   const [reply, setReply] = useState(null), [search, setSearch] = useState(''), [searchOpen, setSearchOpen] = useState(false), [infoOpen, setInfoOpen] = useState(false);
   const [threadId, setThreadId] = useState(null), [threadMessages, setThreadMessages] = useState([]), [threadError, setThreadError] = useState('');
@@ -61,17 +86,18 @@ export default function Chat({ community, group, user, version, onRefresh, onMod
   const subcommunity = community.subcommunities.find(s => s.id === group.subcommunity_id);
   const canPost = group.joined && (!group.admin_only || group.is_admin);
   async function load() {
-    const result = await api(`/groups/${group.id}/messages`);
+    const result = await readMessages(`/groups/${group.id}/messages`);
     setMessages(prev => { const merged = new Map(prev.map(m => [m.id,m])); for (const m of result.messages) merged.set(m.id,m); return [...merged.values()].sort((a,b) => a.id - b.id); });
     if (first.current) setMore(result.has_more);
     setError(''); setLoading(false);
     const latest = result.messages.at(-1)?.id;
-    if (group.joined && document.visibilityState === 'visible') { await patch(`/groups/${group.id}/membership`, { read_to: latest || 0 }); if (group.unread || group.marked_unread) await onRefresh(); }
+    if (group.joined && !result.messages.some(m=>m.decryptionError) && document.visibilityState === 'visible') { await patch(`/groups/${group.id}/membership`, { read_to: latest || 0 }); if (group.unread || group.marked_unread) await onRefresh(); }
     return result;
   }
   useEffect(() => {
     let active = true;
-    (async () => { try { const result = await api(`/groups/${group.id}/messages`); if (!active) return; setMessages(prev => { const merged = new Map(prev.map(m => [m.id,m])); result.messages.forEach(m => merged.set(m.id,m)); return [...merged.values()].sort((a,b) => a.id-b.id); }); if (first.current) setMore(result.has_more); setLoading(false); setError(''); if (group.joined && document.visibilityState === 'visible') { await patch(`/groups/${group.id}/membership`, { read_to: result.messages.at(-1)?.id || 0 }); if (group.unread || group.marked_unread) await onRefresh(); } } catch (err) { if (active) { setError(err.message); setLoading(false); } } })();
+    if(enabled && !group.joined){setMessages([]);setLoading(false);setError('');return;}
+    (async () => { try { const result = await readMessages(`/groups/${group.id}/messages`); if (!active) return; setMessages(prev => { const merged = new Map(prev.map(m => [m.id,m])); result.messages.forEach(m => merged.set(m.id,m)); return [...merged.values()].sort((a,b) => a.id-b.id); }); if (first.current) setMore(result.has_more); setLoading(false); setError(''); if (group.joined && !result.messages.some(m=>m.decryptionError) && document.visibilityState === 'visible') { await patch(`/groups/${group.id}/membership`, { read_to: result.messages.at(-1)?.id || 0 }); if (group.unread || group.marked_unread) await onRefresh(); } } catch (err) { if (active) { setError(err.message); setLoading(false); } } })();
     return () => { active = false; };
   }, [group.id, version, group.joined]);
   useEffect(() => {
@@ -83,15 +109,15 @@ export default function Chat({ community, group, user, version, onRefresh, onMod
     }
   }, [messages]);
   useEffect(() => {
-    if (!threadId) return;
+    if (!threadId || (enabled && !group.joined)) return;
     let active = true;
-    api(`/groups/${group.id}/threads/${threadId}`).then(r => { if (active) { setThreadMessages(r.messages); setThreadError(''); } }).catch(e => { if (active) setThreadError(e.message); });
+    readMessages(`/groups/${group.id}/threads/${threadId}`).then(r => { if (active) { setThreadMessages(r.messages); setThreadError(''); } }).catch(e => { if (active) setThreadError(e.message); });
     return () => { active = false; };
   }, [threadId, version, messages]);
   async function older() {
     try {
       const height = scroll.current.scrollHeight;
-      const result = await api(`/groups/${group.id}/messages?before=${messages[0].id}`);
+      const result = await readMessages(`/groups/${group.id}/messages?before=${messages[0].id}`);
       setMessages(prev => [...result.messages, ...prev]); setMore(result.has_more);
       requestAnimationFrame(() => { if (scroll.current) scroll.current.scrollTop = scroll.current.scrollHeight - height; });
     } catch (err) { notify(err.message, true); }
@@ -104,20 +130,23 @@ export default function Chat({ community, group, user, version, onRefresh, onMod
     <header className="chat-header"><button className="icon-button mobile-only" onClick={onBack} aria-label="Back to Nests"><ArrowLeft size={21} /></button><Avatar name={group.name} id={group.avatar_id} size={43} square /><div className="chat-heading"><div className="breadcrumb">{community.name}{subcommunity && <><span>/</span>{subcommunity.name}</>}</div><h1 tabIndex={-1}><SpaceIcon size={23} locked={!!group.private}/>{group.name}{group.admin_only ? <span className="tag">Announcements</span> : null}</h1></div><span className="chat-landing-nest" data-bird-landing aria-hidden="true"><Bird className="resident-bird" birdId={user.bird_id}/><LandingNest/></span><div className="chat-header-actions"><button className={`icon-button ${searchOpen ? 'active' : ''}`} aria-label="Search messages" onClick={() => { setSearchOpen(!searchOpen); setSearch(''); }}><Search size={19} /></button>{group.joined && <button className="icon-button" aria-label={group.muted ? 'Unmute Nest' : 'Mute Nest'} onClick={() => changeMembership(() => patch(`/groups/${group.id}/membership`, { muted: !group.muted }))}>{group.muted ? <BellOff size={19} /> : <Bell size={19} />}</button>}<span className="header-divider" /><button className={`icon-button ${infoOpen ? 'active' : ''}`} aria-label="Nest information" onClick={() => { setInfoOpen(!infoOpen); setThreadId(null); }}><Info size={20} /></button></div></header>
     {searchOpen && <div className="chat-search"><Search size={17} /><input autoFocus value={search} onChange={e => setSearch(e.target.value)} placeholder="Search loaded messages or people…" aria-label="Search loaded messages" /><span>{search ? `${filtered.length} found` : 'Load earlier messages to search more'}</span><button className="icon-button" aria-label="Close search" onClick={() => { setSearchOpen(false); setSearch(''); }}><X size={17} /></button></div>}
     <div className="conversation" ref={scroll}>
+      {enabled && group.joined && migration.pending>0 && <div className="encryption-history-note" role="status"><strong>Earlier history is awaiting encryption.</strong><p>{migration.error || 'Earlier server-stored history has not finished converting. Some readers may need to set up encrypted messaging. Retry to continue conversion and cleanup. New messages use end-to-end encryption.'}</p><button className="text-button" disabled={migration.busy} onClick={()=>setMigrationRetry(n=>n+1)}>{migration.busy ? 'Converting…' : 'Retry history conversion'}</button></div>}
+      {enabled && !group.joined && <div className="encryption-history-note">Join this Nest to receive messages from that point onward. Earlier messages are not shared with new members.</div>}
+
       {error && <div className="error-banner" role="alert">{error}<button className="text-button" onClick={() => load().catch(e => notify(e.message,true))}>Try again</button></div>}
       {loading ? <div className="loading-messages">Getting the conversation ready…</div> : <>
         {!more && <div className="conversation-start"><span className="conversation-start-icon"><SpaceIcon size={30} locked={!!group.private}/></span><h2>A good place to talk.</h2><p>This is the beginning of <strong>{group.name}</strong>.{group.description ? ` ${group.description}` : ' Make yourself at home.'}</p><span><ShieldCheck size={13} />{group.private ? 'A private space, by invitation.' : 'A space for your Tree.'}</span></div>}
         {more && <button className="load-earlier" onClick={older}>Load earlier messages</button>}
-        {filtered.map((m,index) => { const day = formatDay(m.created_at), previous = filtered[index-1]; return <React.Fragment key={m.id}>{(!previous || formatDay(previous.created_at) !== day) && <div className="date-divider"><span>{day}</span></div>}<Message message={m} own={m.user_id === user.id} {...messageProps} /></React.Fragment>; })}
+        {filtered.map((m,index) => { const day = formatDay(m.created_at), previous = filtered[index-1]; return <React.Fragment key={m.id}>{(!previous || formatDay(previous.created_at) !== day) && <div className="date-divider"><span>{day}</span></div>}<Message message={{...m,parent_body:messages.find(p=>p.id===m.reply_to && !p.decryptionError)?.body || m.parent_body,parent_name:messages.find(p=>p.id===m.reply_to)?.name || m.parent_name}} own={m.user_id === user.id} {...messageProps} /></React.Fragment>; })}
         {!!search && !filtered.length && <Empty icon={Search} title="Nothing here just yet.">Try a different name or phrase.</Empty>}
       </>}<div ref={bottom} />
     </div>
-    <div className="chat-bottom"><div className="group-status"><span className={group.private ? 'status-private' : 'status-public'}><SpaceIcon size={16} locked={!!group.private}/>{group.private ? 'Private Nest' : 'Public Nest'}</span><span>{group.member_count} {group.member_count === 1 ? 'member' : 'members'}{group.muted ? ' · Notifications muted' : ''}</span><button onClick={() => bottom.current?.scrollIntoView({ behavior: 'smooth' })} aria-label="Jump to latest message"><ArrowDown size={14} /></button></div>
+    <div className="chat-bottom">{enabled && <div className="encrypted-status"><ShieldCheck size={13}/>New messages are end-to-end encrypted</div>}<div className="group-status"><span className={group.private ? 'status-private' : 'status-public'}><SpaceIcon size={16} locked={!!group.private}/>{group.private ? 'Private Nest' : 'Public Nest'}</span><span>{group.member_count} {group.member_count === 1 ? 'member' : 'members'}{group.muted ? ' · Notifications muted' : ''}</span><button onClick={() => bottom.current?.scrollIntoView({ behavior: 'smooth' })} aria-label="Jump to latest message"><ArrowDown size={14} /></button></div>
       {canPost ? <Composer group={group} reply={reply} setReply={setReply} onSent={async () => { await load(); await onRefresh(); }} notify={notify} /> : !group.joined ? <div className="join-group-banner"><div><strong>There’s room for you here.</strong><p>Join to send messages and stay in the loop.</p></div><button className="button primary" onClick={() => changeMembership(() => post(`/groups/${group.id}/join`))}><UserPlus size={17} />Join Nest</button></div> : <div className="read-only"><ShieldCheck size={19} /><span>Only admins can post and reply in this Nest.<small>You’ll still receive updates unless you mute the Nest.</small></span></div>}
       <div className="conversation-footnote"><span className="tiny-leaf">❧</span> A little kindness goes a long way.</div>
     </div>
   </section>
-    {infoOpen && <aside className="detail-panel"><div className="detail-header"><h3>About this Nest</h3><button className="icon-button" aria-label="Close Nest information" onClick={() => setInfoOpen(false)}><X size={18} /></button></div><div className="group-detail"><Avatar name={group.name} id={group.avatar_id} size={76} square /><h2>{group.name}</h2><span className="tag">{group.private ? 'Private Nest' : 'Public Nest'}</span><p>{group.description || 'A little space for your Tree to connect.'}</p></div><div className="detail-facts"><span><Users size={17} />{group.member_count} members</span><span><SpaceIcon kind="tree"/>{subcommunity?.name || community.name}</span><span><ShieldCheck size={17} />{group.admin_only ? 'Admins can post and reply' : 'Joined members can post and reply'}</span></div><div className="detail-actions">{group.is_admin && <><button onClick={() => onModal({ kind: 'invite', group })}><UserPlus size={17} />Invite to Nest</button><button onClick={() => onModal({ kind: 'space', type: 'group', entity: group })}><Settings2 size={17} />Nest settings</button></>}{group.joined && <><button onClick={() => changeMembership(() => patch(`/groups/${group.id}/membership`, { muted: !group.muted }))}>{group.muted ? <Bell size={17} /> : <BellOff size={17} />}{group.muted ? 'Unmute notifications' : 'Mute notifications'}</button><button className="danger" onClick={() => changeMembership(() => api(`/groups/${group.id}/join`, { method: 'DELETE' }))}>Leave Nest</button></>}</div></aside>}
-    {threadId && <aside className="detail-panel thread-panel"><div className="detail-header"><h3>Thread</h3><button className="icon-button" aria-label="Close thread" onClick={() => setThreadId(null)}><X size={18} /></button></div><div className="thread-messages">{threadError && <div className="error-banner">{threadError}</div>}{threadMessages.map(m => <Message key={m.id} message={m} own={m.user_id === user.id} compact {...messageProps} onReply={() => {}} />)}{!threadMessages.length && !threadError && <p className="muted">Loading thread…</p>}</div>{canPost && !!threadMessages.length && !threadMessages[0].deleted && <Composer key={threadId} group={group} reply={threadMessages[0]} setReply={() => {}} thread notify={notify} onSent={load} />}</aside>}
+    {infoOpen && <aside className="detail-panel"><div className="detail-header"><h3>About this Nest</h3><button className="icon-button" aria-label="Close Nest information" onClick={() => setInfoOpen(false)}><X size={18} /></button></div><div className="group-detail"><Avatar name={group.name} id={group.avatar_id} size={76} square /><h2>{group.name}</h2><span className="tag">{group.private ? 'Private Nest' : 'Public Nest'}</span><p>{group.description || 'A little space for your Tree to connect.'}</p></div><div className="detail-facts"><span><Users size={17} />{group.member_count} members</span><span><SpaceIcon kind="tree"/>{subcommunity?.name || community.name}</span><span><ShieldCheck size={17} />{group.admin_only ? 'Admins can post and reply' : 'Joined members can post and reply'}</span></div><div className="detail-actions">{enabled && group.joined && <NestEncryptionDetails groupId={group.id}/>} {group.is_admin && <><button onClick={() => onModal({ kind: 'invite', group })}><UserPlus size={17} />Invite to Nest</button><button onClick={() => onModal({ kind: 'space', type: 'group', entity: group })}><Settings2 size={17} />Nest settings</button></>}{group.joined && <><button onClick={() => changeMembership(() => patch(`/groups/${group.id}/membership`, { muted: !group.muted }))}>{group.muted ? <Bell size={17} /> : <BellOff size={17} />}{group.muted ? 'Unmute notifications' : 'Mute notifications'}</button><button className="danger" onClick={() => changeMembership(() => api(`/groups/${group.id}/join`, { method: 'DELETE' }))}>Leave Nest</button></>}</div></aside>}
+    {threadId && <aside className="detail-panel thread-panel"><div className="detail-header"><h3>Thread</h3><button className="icon-button" aria-label="Close thread" onClick={() => setThreadId(null)}><X size={18} /></button></div><div className="thread-messages">{threadError && <div className="error-banner">{threadError}</div>}{threadMessages.map(m => <Message key={m.id} message={m} own={m.user_id === user.id} compact {...messageProps} onReply={() => {}} />)}{!threadMessages.length && !threadError && <p className="muted">Loading thread…</p>}</div>{canPost && !!threadMessages.length && !threadMessages[0].deleted && (!enabled || threadMessages[0].id===threadId) && <Composer key={threadId} group={group} reply={threadMessages[0]} setReply={() => {}} thread notify={notify} onSent={load} />}</aside>}
   </div>;
 }

@@ -10,7 +10,7 @@ The repository contains a Dockerfile and `railway.json`. Railway builds the fron
 4. In the service's **Settings → Networking**, generate a public domain. If Railway asks for a target port, use the listening `PORT` from the service logs (default `3000`). Railway provides HTTPS for the generated domain.
 5. Redeploy after generating the domain. The app derives `APP_URL` from Railway's `RAILWAY_PUBLIC_DOMAIN`, and creates private push-signing keys once on the persistent Volume. Open the generated HTTPS domain and create your account. The first user must still create a Tree; no public admin account is preinstalled.
 
-The app is ready to serve when Railway's deployment health check to `/api/health` succeeds. Validate it by registering, creating a Tree, optional Branch, and Nest, sending a message, and inviting another account. Redeploy once and confirm the same account and messages remain.
+The app is ready to serve when Railway's deployment health check to `/api/health` succeeds. Validate it by registering, completing encryption setup and saving the recovery key, creating a Tree, optional Branch, and Nest, sending a message, and inviting another account. Both accounts must finish encryption setup before sending to their joined Nest. Redeploy once and confirm the same account and encrypted messages remain.
 
 To test the production container locally before deploying:
 
@@ -30,6 +30,8 @@ The smoke check uses a temporary Docker Volume and removes its own containers an
 ## Keep data safe
 
 Retain the Volume when changing or redeploying the service. Back up the entire `/data` directory, including SQLite and its WAL files, `uploads/`, and `push-keys.json`. A simple consistent backup stops the app before copying the directory. Do not place real data on a service without a Volume or increase replica count on this SQLite version.
+
+For the encryption upgrade, read [the migration and recovery guide](ENCRYPTION.md). Earlier messages remain pending browser conversion until eligible readers have encryption identities. Do not promise that historical backups are encrypted: Railway snapshots and `gatherly.sqlite.before-circles.bak` can contain old plaintext. Review retention separately after conversion and a verified replacement backup. Avoid changing the app origin unnecessarily: local encryption keys belong to the browser origin, and changing domains requires recovery or approval from the old origin. Do not clear local site data unless the recovery key or another approved device is available.
 
 ## Troubleshooting
 

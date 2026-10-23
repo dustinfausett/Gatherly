@@ -8,7 +8,7 @@ import { createApp } from '../server/app.js';
 
 test('moderated creation, scoped reviews, privacy, atomic decisions and durable settings',async t=>{
   const dir=mkdtempSync(join(tmpdir(),'churp-approvals-'));
-  let runtime=createApp({dataDir:dir,testing:true,googleClientId:'',pushEnabled:false}),server=createServer(runtime.app),base;
+  let runtime=createApp({ encryptionRequired:false,dataDir:dir,testing:true,googleClientId:'',pushEnabled:false}),server=createServer(runtime.app),base;
   async function listen(){await new Promise(r=>server.listen(0,'127.0.0.1',r));base=`http://127.0.0.1:${server.address().port}/api`;}
   await listen();
   t.after(async()=>{runtime.close();await new Promise(r=>server.close(r));rmSync(dir,{recursive:true,force:true});});
@@ -104,7 +104,7 @@ test('moderated creation, scoped reviews, privacy, atomic decisions and durable 
     assert.equal((await snapshot(member)).circles.find(g=>g.id===nest.data.group.id).is_admin,true);
     assert.equal((await snapshot(member)).is_admin,false);
     assert.equal((await requests(member)).find(r=>r.payload.name==='Still reviewed').status,'pending');
-    runtime.close();await new Promise(r=>server.close(r));runtime=createApp({dataDir:dir,testing:true,googleClientId:'',pushEnabled:false});server=createServer(runtime.app);await listen();
+    runtime.close();await new Promise(r=>server.close(r));runtime=createApp({ encryptionRequired:false,dataDir:dir,testing:true,googleClientId:'',pushEnabled:false});server=createServer(runtime.app);await listen();
     const c=await snapshot(member);assert.equal(c.branch_approval_required,0);assert.equal(c.nest_approval_required,0);
     assert.equal((await requests(member)).find(r=>r.id===privateRequest.id).status,'approved');
     assert.equal((await requests(member)).find(r=>r.payload.name==='Still reviewed').status,'pending');

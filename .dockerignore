@@ -5,6 +5,7 @@
 node_modules
 dist
 test-results
+test-results-encryption
 playwright-report
 e2e
 tests

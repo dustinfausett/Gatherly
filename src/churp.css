@@ -357,3 +357,35 @@ input::placeholder, textarea::placeholder { color: #92917f; }
   .auth-form-wrap>h2 { font-size: 35px; }
   .message-bubble { font-size: 14px; }
 }
+
+/* Keys remain in the browser; recovery and approval are explicit user actions. */
+.encryption-gate { min-height: 100dvh; padding: 30px 18px; background: #fbf8f1; }
+.encryption-panel { width: 100%; max-width: 560px; margin: 0 auto; padding: 28px; background: #fffdf7; border: 1px solid #e5dcc7; border-radius: 22px; }
+.encryption-panel .logo { margin-bottom: 24px; }
+.encryption-panel h1 { font-size: 27px; margin: 13px 0; color: #5b783c; }
+.encryption-panel h2 { font-size: 19px; color: #637b43; margin-bottom: 12px; }
+.encryption-panel p, .recovery-card p, .encryption-transfer p { font-size: 13px; line-height: 1.7; color: #85775f; margin-bottom: 16px; }
+.encryption-kicker, .encrypted-status { display: flex; align-items: center; gap: 7px; color: #658144; font-size: 12px; }
+.encryption-panel>.text-button { margin-top: 22px; }
+.encryption-panel textarea, .encryption-settings textarea { width: 100%; min-height: 80px; resize: vertical; font-family: ui-monospace,monospace; font-size: 13px; line-height: 1.6; overflow-wrap: anywhere; padding: 12px; border: 1px solid #d7dfc2; border-radius: 10px; background: #f5f5e8; color: #526b38; margin: 10px 0; }
+.recovery-saved { display: flex; gap: 9px; align-items: flex-start; font-size: 13px; line-height: 1.6; margin: 18px 0; color: #6d704d; }
+.recovery-saved input { flex: none; width: 18px; height: 18px; margin-top: 2px; accent-color: #6c8449; }
+.encryption-transfer { margin: 25px 0 15px; padding-top: 20px; border-top: 1px solid #e5dcc7; }
+.encryption-transfer h2, .encryption-settings h4 { display: flex; align-items: center; gap: 7px; }
+.encryption-settings details { margin: 14px 0; font-size: 12px; }
+.encryption-settings summary { cursor: pointer; color: #627a43; }
+.encryption-settings h5 { margin: 20px 0 10px; font-size: 13px; color: #6e8050; }
+.encryption-settings .form { margin-bottom: 14px; }
+.identity-code { display: block; font-size: 11px; line-height: 1.9; margin: 10px 0; padding: 10px; border-radius: 9px; background: #f0eddf; color: #627548; overflow-wrap: anywhere; white-space: normal; }
+.encrypted-status { margin-bottom: 9px; font-size: 10px; }
+.encryption-history-note { padding: 14px; margin: 0 0 15px; border-radius: 12px; background: #fff4d5; color: #837041; font-size: 12px; line-height: 1.6; }
+.encryption-history-note p { margin-top: 5px; }
+.encryption-history-note .text-button { margin-top: 7px; }
+.decryption-failed { border: 1px solid #d58c77; color: #985c4e; }
+.attachment-error, .attachment-loading { display: block; padding: 10px; font-size: 12px; }
+.attachment-error { color: #985c4e; }
+.nest-encryption-details { width: 100%; margin-bottom: 12px; }
+.nest-encryption-details p { margin: 10px 0; }
+.security-reader { border-top: 1px solid #e3dcc5; padding: 12px 0; font-size: 12px; }
+.security-reader small { color: #667a48; }
+@media(max-width:600px){ .encryption-gate { padding: 15px 10px; } .encryption-panel { padding: 22px 18px; } .encryption-panel h1 { font-size: 24px; } }
