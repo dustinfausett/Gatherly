@@ -29,7 +29,9 @@ Production requires HTTPS because cookies use `Secure`. A reverse proxy must for
 
 ## Accounts, permissions, and conversations
 
-Nest chats include **+ → Poll**: a single- or multi-question choice poll delivered as an animated envelope, with eggs marking basket selections. Polls and responses use the existing encrypted messaging system. See [poll behavior and implementation](docs/POLLS.md).
+Nest chats include **+ → Poll**: a single- or multi-question choice poll delivered as an envelope, with eggs marking basket selections. Polls and responses use the existing encrypted messaging system. See [poll behavior and implementation](docs/POLLS.md).
+
+Tap the bird's Nest in the chat header for **Pictures**, **Documents**, and **Polls**, plus videos, audio and other files when present. Each category lists accessible shared items from newest to oldest, including earlier chat history. The library follows the same membership/history restrictions as chat and decrypts content on the device. It skips deleted items and poll ballots. Images load as their thumbnails come into view; decrypted file URLs are reused while the library is open and revoked when it closes. Document downloads preserve their original names. Opening a poll from the library returns to its category when closed.
 
 - Username/password authentication uses salted scrypt hashes and HttpOnly cookie sessions. Optional Google Sign-in verifies ID tokens on the server.
 - Trees can be created or joined through invitations. The owner appoints Tree admins and can transfer ownership, remaining an admin afterward. Tree admins assign Branch admins. Rights inherit down to Nests; Nest admins manage only their assigned Nests. All Tree members can propose new Branches and Nests; the Tree’s creation settings determine whether approval is needed.

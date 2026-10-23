@@ -575,8 +575,9 @@ export function createApp(options = {}) {
     if (changed) refreshUser(req.user.id);
     res.json({ ok: true });
   });
-  app.get('/api/groups/:id/messages', (req, res) => {
+  function messagePage(req, sharedOnly = false) {
     visibleCircle(req.user.id, req.params.id);
+    if(sharedOnly && !joined(req.user.id,req.params.id))fail(403,'Join this Nest to view shared items.');
     const before = req.query.before === undefined ? Number.MAX_SAFE_INTEGER : Number(req.query.before);
     if (!Number.isSafeInteger(before) || before < 1) fail(400, 'Invalid message cursor.');
     const floor=encryptionRequired ? encryption.reader(req,req.params.id).gm.joined_after : -1;
@@ -584,11 +585,15 @@ export function createApp(options = {}) {
       COALESCE(kh.public_key,ei.public_key) AS signer_key,COALESCE(m.signer_fingerprint,ei.fingerprint) AS signer_fingerprint,signer.name AS signer_name FROM messages m JOIN users u ON u.id=m.user_id
       LEFT JOIN e2ee_identities ei ON ei.user_id=m.encrypted_by LEFT JOIN e2ee_key_history kh ON kh.user_id=m.encrypted_by AND kh.fingerprint=m.signer_fingerprint LEFT JOIN users signer ON signer.id=m.encrypted_by
       LEFT JOIN messages p ON p.id=m.reply_to LEFT JOIN users pu ON pu.id=p.user_id
-      WHERE m.group_id=? AND m.id<? AND m.id>? AND m.message_kind<>'poll_vote' ${encryptionRequired ? 'AND m.e2ee_version=1 AND EXISTS(SELECT 1 FROM e2ee_recipients er WHERE er.message_id=m.id AND er.user_id=?)' : ''}
+      WHERE m.group_id=? AND m.id<? AND m.id>? AND m.message_kind<>'poll_vote'
+      ${sharedOnly ? "AND m.deleted=0 AND (m.message_kind='poll' OR EXISTS(SELECT 1 FROM message_files mf WHERE mf.message_id=m.id))" : ''}
+      ${encryptionRequired ? 'AND m.e2ee_version=1 AND EXISTS(SELECT 1 FROM e2ee_recipients er WHERE er.message_id=m.id AND er.user_id=?)' : ''}
       ORDER BY m.id DESC LIMIT 100`, req.params.id, before,floor,...(encryptionRequired ? [req.user.id] : [])).reverse();
     for (const m of messages) m.files = all('SELECT f.id,f.name,f.mime,f.size FROM files f JOIN message_files mf ON mf.file_id=f.id WHERE mf.message_id=?', m.id);
-    res.json({ messages, has_more: messages.length === 100 });
-  });
+    return { messages, has_more: messages.length === 100 };
+  }
+  app.get('/api/groups/:id/messages', (req, res) => res.json(messagePage(req)));
+  app.get('/api/groups/:id/shared', (req, res) => res.json(messagePage(req, true)));
   app.get('/api/groups/:id/threads/:messageId', (req, res) => {
     visibleCircle(req.user.id, req.params.id);
     const root = one('SELECT * FROM messages WHERE id=? AND group_id=?', req.params.messageId, req.params.id) || fail(404, 'Thread not found.');

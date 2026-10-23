@@ -61,6 +61,7 @@ test('encrypted multi-question poll opens an envelope and saves eggs in choice b
     await expect(view).toContainText('1 member has responded.');
     await view.getByRole('checkbox', { name: /^Games/ }).uncheck(); await view.getByRole('checkbox', { name: /^Walk/ }).check();
     await view.getByRole('button', { name: 'Update answers', exact: true }).click();
+    await expect(view.getByRole('button', { name: 'Update answers', exact: true })).toBeEnabled();
     await expect(view).toContainText('1 member has responded.');
     await expect.poll(async () => (await (await context.request.get(`/api/groups/${nest.id}/messages`)).json()).messages.length).toBe(1);
     await member.reload(); await member.getByRole('button', { name: 'Open poll: Family weekend', exact: true }).click();

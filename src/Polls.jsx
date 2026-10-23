@@ -123,20 +123,29 @@ function PollView({ poll, message, group, user, version, onClose }) {
   </Modal>;
 }
 
-export function PollEnvelope({ message, group, user, version }) {
+export function PollDialog({ message, ...props }) {
+  const poll = parsePoll(message.body);
+  return poll ? <PollView poll={poll} message={message} {...props} /> : null;
+}
+
+export function PollEnvelope({ message, group, user, version, onOpen }) {
   const poll = parsePoll(message.body);
   const [opening, setOpening] = useState(false), [open, setOpen] = useState(false);
-  const timer = useRef(null);
-  useEffect(() => () => clearTimeout(timer.current), []);
-  function touch() {
+  const [openReady, setOpenReady] = useState(false);
+  const timer = useRef(null), openArt = useRef(null), mounted = useRef(true);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; clearTimeout(timer.current); }; }, []);
+  async function touch() {
     if (opening) return;
     setOpening(true);
-    timer.current = setTimeout(() => { setOpening(false); setOpen(true); }, matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 520);
+    try { await openArt.current?.decode(); } catch { /* A failed image must not prevent opening the poll. */ }
+    if (!mounted.current) return;
+    setOpenReady(!!openArt.current?.naturalWidth);
+    timer.current = setTimeout(() => { setOpening(false); if (onOpen) onOpen(message); else setOpen(true); }, 250);
   }
   if (!poll) return <p role="alert">This poll could not be opened.</p>;
   return <>
-    <button type="button" className={`poll-envelope ${opening ? 'is-opening' : ''}`} aria-label={`Open poll: ${poll.title}`} onClick={touch} aria-haspopup="dialog">
-      <span className="poll-envelope-letter" aria-hidden="true" /><img src={`${art}envelope.png`} alt="" width="300" height="200" /><span className="poll-envelope-flap" aria-hidden="true" /><strong>{poll.title}</strong>
+    <button type="button" className={`poll-envelope ${opening && openReady ? 'is-opening' : ''}`} aria-label={`Open poll: ${poll.title}`} onClick={touch} aria-haspopup="dialog" aria-busy={opening} disabled={opening}>
+      <img className="envelope-closed" src={`${art}envelope.png`} alt="" width="300" height="200" /><img className="envelope-open" ref={openArt} src={`${art}envelope-open.png`} onLoad={() => setOpenReady(true)} alt="" width="300" height="200" /><strong>{poll.title}</strong>
     </button>
     {open && <PollView poll={poll} message={message} group={group} user={user} version={version} onClose={() => setOpen(false)} />}
   </>;

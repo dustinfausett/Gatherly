@@ -272,7 +272,7 @@ input::placeholder, textarea::placeholder { color: #92917f; }
 @media(max-width:600px) { .bird-grid { grid-template-columns: repeat(3,minmax(0,1fr)); } }
 .bird-flight { position: fixed; inset: 0; z-index: 70; pointer-events: none; overflow: hidden; }
 .travelling-bird { position: absolute; left: 0; top: 0; will-change: transform; }
-.chat-landing-nest { flex-shrink: 0; position: relative; width: 54px; height: 48px; display: block; pointer-events: none; }
+.chat-landing-nest { flex-shrink: 0; position: relative; width: 54px; height: 48px; display: block; pointer-events: auto; }
 .landing-nest-art { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
 .chat-landing-nest .resident-bird { position: absolute; width: 54px; height: 54px; top: -9px; left: 0; }
 .bird-in-transit .resident-bird { opacity: 0; }

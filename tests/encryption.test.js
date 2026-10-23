@@ -26,9 +26,9 @@ async function fixture(t,legacy=false){
     const body={publicKey:keys.publicKey,backup,historyBackup,signature:await enc.sign(previous,'self-managed-transition',payload),newSignature:await enc.sign(keys.privateKey,'accept-self-managed',payload)};
     await ok('/e2ee/self-managed',a,'POST',body);a.privateKey=keys.privateKey;a.publicKey=keys.publicKey;a.recovery=recovery;return {previous,body,payload};
   }
-  async function prepare(a,gid,body,attachments=[],replyTo=null,legacyMessage=null){
+  async function prepare(a,gid,body,attachments=[],replyTo=null,legacyMessage=null,contentType='chat'){
     const rs=legacyMessage?.roster || await ok(`/groups/${gid}/e2ee/roster`,a),clientId=legacyMessage ? `legacy-${legacyMessage.id}` : randomUUID();
-    const contents={version:1,kind:'nest-message',groupId:gid,clientId,senderId:legacyMessage?.user_id || a.id,signerId:a.id,rosterHash:rs.roster_hash,replyTo,migrated:!!legacyMessage,selfEncrypted:!legacyMessage && rs.self_encrypted,body,attachments};
+    const contents={version:1,kind:'nest-message',groupId:gid,clientId,senderId:legacyMessage?.user_id || a.id,signerId:a.id,rosterHash:rs.roster_hash,replyTo,migrated:!!legacyMessage,selfEncrypted:!legacyMessage && rs.self_encrypted,contentType,body,attachments};
     const ciphertext=await enc.seal(a.privateKey,rs.readers.filter(r=>r.public_key).map(r=>r.public_key),contents),files=attachments.map(f=>f.id);
     const payload=enc.sendPayload({groupId:gid,clientId,rosterHash:rs.roster_hash,cipherHash:await enc.digest(ciphertext),files,replyTo});
     return {ciphertext,clientId,rosterHash:rs.roster_hash,files,reply_to:replyTo,signature:await enc.sign(a.privateKey,legacyMessage ? 'migrate' : 'send',legacyMessage ? {...payload,legacyId:legacyMessage.id} : payload)};
@@ -206,4 +206,37 @@ test('hybrid custody restores standard accounts and derives shields from all joi
   const latePrivate=(await f.ok(`/communities/${tree.id}/circles`,alice,'POST',{name:'Empty Nest'})).group;
   await f.ok(`/groups/${latePrivate.id}/join`,alice,'DELETE');assert.equal((await f.ok(`/communities/${tree.id}`,alice)).community.circles.find(n=>n.id===latePrivate.id).self_encrypted,false);
   await f.restart();assert.equal(await status(),true);assert.equal(f.runtime.db.prepare('SELECT COUNT(*) AS n FROM e2ee_managed_keys WHERE user_id IN (?,?)').get(alice.id,bob.id).n,0);
+});
+
+test('shared library finds encrypted older attachments and polls with pagination and membership history boundaries',async t=>{
+  const f=await fixture(t),owner=await f.enroll(await f.register('library_owner')),member=await f.managed(await f.register('library_member')),outsider=await f.managed(await f.register('library_outsider'));
+  const tree=(await f.ok('/communities',owner,'POST',{name:'Library Tree'})).community;
+  const nest=(await f.ok(`/communities/${tree.id}/circles`,owner,'POST',{name:'Shared plans'})).group;
+  const invite=(await f.ok('/invitations',owner,'POST',{community_id:tree.id})).path.split('invite=')[1];
+  await f.ok('/invitations/accept',member,'POST',{token:invite});await f.ok(`/groups/${nest.id}/join`,member,'POST');
+  const older=await f.send(owner,nest.id,'Earlier document',[await f.upload(owner,enc.bytes('Private older PDF contents'),'older.pdf')]);
+  const definition=JSON.stringify({churp:'poll',version:1,title:'Library planning poll',questions:[{text:'Which day?',type:'single',options:['Saturday','Sunday']}]});
+  async function poll(){return f.ok(`/groups/${nest.id}/messages`,owner,'POST',{...await f.prepare(owner,nest.id,definition,[],null,null,'poll'),message_kind:'poll'});}
+  const oldPoll=await poll();
+  for(let n=0;n<101;n++)await f.send(owner,nest.id,`Ordinary message ${n}`);
+  const picture=await f.send(owner,nest.id,'Latest picture',[await f.upload(owner,new Uint8Array([137,80,78,71,13,10,26,10]),'latest.png')]);
+  assert.equal((await f.ok(`/groups/${nest.id}/messages`,member)).messages.some(m=>m.id===older.id),false);
+  const lastRead=f.runtime.db.prepare('SELECT last_read FROM group_members WHERE group_id=? AND user_id=?').get(nest.id,member.id).last_read;
+  const shared=await f.ok(`/groups/${nest.id}/shared`,member);
+  assert.deepEqual(shared.messages.map(m=>m.id),[older.id,oldPoll.id,picture.id]);
+  assert.equal(shared.has_more,false);assert.equal(shared.messages[0].body,'');assert.equal(shared.messages[0].files[0].name,'encrypted-attachment.pgp');
+  assert.ok(!JSON.stringify(shared).includes('older.pdf'));assert.ok(!JSON.stringify(shared).includes('Which day?'));
+  assert.equal(f.runtime.db.prepare('SELECT last_read FROM group_members WHERE group_id=? AND user_id=?').get(nest.id,member.id).last_read,lastRead);
+  assert.deepEqual((await f.ok(`/groups/${nest.id}/shared?before=${picture.id}`,member)).messages.map(m=>m.id),[older.id,oldPoll.id]);
+  assert.equal((await f.req(`/groups/${nest.id}/shared?before=invalid`,member)).status,400);
+  for(let n=0;n<100;n++)await poll();
+  const first=await f.ok(`/groups/${nest.id}/shared`,member);assert.equal(first.messages.length,100);assert.equal(first.has_more,true);
+  const second=await f.ok(`/groups/${nest.id}/shared?before=${first.messages[0].id}`,member);assert.deepEqual(second.messages.map(m=>m.id),[older.id,oldPoll.id,picture.id]);assert.equal(second.has_more,false);
+  const late=await f.managed(await f.register('library_late'));await f.ok('/invitations/accept',late,'POST',{token:invite});
+  assert.equal((await f.req(`/groups/${nest.id}/shared`,late)).status,403);await f.ok(`/groups/${nest.id}/join`,late,'POST');
+  assert.deepEqual((await f.ok(`/groups/${nest.id}/shared`,late)).messages,[]);
+  assert.equal((await f.req(`/groups/${nest.id}/shared`,outsider)).status,403);
+  await f.ok(`/messages/${older.id}`,owner,'DELETE');
+  assert.deepEqual((await f.ok(`/groups/${nest.id}/shared?before=${oldPoll.id}`,member)).messages,[]);
+  await f.ok(`/communities/${tree.id}/members/${member.id}`,owner,'DELETE');assert.equal((await f.req(`/groups/${nest.id}/shared`,member)).status,403);
 });

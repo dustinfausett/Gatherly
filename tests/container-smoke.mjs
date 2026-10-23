@@ -84,6 +84,21 @@ async function browserCheck(cid,gid,recovery,managedFixture){
     await expect.poll(()=>page.locator('.image-attachment img').evaluate(img=>img.naturalWidth)).toBe(1);
     await page.reload();await expect(page.locator('.message-bubble').filter({hasText:'Encrypted browser photo under production CSP'})).toBeVisible();
     await expect.poll(()=>page.locator('.image-attachment img').evaluate(img=>img.naturalWidth)).toBe(1);
+    await page.getByRole('button',{name:'Open shared items',exact:true}).click();
+    await page.getByRole('dialog').getByRole('button',{name:/^Pictures/}).click();
+    await expect.poll(()=>page.locator('.shared-picture img').evaluate(img=>img.naturalWidth)).toBe(1);
+    await page.getByRole('button',{name:'All shared items',exact:true}).click();
+    await page.getByRole('dialog').getByRole('button',{name:/^Documents/}).click();
+    await expect(page.locator('.shared-download strong')).toHaveText('notes.txt');
+    const libraryDownload=page.waitForEvent('download');await page.locator('.shared-download button').click();
+    assert.equal(readFileSync(await (await libraryDownload).path(),'utf8'),'Survives a Railway redeploy.');
+    await page.getByRole('button',{name:'All shared items',exact:true}).click();
+    await page.getByRole('dialog').getByRole('button',{name:/^Polls/}).click();
+    await page.getByRole('dialog').getByRole('button',{name:'Open poll: Container planning poll',exact:true}).click();
+    await expect(page.getByRole('dialog')).toHaveCount(1);await expect(page.getByRole('dialog')).toContainText('Closed');
+    await page.getByRole('button',{name:'Close dialog',exact:true}).click();
+    await expect(page.getByRole('dialog').getByRole('heading',{name:'Polls',exact:true})).toBeVisible();
+    await page.getByRole('button',{name:'Close dialog',exact:true}).click();
     assert.deepEqual(errors,[]);assert.deepEqual(await page.evaluate(()=>window.cspViolations),[]);
     await context.close();console.log('PASS: production browser recovery, local key persistence, encrypted photo rendering and strict CSP over HTTPS.');
     const visitor=await browser.newContext({ignoreHTTPSErrors:true});
@@ -183,6 +198,7 @@ try {
   console.log('PASS: production container, HTTPS proxy headers, secure sessions, encrypted Nest messages/files, recovery backup and volume persistence across replacement.');
   console.log('PASS: push keys persist; local .env is excluded; Railway startup requires a Volume.');
   console.log('PASS: encrypted poll definitions, answers and closure survive replacement; envelope and basket artwork render under production CSP.');
+  console.log('PASS: shared library decrypts pictures and documents and opens saved polls under production CSP.');
 } finally {
   for(const name of containers)spawnSync('docker', ['rm', '-f', name], { stdio: 'ignore' });
   spawnSync('docker', ['volume', 'rm', volume], { stdio: 'ignore' });
