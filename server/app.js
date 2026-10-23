@@ -246,7 +246,7 @@ export function createApp(options = {}) {
       const counts = gm ? one(`SELECT COUNT(*) AS unread,COALESCE(SUM(urgent),0) AS urgent_unread FROM messages
         WHERE group_id=? AND id>? AND user_id<>? AND deleted=0 ${encryptionRequired ? 'AND e2ee_version=1 AND id>?' : ''}`, g.id, gm.last_read, req.user.id,...(encryptionRequired ? [gm.joined_after] : [])) : { unread: 0, urgent_unread: 0 };
       return { ...g, is_admin: !!admin, joined: !!gm, muted: !!gm?.muted, pin_position: gm?.pin_position ?? null,
-        marked_unread: !!gm?.marked_unread, joined_after: gm?.joined_after ?? null, ...counts };
+        marked_unread: !!gm?.marked_unread, joined_after: gm?.joined_after ?? null, self_encrypted: encryptionRequired && encryption.protection(g.id).self_encrypted, ...counts };
     }).filter(Boolean);
     const subs = all('SELECT * FROM subcommunities WHERE community_id=? ORDER BY name COLLATE NOCASE', c.id)
       .map(s => {
@@ -576,8 +576,8 @@ export function createApp(options = {}) {
     if (!Number.isSafeInteger(before) || before < 1) fail(400, 'Invalid message cursor.');
     const floor=encryptionRequired ? encryption.reader(req,req.params.id).gm.joined_after : -1;
     const messages = all(`SELECT m.*,u.name,u.avatar_id,u.bird_id,u.avatar_style,${encryptionRequired ? "''" : 'p.body'} AS parent_body,${encryptionRequired ? 'NULL' : 'pu.name'} AS parent_name,
-      ei.public_key AS signer_key,ei.fingerprint AS signer_fingerprint,signer.name AS signer_name FROM messages m JOIN users u ON u.id=m.user_id
-      LEFT JOIN e2ee_identities ei ON ei.user_id=m.encrypted_by LEFT JOIN users signer ON signer.id=m.encrypted_by
+      COALESCE(kh.public_key,ei.public_key) AS signer_key,COALESCE(m.signer_fingerprint,ei.fingerprint) AS signer_fingerprint,signer.name AS signer_name FROM messages m JOIN users u ON u.id=m.user_id
+      LEFT JOIN e2ee_identities ei ON ei.user_id=m.encrypted_by LEFT JOIN e2ee_key_history kh ON kh.user_id=m.encrypted_by AND kh.fingerprint=m.signer_fingerprint LEFT JOIN users signer ON signer.id=m.encrypted_by
       LEFT JOIN messages p ON p.id=m.reply_to LEFT JOIN users pu ON pu.id=p.user_id
       WHERE m.group_id=? AND m.id<? AND m.id>? ${encryptionRequired ? 'AND m.e2ee_version=1 AND EXISTS(SELECT 1 FROM e2ee_recipients er WHERE er.message_id=m.id AND er.user_id=?)' : ''}
       ORDER BY m.id DESC LIMIT 100`, req.params.id, before,floor,...(encryptionRequired ? [req.user.id] : [])).reverse();
@@ -589,8 +589,8 @@ export function createApp(options = {}) {
     const root = one('SELECT * FROM messages WHERE id=? AND group_id=?', req.params.messageId, req.params.id) || fail(404, 'Thread not found.');
     const rootId = root.reply_to || root.id;
     const floor=encryptionRequired ? encryption.reader(req,req.params.id).gm.joined_after : -1;
-    const messages = all(`SELECT m.*,u.name,u.avatar_id,u.bird_id,u.avatar_style,ei.public_key AS signer_key,ei.fingerprint AS signer_fingerprint,signer.name AS signer_name FROM messages m JOIN users u ON u.id=m.user_id
-      LEFT JOIN e2ee_identities ei ON ei.user_id=m.encrypted_by LEFT JOIN users signer ON signer.id=m.encrypted_by WHERE m.group_id=? AND (m.id=? OR m.reply_to=?) AND m.id>?
+    const messages = all(`SELECT m.*,u.name,u.avatar_id,u.bird_id,u.avatar_style,COALESCE(kh.public_key,ei.public_key) AS signer_key,COALESCE(m.signer_fingerprint,ei.fingerprint) AS signer_fingerprint,signer.name AS signer_name FROM messages m JOIN users u ON u.id=m.user_id
+      LEFT JOIN e2ee_identities ei ON ei.user_id=m.encrypted_by LEFT JOIN e2ee_key_history kh ON kh.user_id=m.encrypted_by AND kh.fingerprint=m.signer_fingerprint LEFT JOIN users signer ON signer.id=m.encrypted_by WHERE m.group_id=? AND (m.id=? OR m.reply_to=?) AND m.id>?
       ${encryptionRequired ? 'AND m.e2ee_version=1 AND EXISTS(SELECT 1 FROM e2ee_recipients er WHERE er.message_id=m.id AND er.user_id=?)' : ''} ORDER BY m.id LIMIT 500`, req.params.id, rootId, rootId,floor,...(encryptionRequired ? [req.user.id] : []));
     for (const m of messages) m.files = all('SELECT f.id,f.name,f.mime,f.size FROM files f JOIN message_files mf ON mf.file_id=f.id WHERE mf.message_id=?', m.id);
     res.json({ messages });
@@ -626,8 +626,8 @@ export function createApp(options = {}) {
     transaction(() => {
       if(checked)encryption.assertRoster(req,g.id,checked.rosterHash);
       if(group(g.id).admin_only && !groupAdmin(req.user.id,group(g.id)))fail(403,'Only admins can post or reply in this Nest.');
-      id = Number(run('INSERT INTO messages(group_id,user_id,body,reply_to,urgent,ciphertext,client_id,encrypted_by,e2ee_version,recipient_hash) VALUES (?,?,?,?,?,?,?,?,?,?)', g.id, req.user.id, body.trim(), reply, urgent,
-        checked?.ciphertext ?? null,checked?.clientId ?? null,checked ? req.user.id : null,checked ? 1 : 0,checked?.rosterHash ?? null).lastInsertRowid);
+      id = Number(run('INSERT INTO messages(group_id,user_id,body,reply_to,urgent,ciphertext,client_id,encrypted_by,e2ee_version,recipient_hash,signer_fingerprint,self_encrypted) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)', g.id, req.user.id, body.trim(), reply, urgent,
+        checked?.ciphertext ?? null,checked?.clientId ?? null,checked ? req.user.id : null,checked ? 1 : 0,checked?.rosterHash ?? null,checked ? encryption.identity(req.user.id).fingerprint : null,checked?.rs.self_encrypted ? 1 : 0).lastInsertRowid);
       if(checked)encryption.recordRecipients(id,checked.rs);
       for (const fid of files) run('INSERT INTO message_files VALUES (?,?)', id, fid);
       run('UPDATE group_members SET last_read=?,marked_unread=0 WHERE group_id=? AND user_id=?', id, g.id, req.user.id);

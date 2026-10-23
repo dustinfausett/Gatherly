@@ -5,6 +5,7 @@ import { Avatar, Modal } from './components';
 import { Bird } from './BirdJourney';
 import SpaceIcon from './SpaceIcon';
 import UnreadEgg from './UnreadEgg';
+import PrivacyShield from './encryption/PrivacyShield';
 
 const unread = circle => circle.unread > 0 || circle.marked_unread;
 const alphabetic = (a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base', numeric: true }) || a.id.localeCompare(b.id);
@@ -46,7 +47,7 @@ function CircleRow({ circle: c, onOpen, onOptions, onChange, openingId }) {
       onClickCapture={e => { if (suppressClick.current) { e.preventDefault(); e.stopPropagation(); suppressClick.current = false; } }}>
       <button className="circle-open" aria-label={`Open Nest ${c.name}`} aria-description={c.private ? 'Private Nest' : undefined} aria-describedby={unread(c) ? `circle-state-${c.id}` : undefined} onClick={() => { if (revealed) setRevealed(false); else onOpen(c.id); }}>
         <span className="row-avatar"><Avatar name={c.name} id={c.avatar_id} size={50} /><span className={`nest-avatar-symbol ${c.private ? 'private-symbol' : ''}`}><SpaceIcon size={18} locked={!!c.private}/></span><UnreadEgg active={!!unread(c)} urgent={c.urgent_unread > 0}/></span>
-        <span className="circle-copy"><span className="circle-name">{c.name}{c.pin_position !== null && <Pin size={13} aria-label="Pinned" />}</span></span>
+        <span className="circle-copy"><span className="circle-name">{c.name}<PrivacyShield active={c.self_encrypted}/>{c.pin_position !== null && <Pin size={13} aria-label="Pinned" />}</span></span>
         {unread(c) && <span id={`circle-state-${c.id}`} className="visually-hidden">{!!c.private && 'Private Nest · '}{c.urgent_unread > 0 ? 'Urgent and unread' : 'Unread'} · {c.unread || 'Marked unread'}</span>}
       </button>
       {c.joined && <button data-row-control className={`circle-mute ${c.muted ? 'muted' : ''}`} aria-label={`${c.muted ? 'Unmute' : 'Mute'} ${c.name}`} aria-pressed={c.muted} disabled={busy} title={c.muted ? 'Unmute notifications' : 'Mute notifications'} onClick={async () => { setBusy(true); try { await onChange(c, { muted: !c.muted }); } finally { setBusy(false); } }}>{c.muted ? <BellOff size={19} /> : <Bell size={19} />}</button>}

@@ -8,17 +8,18 @@ import * as enc from '../shared/encryption.js';
 const password='encrypted browser fixture password';
 async function register(context,name){const username=`secure_${randomUUID().slice(0,8)}`;const r=await context.request.post('/api/auth/register',{data:{username,name,password}});expect(r.status()).toBe(201);return {...(await r.json()).user,username};}
 async function setup(page){
-  await page.goto('/');await page.getByRole('button',{name:'Set up encrypted messaging',exact:true}).click();
+  await page.goto('/');await page.getByRole('button',{name:'Edit your profile',exact:true}).click();
+  await page.getByRole('button',{name:'Use self-managed keys',exact:true}).click();
   const recovery=await page.getByRole('textbox',{name:'Your recovery key',exact:true}).inputValue();expect(recovery).toMatch(/^CHURP1-/);
   await page.getByRole('checkbox',{name:'I saved my recovery key somewhere safe.',exact:true}).check();
-  await page.getByRole('button',{name:'Continue to Churp',exact:true}).click();await expect(page.locator('.encryption-gate')).toHaveCount(0);return recovery;
+  await page.getByRole('button',{name:'Enable self-managed encryption',exact:true}).click();await expect(page.getByRole('button',{name:'Edit your profile',exact:true})).toBeVisible();await expect(page.locator('.recovery-card')).toHaveCount(0);return recovery;
 }
 async function makeTree(context){const tree=(await (await context.request.post('/api/communities',{data:{name:'Private family Tree'}})).json()).community;
   const nest=(await (await context.request.post(`/api/communities/${tree.id}/circles`,{data:{name:'Family chat'}})).json()).group;
   const invite=(await (await context.request.post('/api/invitations',{data:{community_id:tree.id}})).json()).path.split('invite=')[1];return {tree,nest,invite};}
 const openNest=async page=>{await page.getByRole('button',{name:'Open Nest Family chat',exact:true}).click();await expect(page.locator('.chat-heading h1')).toHaveText('Family chat');};
 async function send(page,text){await page.getByRole('textbox',{name:'Write a message',exact:true}).fill(text);await page.getByRole('button',{name:'Send message',exact:true}).click();await expect(page.locator('.message-bubble').filter({hasText:text})).toBeVisible();}
-function database(){const dir=process.env.GATHERLY_E2E_DATA_DIR;if(!dir?.includes('gatherly-browser-e2ee-'))throw new Error('Refusing to open non-test storage.');return new DatabaseSync(join(dir,'gatherly.sqlite'));}
+function database(){const dir=process.env.GATHERLY_E2E_DATA_DIR;if(!dir?.includes('gatherly-browser-e2ee-'))throw new Error('Refusing to open non-test storage.');const db=new DatabaseSync(join(dir,'gatherly.sqlite'));db.exec('PRAGMA busy_timeout=5000');return db;}
 
  test('browser encrypts messages and files; join floors, replies and removal hold',async({page,browser},info)=>{
   const errors=[],requests=[];page.on('pageerror',e=>errors.push(e.message));
@@ -95,7 +96,8 @@ test('a changed contact identity is blocked rather than silently trusted',async(
     const payload=enc.sendPayload({groupId:nest.id,clientId,rosterHash:rs.roster_hash,cipherHash:await enc.digest(cipher),files:[],replyTo:null});
     expect((await page.request.post(`/api/groups/${nest.id}/messages`,{headers,data:{ciphertext:cipher,clientId,rosterHash:rs.roster_hash,files:[],reply_to:null,signature:await enc.sign(fake.privateKey,'send',payload)}})).status()).toBe(201);
     await expect(bp.getByText('Forged identity must never be displayed',{exact:true})).toHaveCount(0);await expect(bp.getByText('This message could not be decrypted or verified.',{exact:true}).first()).toBeVisible();
-    await page.getByRole('textbox',{name:'Write a message',exact:true}).fill('Do not encrypt to a changed identity');await page.getByRole('button',{name:'Send message',exact:true}).click();await expect(page.getByRole('alert')).toContainText('identity changed');
+    await expect(bp.locator('.message').filter({has:bp.getByText('This message could not be decrypted or verified.',{exact:true})}).locator('.message-protection')).toHaveCount(0);
+    await page.getByRole('textbox',{name:'Write a message',exact:true}).fill('Do not encrypt to a changed identity');await page.getByRole('button',{name:'Send message',exact:true}).click();await expect(page.getByRole('alert')).toContainText(/identity changed|key settings changed/);
     // Restore the fixture so cleanup of this account does not leave an artificial key change.
     const restored=await enc.recoverPrivate(account.identity.backup,recovery.replace(/^CHURP1-/,'').replaceAll('-','').toLowerCase()),restoreDb=database();try{restoreDb.prepare('UPDATE e2ee_identities SET public_key=?,fingerprint=? WHERE user_id=?').run(restored.toPublic().armor(),restored.getFingerprint(),alice.id);}finally{restoreDb.close();}
   }finally{await other.close();}
@@ -119,4 +121,42 @@ test('browser converts earlier history and attachments without exposing it to a 
     expect(existsSync(join(process.env.GATHERLY_E2E_DATA_DIR,'uploads',diskName))).toBeFalsy();
     await expect(bp.getByText(secret,{exact:true})).toHaveCount(0);expect((await (await other.request.get(`/api/groups/${nest.id}/messages`)).json()).messages).toEqual([]);
   }finally{await other.close();}
+});
+
+test('managed sign-in is automatic; shields follow member custody and preserve earlier history',async({page,browser},info)=>{
+  const user=await register(page.context(),'Alice'),{tree,nest,invite}=await makeTree(page.context());
+  await page.goto('/');await expect(page.getByRole('button',{name:'Edit your profile',exact:true})).toBeVisible();
+  await expect(page.locator('.recovery-card')).toHaveCount(0);
+  const row=page.locator(`[data-circle-id="${nest.id}"]`),shield=()=>page.getByRole('img',{name:'End-to-end encrypted for new messages',exact:true});
+  await expect(row.locator('.privacy-shield')).toHaveCount(0);await openNest(page);await send(page,'Standard history remains readable');
+  const other=await browser.newContext({...info.project.use,baseURL:'http://127.0.0.1:3101'}),third=await browser.newContext({...info.project.use,baseURL:'http://127.0.0.1:3101'});
+  try{
+    await other.request.post('/api/auth/login',{data:{username:user.username,password}});const fresh=await other.newPage();await fresh.goto('/');await openNest(fresh);
+    await expect(fresh.locator('.message-bubble')).toContainText('Standard history remains readable');await expect(fresh.locator('.recovery-card')).toHaveCount(0);
+    await page.getByRole('button',{name:'Edit your profile',exact:true}).click();await page.getByRole('button',{name:'Use self-managed keys',exact:true}).click();
+    const code=await page.getByRole('textbox',{name:'Your recovery key',exact:true}).inputValue();
+    await expect(page.getByRole('button',{name:'Enable self-managed encryption',exact:true})).toBeDisabled();
+    await page.getByRole('checkbox',{name:'I saved my recovery key somewhere safe.',exact:true}).check();
+    await page.getByRole('button',{name:'Enable self-managed encryption',exact:true}).click();
+    await expect(page.locator('.recovery-card')).toHaveCount(0);await expect(row.locator('.privacy-shield')).toBeVisible();await openNest(page);await expect(page.locator('.chat-heading .privacy-shield')).toBeVisible();
+    await expect(page.locator('.message-bubble')).toContainText('Standard history remains readable');
+    await fresh.reload();await expect(fresh.getByRole('heading',{name:'Unlock this device',exact:true})).toBeVisible();
+    await fresh.getByRole('textbox',{name:'Recovery key',exact:true}).fill(code);await fresh.getByRole('button',{name:'Restore with recovery key',exact:true}).click();await openNest(fresh);
+    await expect(fresh.locator('.message-bubble')).toContainText('Standard history remains readable');
+    await send(page,'Shielded message after opting in');await expect(fresh.locator('.message-bubble').filter({hasText:'Shielded message after opting in'})).toBeVisible();
+    await expect(page.getByText('E2EE when sent',{exact:true})).toHaveCount(1);
+    await register(third,'Bob');const bobPage=await third.newPage();await bobPage.goto('/');await expect(bobPage.getByRole('button',{name:'Edit your profile',exact:true})).toBeVisible();
+    await third.request.post('/api/invitations/accept',{data:{token:invite}});await third.request.post(`/api/groups/${nest.id}/join`);
+    await expect(page.locator('.chat-heading .privacy-shield')).toHaveCount(0);
+    await page.request.patch(`/api/groups/${nest.id}/membership`,{data:{muted:true}});await expect(shield()).toHaveCount(0);
+    await send(page,'Mixed-key conversation');await bobPage.reload();await openNest(bobPage);await expect(bobPage.locator('.message-bubble')).toHaveCount(1);
+    await expect(bobPage.locator('.message-bubble')).toContainText('Mixed-key conversation');
+    await bobPage.getByRole('button',{name:'Edit your profile',exact:true}).click();await bobPage.getByRole('button',{name:'Use self-managed keys',exact:true}).click();
+    await bobPage.getByRole('checkbox',{name:'I saved my recovery key somewhere safe.',exact:true}).check();await bobPage.getByRole('button',{name:'Enable self-managed encryption',exact:true}).click();
+    await expect(page.locator('.chat-heading .privacy-shield')).toBeVisible();await expect(bobPage.getByRole('button',{name:'Edit your profile',exact:true})).toBeVisible();await openNest(bobPage);
+    await send(page,'Everyone self-manages now');await expect(bobPage.locator('.message-bubble').filter({hasText:'Everyone self-manages now'})).toBeVisible();
+    const records=(await (await page.request.get(`/api/groups/${nest.id}/messages`)).json()).messages;
+    expect(records.map(m=>m.self_encrypted)).toEqual([0,1,0,1]);
+    await page.screenshot({path:info.outputPath('automatic-nest-shield.png'),fullPage:true});
+  }finally{await other.close();await third.close();}
 });

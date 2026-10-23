@@ -149,6 +149,25 @@ export function openDatabase(path) {
           WHERE group_id=NEW.group_id AND user_id=NEW.user_id;
       END;
   `);
+  addColumn('e2ee_identities', 'custody', "TEXT NOT NULL DEFAULT 'self'");
+  addColumn('e2ee_identities', 'history_backup', 'TEXT');
+  addColumn('messages', 'signer_fingerprint', 'TEXT');
+  addColumn('messages', 'self_encrypted', 'INTEGER NOT NULL DEFAULT 0');
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS e2ee_managed_keys (
+      user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      fingerprint TEXT NOT NULL, encrypted_key TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS e2ee_key_history (
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      fingerprint TEXT NOT NULL, public_key TEXT NOT NULL,
+      next_fingerprint TEXT NOT NULL, transition_payload TEXT NOT NULL, transition_signature TEXT NOT NULL,
+      PRIMARY KEY(user_id,fingerprint)
+    );
+    UPDATE messages SET signer_fingerprint=(SELECT fingerprint FROM e2ee_identities WHERE user_id=messages.encrypted_by),
+      self_encrypted=CASE WHEN client_id LIKE 'legacy-%' THEN 0 ELSE 1 END
+      WHERE e2ee_version=1 AND signer_fingerprint IS NULL;
+  `);
   addColumn('users', 'bird_id', "TEXT NOT NULL DEFAULT 'blue'");
   // Keep existing profile pictures. New accounts start with a Bluebird avatar.
   addColumn('users', 'avatar_style', "TEXT NOT NULL DEFAULT 'photo'");

@@ -18,9 +18,17 @@ async function fixture(t,legacy=false){
   async function register(username){const r=await fetch(base+'/auth/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username,name:username,password:'encryption fixture password'})});assert.equal(r.status,201);return {...(await r.json()).user,cookie:r.headers.get('set-cookie').split(';')[0]};}
   async function enroll(a){const keys=await enc.generateIdentity(a.id);a.privateKey=keys.privateKey;a.publicKey=keys.publicKey;a.recovery=enc.randomSecret();a.deviceId=randomUUID();a.deviceName='Fixture device';const backup=await enc.protectPrivate(a.privateKey,a.recovery);
     const payload=enc.enrollmentPayload({userId:a.id,publicKey:a.publicKey,backupHash:await enc.digest(backup),deviceId:a.deviceId,deviceName:a.deviceName});await ok('/e2ee/identity',a,'POST',{...payload,backup,signature:await enc.sign(a.privateKey,'enroll',payload)});return a;}
+  async function managed(a){a.deviceId=randomUUID();a.deviceName='Managed fixture';const account=await ok('/e2ee/managed-device',a,'POST',{deviceId:a.deviceId,deviceName:a.deviceName});a.privateKey=await enc.readPrivate(account.privateKey);a.publicKey=account.identity.public_key;return a;}
+  async function selfManaged(a){
+    const previous=a.privateKey,keys=await enc.generateIdentity(a.id),recovery=enc.randomSecret(),backup=await enc.protectPrivate(keys.privateKey,recovery);
+    const historyBackup=await enc.seal(keys.privateKey,[keys.publicKey],{kind:'key-history',userId:a.id,keys:[previous.armor()]});
+    const payload={userId:a.id,fromFingerprint:previous.getFingerprint(),toFingerprint:keys.fingerprint,publicKey:keys.publicKey,backupHash:await enc.digest(backup),historyHash:await enc.digest(historyBackup)};
+    const body={publicKey:keys.publicKey,backup,historyBackup,signature:await enc.sign(previous,'self-managed-transition',payload),newSignature:await enc.sign(keys.privateKey,'accept-self-managed',payload)};
+    await ok('/e2ee/self-managed',a,'POST',body);a.privateKey=keys.privateKey;a.publicKey=keys.publicKey;a.recovery=recovery;return {previous,body,payload};
+  }
   async function prepare(a,gid,body,attachments=[],replyTo=null,legacyMessage=null){
     const rs=legacyMessage?.roster || await ok(`/groups/${gid}/e2ee/roster`,a),clientId=legacyMessage ? `legacy-${legacyMessage.id}` : randomUUID();
-    const contents={version:1,kind:'nest-message',groupId:gid,clientId,senderId:legacyMessage?.user_id || a.id,signerId:a.id,rosterHash:rs.roster_hash,replyTo,migrated:!!legacyMessage,body,attachments};
+    const contents={version:1,kind:'nest-message',groupId:gid,clientId,senderId:legacyMessage?.user_id || a.id,signerId:a.id,rosterHash:rs.roster_hash,replyTo,migrated:!!legacyMessage,selfEncrypted:!legacyMessage && rs.self_encrypted,body,attachments};
     const ciphertext=await enc.seal(a.privateKey,rs.readers.filter(r=>r.public_key).map(r=>r.public_key),contents),files=attachments.map(f=>f.id);
     const payload=enc.sendPayload({groupId:gid,clientId,rosterHash:rs.roster_hash,cipherHash:await enc.digest(ciphertext),files,replyTo});
     return {ciphertext,clientId,rosterHash:rs.roster_hash,files,reply_to:replyTo,signature:await enc.sign(a.privateKey,legacyMessage ? 'migrate' : 'send',legacyMessage ? {...payload,legacyId:legacyMessage.id} : payload)};
@@ -28,7 +36,7 @@ async function fixture(t,legacy=false){
   async function send(a,gid,body,attachments=[],replyTo=null){const prepared=await prepare(a,gid,body,attachments,replyTo);return {...await ok(`/groups/${gid}/messages`,a,'POST',prepared),prepared};}
   async function upload(a,plain,name='private-notes.txt'){const encrypted=await enc.encryptFile(plain),form=new FormData();form.append('file',new Blob([encrypted.encrypted]),'attachment.pgp');const file=(await ok('/e2ee/uploads',a,'POST',form)).file;return {id:file.id,name,size:plain.length,mime:'application/octet-stream',key:encrypted.key,sha256:encrypted.sha256};}
   async function readProof(a,kind,id){const payload={kind,id,deviceId:a.deviceId,time:Date.now(),nonce:enc.randomSecret(16)};return {'x-churp-encryption-proof':JSON.stringify({time:payload.time,nonce:payload.nonce,signature:await enc.sign(a.privateKey,'legacy-read',payload)})};}
-  return {dir,get runtime(){return runtime;},req,ok,register,enroll,prepare,send,upload,readProof,restart:async()=>{await stop();await start();}};
+  return {dir,get runtime(){return runtime;},req,ok,register,enroll,managed,selfManaged,prepare,send,upload,readProof,restart:async()=>{await stop();await start();}};
 }
 
 test('production-default E2EE protects contents, recipients, history boundaries and recovery',async t=>{
@@ -122,8 +130,8 @@ test('existing history migrates on authorized browsers without granting later jo
   assert.deepEqual((await f.ok(`/groups/${nest.id}/messages`,alice)).messages,[]);
   assert.equal((await f.req(`/groups/${nest.id}/e2ee/legacy`,alice)).status,403);
   let legacy=(await f.ok(`/groups/${nest.id}/e2ee/legacy`,alice,'GET',null,await f.readProof(alice,'group',nest.id))).messages[0];
-  assert.equal(legacy.body,plain);assert.deepEqual(legacy.roster.missing.map(r=>r.id),[bob.id]);assert.ok(!legacy.roster.readers.some(r=>r.id===late.id));
-  await f.enroll(bob);
+  assert.equal(legacy.body,plain);assert.deepEqual(legacy.roster.missing,[]);assert.equal(legacy.roster.readers.find(r=>r.id===bob.id).custody,'managed');assert.ok(!legacy.roster.readers.some(r=>r.id===late.id));
+  await f.managed(bob);
   legacy=(await f.ok(`/groups/${nest.id}/e2ee/legacy`,alice,'GET',null,await f.readProof(alice,'group',nest.id))).messages[0];
   const oldBytes=await f.ok(`/e2ee/legacy-files/${oldFile.id}`,alice,'GET',null,await f.readProof(alice,'file',oldFile.id));assert.deepEqual(oldBytes,filePlain);
   const attachment=await f.upload(alice,filePlain,'old-secret-name.txt'),prepared=await f.prepare(alice,nest.id,legacy.body,[attachment],null,legacy);
@@ -144,4 +152,58 @@ test('production cannot opt out of encryption through the legacy fixture option'
   const server=createServer(runtime.app);await new Promise(r=>server.listen(0,'127.0.0.1',r));
   try{const response=await fetch(`http://127.0.0.1:${server.address().port}/api/config`);assert.equal((await response.json()).encryptionRequired,true);}
   finally{runtime.close();await new Promise(r=>server.close(r));rmSync(dir,{recursive:true,force:true});}
+});
+
+test('hybrid custody restores standard accounts and derives shields from all joined members',async t=>{
+  const f=await fixture(t),alice=await f.managed(await f.register('managed_alice')),bob=await f.register('managed_bob');
+  const tree=(await f.ok('/communities',alice,'POST',{name:'Hybrid Tree'})).community;
+  const invite=(await f.ok('/invitations',alice,'POST',{community_id:tree.id})).path.split('invite=')[1];await f.ok('/invitations/accept',bob,'POST',{token:invite});
+  const nest=(await f.ok(`/communities/${tree.id}/circles`,alice,'POST',{name:'Hybrid Nest'})).group;await f.ok(`/groups/${nest.id}/join`,bob,'POST');
+  const status=async()=> (await f.ok(`/communities/${tree.id}`,alice)).community.circles.find(n=>n.id===nest.id).self_encrypted;
+  assert.equal(await status(),false);
+  const old=await f.send(alice,nest.id,'Before private keys');
+  await f.managed(bob);assert.equal((await enc.open(bob.privateKey,alice.publicKey,old.prepared.ciphertext)).body,'Before private keys');
+  const managedKey=alice.privateKey,managedPublic=alice.publicKey,firstFingerprint=managedKey.getFingerprint();
+  const stored=f.runtime.db.prepare('SELECT * FROM e2ee_managed_keys WHERE user_id=?').get(alice.id);
+  assert.ok(!stored.encrypted_key.includes('PRIVATE KEY'));assert.ok(!readFileSync(join(f.dir,'gatherly.sqlite')).includes(Buffer.from(managedKey.armor())));
+  assert.equal((await f.ok('/e2ee/account',alice)).identity.custody,'managed');
+  assert.equal((await f.req('/e2ee/backup',alice,'PUT',{backup:'Cannot replace managed storage with a personal backup'})).status,409);
+  assert.ok(!JSON.stringify(await f.ok(`/e2ee/identities/${alice.id}`,bob)).includes('PRIVATE KEY'));
+  await f.restart();const other={...alice,deviceId:randomUUID()};
+  const restored=await f.ok('/e2ee/managed-device',other,'POST',{deviceId:other.deviceId,deviceName:'Replacement phone'});
+  assert.equal((await enc.readPrivate(restored.privateKey)).getFingerprint(),firstFingerprint);
+  const stale=await f.prepare(alice,nest.id,'Stale managed recipient');
+  const changed=await f.selfManaged(alice);
+  assert.notEqual(alice.privateKey.getFingerprint(),firstFingerprint);
+  assert.equal(f.runtime.db.prepare('SELECT COUNT(*) AS n FROM e2ee_managed_keys WHERE user_id=?').get(alice.id).n,0);
+  assert.equal((await f.req('/e2ee/managed-device',alice,'POST',{deviceId:randomUUID(),deviceName:'Cannot bypass recovery'})).status,409);
+  assert.equal((await f.req(`/groups/${nest.id}/messages`,bob,'POST',stale)).status,409);
+  assert.equal(await status(),false);
+  await f.ok(`/groups/${nest.id}/membership`,bob,'PATCH',{muted:true});assert.equal(await status(),false);
+  const selfAccount=await f.ok('/e2ee/account',alice),recovered=await enc.recoverPrivate(selfAccount.identity.backup,alice.recovery);
+  const history=await enc.open(recovered,alice.publicKey,selfAccount.identity.history_backup);
+  assert.equal((await enc.readPrivate(history.keys[0])).getFingerprint(),firstFingerprint);
+  const earlier=(await f.ok(`/groups/${nest.id}/messages`,alice)).messages.find(m=>m.id===old.id);
+  assert.equal(earlier.signer_key,managedPublic);assert.equal(earlier.self_encrypted,0);
+  assert.equal((await enc.open(await enc.readPrivate(history.keys[0]),earlier.signer_key,earlier.ciphertext)).body,'Before private keys');
+  const replacementSecret=enc.randomSecret(),replacementBackup=await enc.protectPrivate(alice.privateKey,replacementSecret);
+  await f.ok('/e2ee/backup',alice,'PUT',{backup:replacementBackup,signature:await enc.sign(alice.privateKey,'backup',{userId:alice.id,backupHash:await enc.digest(replacementBackup)})});
+  const replacementAccount=await f.ok('/e2ee/account',alice);
+  await assert.rejects(enc.recoverPrivate(replacementAccount.identity.backup,alice.recovery));
+  assert.equal((await enc.recoverPrivate(replacementAccount.identity.backup,replacementSecret)).getFingerprint(),alice.privateKey.getFingerprint());
+  assert.equal(replacementAccount.identity.history_backup,selfAccount.identity.history_backup);alice.recovery=replacementSecret;
+  await enc.verify(managedPublic,'self-managed-transition',changed.payload,changed.body.signature);
+  const exposedKeys=[managedKey,bob.privateKey];await f.selfManaged(bob);assert.equal(await status(),true);
+  const secureFile=await f.upload(alice,enc.bytes('Future private attachment'));
+  const secure=await f.send(alice,nest.id,'After every member opted in',[secureFile]);
+  for(const key of exposedKeys)await assert.rejects(enc.open(key,alice.publicKey,secure.prepared.ciphertext));
+  const secureMessage=(await f.ok(`/groups/${nest.id}/messages`,bob)).messages.find(m=>m.id===secure.id);
+  assert.equal(secureMessage.self_encrypted,1);assert.equal((await enc.open(bob.privateKey,alice.publicKey,secureMessage.ciphertext)).body,'After every member opted in');
+  const late=await f.register('late_managed');await f.ok('/invitations/accept',late,'POST',{token:invite});await f.ok(`/groups/${nest.id}/join`,late,'POST');
+  assert.equal(await status(),false);await f.managed(late);assert.deepEqual((await f.ok(`/groups/${nest.id}/messages`,late)).messages,[]);
+  const mixed=await f.send(alice,nest.id,'Managed participant joined');assert.equal((await f.ok(`/groups/${nest.id}/messages`,bob)).messages.find(m=>m.id===mixed.id).self_encrypted,0);
+  await f.ok(`/groups/${nest.id}/join`,late,'DELETE');assert.equal(await status(),true);
+  const latePrivate=(await f.ok(`/communities/${tree.id}/circles`,alice,'POST',{name:'Empty Nest'})).group;
+  await f.ok(`/groups/${latePrivate.id}/join`,alice,'DELETE');assert.equal((await f.ok(`/communities/${tree.id}`,alice)).community.circles.find(n=>n.id===latePrivate.id).self_encrypted,false);
+  await f.restart();assert.equal(await status(),true);assert.equal(f.runtime.db.prepare('SELECT COUNT(*) AS n FROM e2ee_managed_keys WHERE user_id IN (?,?)').get(alice.id,bob.id).n,0);
 });

@@ -10,7 +10,7 @@ The repository contains a Dockerfile and `railway.json`. Railway builds the fron
 4. In the service's **Settings → Networking**, generate a public domain. If Railway asks for a target port, use the listening `PORT` from the service logs (default `3000`). Railway provides HTTPS for the generated domain.
 5. Redeploy after generating the domain. The app derives `APP_URL` from Railway's `RAILWAY_PUBLIC_DOMAIN`, and creates private push-signing keys once on the persistent Volume. Open the generated HTTPS domain and create your account. The first user must still create a Tree; no public admin account is preinstalled.
 
-The app is ready to serve when Railway's deployment health check to `/api/health` succeeds. Validate it by registering, completing encryption setup and saving the recovery key, creating a Tree, optional Branch, and Nest, sending a message, and inviting another account. Both accounts must finish encryption setup before sending to their joined Nest. Redeploy once and confirm the same account and encrypted messages remain.
+The app is ready to serve when Railway's deployment health check to `/api/health` succeeds. Validate it by registering, using automatic managed-key sign-in, creating a Tree, optional Branch, and Nest, sending a message, and inviting another account. Self-managed keys are optional under Profile → Message privacy; save a recovery key before confirming. The Nest shield appears only when all joined members use self-managed keys. Redeploy once and confirm the same account and encrypted messages remain.
 
 To test the production container locally before deploying:
 
@@ -31,7 +31,7 @@ The smoke check uses a temporary Docker Volume and removes its own containers an
 
 Retain the Volume when changing or redeploying the service. Back up the entire `/data` directory, including SQLite and its WAL files, `uploads/`, and `push-keys.json`. A simple consistent backup stops the app before copying the directory. Do not place real data on a service without a Volume or increase replica count on this SQLite version.
 
-For the encryption upgrade, read [the migration and recovery guide](ENCRYPTION.md). Earlier messages remain pending browser conversion until eligible readers have encryption identities. Do not promise that historical backups are encrypted: Railway snapshots and `gatherly.sqlite.before-circles.bak` can contain old plaintext. Review retention separately after conversion and a verified replacement backup. Avoid changing the app origin unnecessarily: local encryption keys belong to the browser origin, and changing domains requires recovery or approval from the old origin. Do not clear local site data unless the recovery key or another approved device is available.
+For the encryption upgrade, read [the migration and recovery guide](ENCRYPTION.md). Earlier messages convert on eligible browsers; missing identities default to managed keys. Existing self-managed accounts stay self-managed. Do not promise that historical backups are encrypted: Railway snapshots and `gatherly.sqlite.before-circles.bak` can contain old plaintext. Review retention separately after conversion and a verified replacement backup. Avoid changing the app origin unnecessarily: local encryption keys belong to the browser origin, and changing domains requires recovery or approval from the old origin. Do not clear local site data unless the recovery key or another approved device is available.
 
 ## Troubleshooting
 
@@ -44,3 +44,9 @@ For the encryption upgrade, read [the migration and recovery guide](ENCRYPTION.m
 
 
 If the app still shows “Gatherly”, “Community”, “Group”, or “Circle” in its controls, check the service’s **Deployments** tab. The active deployment must use the latest commit on GitHub `main`; a failed or disabled automatic deployment leaves the previous version running. Redeploy the latest commit, wait for **Active**, then refresh the app. The current Public Networking domain is the one listed in Railway Settings; previously generated URLs may no longer work. Keep the domain target port matched to the listening port in Deploy Logs (currently 8080 for the existing service).
+
+## Managed-key vault
+
+The app creates `/data/key-vault.key` once if `CHURP_KEY_VAULT_SECRET` is absent. Preserve this owner-only file across releases. It wraps managed users' message keys; losing it loses automatic access to their history. A missing or incorrect master stops startup when managed keys already exist. Do not regenerate it to fix a startup error.
+
+For a separate secret manager, set `CHURP_KEY_VAULT_SECRET` to the existing master value through Railway's secret UI; never paste it into chat or logs. The value must contain 64 hexadecimal characters. This release does not rotate the master automatically. A whole-Volume backup includes the fallback master and database, so protect it as sensitive data. Self-managed users' new readable keys are not in this vault.

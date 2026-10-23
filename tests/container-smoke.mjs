@@ -51,7 +51,7 @@ async function start() {
   }
   throw new Error(`Container did not become healthy: ${docker('logs', container)}`);
 }
-async function browserCheck(cid,gid,recovery){
+async function browserCheck(cid,gid,recovery,managedFixture){
   const temporary=mkdtempSync(join(tmpdir(),'churp-container-browser-'));let proxy,browser;
   try{
     execFileSync('openssl',['req','-x509','-newkey','rsa:2048','-nodes','-keyout',join(temporary,'key.pem'),'-out',join(temporary,'cert.pem'),'-days','1','-subj','/CN=localhost'],{stdio:'ignore'});
@@ -80,6 +80,22 @@ async function browserCheck(cid,gid,recovery){
     await expect.poll(()=>page.locator('.image-attachment img').evaluate(img=>img.naturalWidth)).toBe(1);
     assert.deepEqual(errors,[]);assert.deepEqual(await page.evaluate(()=>window.cspViolations),[]);
     await context.close();console.log('PASS: production browser recovery, local key persistence, encrypted photo rendering and strict CSP over HTTPS.');
+    const managed=await browser.newContext({ignoreHTTPSErrors:true}),split=managedFixture.cookie.indexOf('=');
+    await managed.addCookies([{name:managedFixture.cookie.slice(0,split),value:managedFixture.cookie.slice(split+1),url:origin,secure:true,httpOnly:true,sameSite:'Lax'}]);
+    const mp=await managed.newPage();mp.on('pageerror',error=>errors.push(error.message));await mp.goto(origin);
+    await expect(mp.getByRole('button',{name:'Edit your profile',exact:true})).toBeVisible();await expect(mp.locator('.recovery-card')).toHaveCount(0);
+    const tree=await (await managed.request.post(`${origin}/api/communities`,{data:{name:'Managed restore Tree'}})).json();
+    const nest=await (await managed.request.post(`${origin}/api/communities/${tree.community.id}/circles`,{data:{name:'Managed restore Nest'}})).json();
+    const target=`${origin}/?community=${tree.community.id}&group=${nest.group.id}`;await mp.goto(target);
+    await mp.getByRole('textbox',{name:'Write a message',exact:true}).fill('Restored through ordinary sign-in');await mp.getByRole('button',{name:'Send message',exact:true}).click();
+    await expect(mp.locator('.message-bubble')).toContainText('Restored through ordinary sign-in');await expect(mp.locator('.privacy-shield')).toHaveCount(0);
+    await managed.close();
+    const replacement=await browser.newContext({ignoreHTTPSErrors:true});
+    const login=await replacement.request.post(`${origin}/api/auth/login`,{data:{username:'managed_smoke',password:'Temporary managed password!'}});assert.equal(login.status(),200);
+    const rp=await replacement.newPage();rp.on('pageerror',error=>errors.push(error.message));await rp.goto(target);
+    await expect(rp.locator('.message-bubble')).toContainText('Restored through ordinary sign-in');await expect(rp.locator('.recovery-card')).toHaveCount(0);
+    assert.deepEqual(errors,[]);await replacement.close();
+    console.log('PASS: managed accounts restore through ordinary sign-in on fresh browsers after container replacement.');
   }finally{if(browser)await browser.close();if(proxy){proxy.closeAllConnections();await new Promise(resolve=>proxy.close(resolve));}rmSync(temporary,{recursive:true,force:true});}
 }
 try {
@@ -116,6 +132,12 @@ try {
   const keyBefore = (await request('/config')).data.vapidPublicKey;
   assert.ok(keyBefore);
   assert.deepEqual(await enc.decryptFile((await request(`/files/${fileId}`)).data,attachment),filePlain);
+  const selfCookie=cookie,selfDevice=deviceId;
+  const registeredManaged=await request('/auth/register','POST',{username:'managed_smoke',name:'Managed smoke',password:'Temporary managed password!'});
+  const managedCookie=registeredManaged.response.headers.get('set-cookie').split(';')[0];cookie=managedCookie;deviceId=randomUUID();
+  const managedAccount=(await request('/e2ee/managed-device','POST',{deviceId,deviceName:'Managed container fixture'})).data;
+  const managedFingerprint=managedAccount.identity.fingerprint;assert.equal((await enc.readPrivate(managedAccount.privateKey)).getFingerprint(),managedFingerprint);
+  cookie=selfCookie;deviceId=selfDevice;
   docker('stop', container);
   docker('rm', container);
   container=containers[1];
@@ -127,7 +149,11 @@ try {
   assert.equal((await enc.open(restored,keys.publicKey,saved.ciphertext)).body,'A durable message.');
   assert.deepEqual(await enc.decryptFile((await request(`/files/${fileId}`)).data,attachment),filePlain);
   assert.equal((await request('/config')).data.vapidPublicKey, keyBefore);
-  await browserCheck(cid,gid,recovery);
+  cookie=managedCookie;deviceId=randomUUID();
+  const restoredManaged=(await request('/e2ee/managed-device','POST',{deviceId,deviceName:'After replacement'})).data;
+  assert.equal(restoredManaged.identity.fingerprint,managedFingerprint);assert.equal((await enc.readPrivate(restoredManaged.privateKey)).getFingerprint(),managedFingerprint);
+  cookie=selfCookie;deviceId=selfDevice;
+  await browserCheck(cid,gid,recovery,{cookie:managedCookie});
   console.log('PASS: production container, HTTPS proxy headers, secure sessions, encrypted Nest messages/files, recovery backup and volume persistence across replacement.');
   console.log('PASS: push keys persist; local .env is excluded; Railway startup requires a Volume.');
 } finally {

@@ -1,15 +1,42 @@
 import { randomUUID, createHash } from 'node:crypto';
 import { readFileSync, unlinkSync } from 'node:fs';
-import { join, basename } from 'node:path';
+import { join, basename, dirname } from 'node:path';
 import multer from 'multer';
 import { rateLimit } from 'express-rate-limit';
-import { canonical, digest, enrollmentPayload, sendPayload, readPublic, validateBackup, validateCiphertext, validateEncryptedFile, verify, FILE_LIMIT } from '../shared/encryption.js';
+import { canonical, digest, enrollmentPayload, sendPayload, readPublic, generateIdentity, validateBackup, validateCiphertext, validateEncryptedFile, verify, FILE_LIMIT } from '../shared/encryption.js';
+import { keyVault } from './key-vault.js';
 
 export function installEncryption({app,db,uploadDir,enabled,transaction,refresh,refreshUser,group,membership,visibleCircle,testing}) {
   const one=(sql,...args)=>db.prepare(sql).get(...args), all=(sql,...args)=>db.prepare(sql).all(...args), run=(sql,...args)=>db.prepare(sql).run(...args);
   const fail=(status,message)=>{throw Object.assign(new Error(message),{status});};
   const uuid=value=>typeof value==='string' && /^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(value);
   const identity=id=>one('SELECT * FROM e2ee_identities WHERE user_id=?',id);
+  const vault=enabled ? keyVault(dirname(uploadDir),!!one('SELECT 1 FROM e2ee_managed_keys LIMIT 1')) : null;
+  if(enabled){const saved=one('SELECT * FROM e2ee_managed_keys LIMIT 1');
+    if(saved)try{vault.open(saved.user_id,saved.fingerprint,saved.encrypted_key);}catch{throw new Error('Cannot unlock the managed key vault. Restore the original key-vault.key or CHURP_KEY_VAULT_SECRET; do not replace the master key.');}
+  }
+  const provisioning=new Map();
+  const history=userId=>all('SELECT * FROM e2ee_key_history WHERE user_id=?',userId).map(h=>({...h,payload:JSON.parse(h.transition_payload)}));
+  const protection=gid=>{
+    const rs=one(`SELECT COUNT(*) AS members,COALESCE(SUM(CASE WHEN i.custody='self' AND i.public_key IS NOT NULL
+      AND NOT EXISTS(SELECT 1 FROM e2ee_managed_keys mk WHERE mk.user_id=gm.user_id) THEN 1 ELSE 0 END),0) AS self_members
+      FROM group_members gm JOIN groups g ON g.id=gm.group_id JOIN community_members cm ON cm.community_id=g.community_id AND cm.user_id=gm.user_id
+      LEFT JOIN e2ee_identities i ON i.user_id=gm.user_id WHERE gm.group_id=?`,gid);
+    return {self_encrypted:rs.members>0 && rs.members===rs.self_members,member_count:rs.members,self_managed_count:rs.self_members};
+  };
+  async function ensureManaged(userId){
+    if(identity(userId))return identity(userId);
+    if(!enabled)fail(409,'Encrypted messaging is unavailable in this fixture.');
+    if(provisioning.has(userId))return provisioning.get(userId);
+    const task=(async()=>{
+      const keys=await generateIdentity(userId);
+      transaction(()=>{if(identity(userId))return;
+        run("INSERT INTO e2ee_identities(user_id,public_key,fingerprint,backup,created_at,custody) VALUES (?,?,?,'',?,'managed')",userId,keys.publicKey,keys.fingerprint,Date.now());
+        run('INSERT INTO e2ee_managed_keys VALUES (?,?,?)',userId,keys.fingerprint,vault.seal(userId,keys.fingerprint,keys.privateKey.armor()));
+      });return identity(userId);
+    })().finally(()=>provisioning.delete(userId));provisioning.set(userId,task);return task;
+  }
+  async function prepareMembers(gid,messageId=null){for(const r of members(gid,messageId).missing)await ensureManaged(r.id);}
   const device=req=>{
     const id=req.get('x-churp-device');
     if(!id || !one('SELECT 1 FROM e2ee_devices WHERE id=? AND user_id=?',id,req.user.id))fail(403,'Unlock encrypted messaging on this device first.');
@@ -17,17 +44,17 @@ export function installEncryption({app,db,uploadDir,enabled,transaction,refresh,
   };
   const publicAccount=userId=>{
     const record=identity(userId);
-    return {identity:record ? {public_key:record.public_key,fingerprint:record.fingerprint,backup:record.backup}:null,
+    return {identity:record ? {public_key:record.public_key,fingerprint:record.fingerprint,backup:record.backup,custody:record.custody,history_backup:record.history_backup}:null,
       devices:all('SELECT id,name,created_at FROM e2ee_devices WHERE user_id=? ORDER BY created_at',userId)};
   };
   function members(gid,messageId=null) {
-    const values=all(`SELECT u.id,u.name,gm.join_token,gm.joined_after,i.public_key,i.fingerprint
+    const values=all(`SELECT u.id,u.name,gm.join_token,gm.joined_after,i.public_key,i.fingerprint,i.custody
       FROM group_members gm JOIN users u ON u.id=gm.user_id JOIN groups g ON g.id=gm.group_id
       JOIN community_members cm ON cm.community_id=g.community_id AND cm.user_id=gm.user_id
       LEFT JOIN e2ee_identities i ON i.user_id=u.id
       WHERE gm.group_id=? ${messageId===null ? '' : 'AND gm.joined_after<? AND EXISTS(SELECT 1 FROM e2ee_legacy_readers lr WHERE lr.user_id=u.id AND lr.message_id=?)'} ORDER BY u.id`,gid,...(messageId===null ? [] : [messageId,messageId]));
-    const roster_hash=createHash('sha256').update(canonical(values.map(u=>[u.id,u.join_token,u.fingerprint]))).digest('hex');
-    return {readers:values,roster_hash,missing:values.filter(u=>!u.public_key).map(({id,name})=>({id,name}))};
+    const roster_hash=createHash('sha256').update(canonical(values.map(u=>[u.id,u.join_token,u.fingerprint,u.custody]))).digest('hex');
+    return {readers:values,roster_hash,self_encrypted:values.length>0 && values.every(u=>u.custody==='self' && !one('SELECT 1 FROM e2ee_managed_keys WHERE user_id=?',u.id)),missing:values.filter(u=>!u.public_key).map(({id,name})=>({id,name}))};
   }
   function reader(req,gid) {
     const g=visibleCircle(req.user.id,gid), gm=one('SELECT * FROM group_members WHERE group_id=? AND user_id=?',gid,req.user.id);
@@ -84,6 +111,44 @@ export function installEncryption({app,db,uploadDir,enabled,transaction,refresh,
   }
   const limited=rateLimit({windowMs:15*60*1000,limit:testing ? 1000 : 30,keyGenerator:req=>req.user.id,message:{error:'Too many encryption setup attempts. Please try later.'}});
   app.get('/api/e2ee/account',(req,res)=>res.json(publicAccount(req.user.id)));
+  app.get('/api/e2ee/identities/:id',(req,res)=>{
+    const i=identity(req.params.id);if(!i)fail(404,'Encryption identity not found.');
+    res.json({public_key:i.public_key,fingerprint:i.fingerprint,custody:i.custody,history:history(req.params.id)});
+  });
+  app.post('/api/e2ee/managed-device',limited,async(req,res)=>{
+    const {deviceId,deviceName}=req.body;
+    if(!uuid(deviceId) || typeof deviceName!=='string' || !deviceName.trim() || deviceName.length>80)fail(400,'Choose a valid device name.');
+    const i=await ensureManaged(req.user.id);
+    if(i.custody!=='managed')fail(409,'This account uses self-managed keys. Use your recovery key or an approved device.');
+    const stored=one('SELECT * FROM e2ee_managed_keys WHERE user_id=? AND fingerprint=?',req.user.id,i.fingerprint);
+    if(!stored)fail(503,'The managed key vault is unavailable. Please try again later.');
+    const privateKey=vault.open(req.user.id,i.fingerprint,stored.encrypted_key);
+    transaction(()=>{
+      if(identity(req.user.id).fingerprint!==i.fingerprint || identity(req.user.id).custody!=='managed')fail(409,'Key settings changed. Reload this device.');
+      if(one('SELECT 1 FROM e2ee_devices WHERE id=? AND user_id<>?',deviceId,req.user.id))fail(409,'Device ID is already in use.');
+      run('INSERT OR IGNORE INTO e2ee_devices VALUES (?,?,?,?)',deviceId,req.user.id,deviceName.trim(),Date.now());
+    });res.json({...publicAccount(req.user.id),privateKey});
+  });
+  app.post('/api/e2ee/self-managed',limited,async(req,res)=>{
+    device(req);const previous=identity(req.user.id);
+    if(previous?.custody!=='managed')fail(409,'Self-managed encryption is already enabled.');
+    const {publicKey,backup,historyBackup,signature,newSignature}=req.body;let key,payload;
+    try{
+      key=await readPublic(publicKey);
+      if(key.getUserIDs().length!==1 || key.getUserIDs()[0]!==`Churp account ${req.user.id}` || key.getFingerprint()===previous.fingerprint)throw new Error('A fresh identity is required');
+      await validateBackup(backup,key.getFingerprint());await validateCiphertext(historyBackup,[publicKey]);
+      payload={userId:req.user.id,fromFingerprint:previous.fingerprint,toFingerprint:key.getFingerprint(),publicKey,backupHash:await digest(backup),historyHash:await digest(historyBackup)};
+      await verify(previous.public_key,'self-managed-transition',payload,signature);
+      await verify(publicKey,'accept-self-managed',payload,newSignature);
+    }catch{fail(400,'The new self-managed identity or recovery backup could not be verified.');}
+    transaction(()=>{
+      const latest=identity(req.user.id);if(latest.custody!=='managed' || latest.fingerprint!==previous.fingerprint)fail(409,'Key settings changed. Reload before continuing.');
+      if(one('SELECT 1 FROM e2ee_identities WHERE fingerprint=?',key.getFingerprint()) || one('SELECT 1 FROM e2ee_key_history WHERE fingerprint=?',key.getFingerprint()))fail(409,'The new identity must be unique.');
+      run('INSERT INTO e2ee_key_history VALUES (?,?,?,?,?,?)',req.user.id,previous.fingerprint,previous.public_key,key.getFingerprint(),canonical(payload),signature);
+      run("UPDATE e2ee_identities SET public_key=?,fingerprint=?,backup=?,history_backup=?,custody='self' WHERE user_id=?",publicKey,key.getFingerprint(),backup,historyBackup,req.user.id);
+      run('DELETE FROM e2ee_managed_keys WHERE user_id=?',req.user.id);
+    });refresh();res.json(publicAccount(req.user.id));
+  });
   app.post('/api/e2ee/identity',limited,async(req,res)=>{
     if(identity(req.user.id))fail(409,'This account already has an encryption identity. Use recovery or another approved device.');
     const {publicKey,backup,deviceId,deviceName,signature}=req.body;
@@ -98,7 +163,7 @@ export function installEncryption({app,db,uploadDir,enabled,transaction,refresh,
     transaction(()=>{
       if(identity(req.user.id))fail(409,'Encryption was already set up on another device. Use recovery.');
       if(one('SELECT 1 FROM e2ee_identities WHERE fingerprint=?',key.getFingerprint()))fail(409,'An encryption identity must be unique to this account.');
-      run('INSERT INTO e2ee_identities VALUES (?,?,?,?,?)',req.user.id,publicKey,key.getFingerprint(),backup,Date.now());
+      run('INSERT INTO e2ee_identities(user_id,public_key,fingerprint,backup,created_at) VALUES (?,?,?,?,?)',req.user.id,publicKey,key.getFingerprint(),backup,Date.now());
       run('INSERT INTO e2ee_devices VALUES (?,?,?,?)',deviceId,req.user.id,deviceName.trim(),Date.now());
     });
     refresh();res.status(201).json(publicAccount(req.user.id));
@@ -113,9 +178,11 @@ export function installEncryption({app,db,uploadDir,enabled,transaction,refresh,
   });
   app.put('/api/e2ee/backup',limited,async(req,res)=>{
     device(req);const i=identity(req.user.id);
+    if(i?.custody!=='self')fail(409,'Personal recovery keys are only used with self-managed encryption.');
     try{await validateBackup(req.body.backup,i.fingerprint);}catch{fail(400,'An encrypted matching recovery backup is required.');}
     await proof(req,'backup',{userId:req.user.id,backupHash:await digest(req.body.backup)},req.body.signature);
-    run('UPDATE e2ee_identities SET backup=? WHERE user_id=?',req.body.backup,req.user.id);res.json({ok:true});
+    if(!run("UPDATE e2ee_identities SET backup=? WHERE user_id=? AND fingerprint=? AND custody='self'",req.body.backup,req.user.id,i.fingerprint).changes)fail(409,'Key settings changed. Reload before replacing your recovery key.');
+    res.json({ok:true});
   });
   app.post('/api/e2ee/transfers',limited,async(req,res)=>{
     const i=identity(req.user.id);if(!i)fail(409,'Set up the original encryption identity first.');
@@ -138,12 +205,12 @@ export function installEncryption({app,db,uploadDir,enabled,transaction,refresh,
     refreshUser(req.user.id);res.json({ok:true});
   });
   app.delete('/api/e2ee/transfers/:id',async(req,res)=>{device(req);transfer(req);run('DELETE FROM e2ee_transfers WHERE id=? AND user_id=?',req.params.id,req.user.id);res.json({ok:true});});
-  app.get('/api/groups/:id/e2ee/roster',(req,res)=>{device(req);res.json(roster(req,req.params.id));});
+  app.get('/api/groups/:id/e2ee/roster',async(req,res)=>{device(req);reader(req,req.params.id);await prepareMembers(req.params.id);res.json(roster(req,req.params.id));});
   app.get('/api/groups/:id/e2ee/legacy',async(req,res)=>{
     await readProof(req,'group',req.params.id);const {gm}=reader(req,req.params.id);cleanup();
     const messages=all(`SELECT m.* FROM messages m JOIN e2ee_legacy_readers lr ON lr.message_id=m.id AND lr.user_id=?
       WHERE m.group_id=? AND m.e2ee_version=0 AND m.deleted=0 AND m.id>? ORDER BY m.id LIMIT 10`,req.user.id,req.params.id,gm.joined_after);
-    for(const m of messages){m.files=all('SELECT f.id,f.name,f.mime,f.size FROM files f JOIN message_files mf ON mf.file_id=f.id WHERE mf.message_id=?',m.id);m.roster=roster(req,m.group_id,m.id);}
+    for(const m of messages){await prepareMembers(m.group_id,m.id);m.files=all('SELECT f.id,f.name,f.mime,f.size FROM files f JOIN message_files mf ON mf.file_id=f.id WHERE mf.message_id=?',m.id);m.roster=roster(req,m.group_id,m.id);}
     res.json({messages,cleanup_pending:!!one('SELECT 1 FROM e2ee_plaintext_cleanup LIMIT 1') || one("SELECT value FROM e2ee_meta WHERE key='vacuum_pending'")?.value==='1'});
   });
   app.get('/api/e2ee/legacy-files/:id',async(req,res)=>{
@@ -186,7 +253,7 @@ export function installEncryption({app,db,uploadDir,enabled,transaction,refresh,
       const fresh=assertRoster(req,original.group_id,checked.rosterHash,id);
       const oldFiles=all('SELECT f.* FROM files f JOIN message_files mf ON mf.file_id=f.id WHERE mf.message_id=?',id);
       if(oldFiles.length!==checked.files.length)fail(400,'All earlier attachments must be converted with their message.');
-      run("UPDATE messages SET body='',ciphertext=?,client_id=?,encrypted_by=?,e2ee_version=1,recipient_hash=? WHERE id=?",checked.ciphertext,checked.clientId,req.user.id,checked.rosterHash,id);
+      run("UPDATE messages SET body='',ciphertext=?,client_id=?,encrypted_by=?,e2ee_version=1,recipient_hash=?,signer_fingerprint=?,self_encrypted=0 WHERE id=?",checked.ciphertext,checked.clientId,req.user.id,checked.rosterHash,identity(req.user.id).fingerprint,id);
       run('DELETE FROM message_files WHERE message_id=?',id);for(const fid of checked.files)run('INSERT INTO message_files VALUES (?,?)',id,fid);recordRecipients(id,fresh);
       run('DELETE FROM e2ee_legacy_readers WHERE message_id=?',id);
       for(const file of oldFiles){
@@ -197,7 +264,7 @@ export function installEncryption({app,db,uploadDir,enabled,transaction,refresh,
     });
     cleanup();refresh(original.group_id ? group(original.group_id).community_id : null);res.json({ok:true});
   });
-  return {enabled,device,reader,roster,members,assertRoster,validateSend,recordRecipients,identity,cleanup,
+  return {enabled,device,reader,roster,members,assertRoster,validateSend,recordRecipients,identity,cleanup,protection,
     canRead:(userId,m)=>!!one('SELECT 1 FROM group_members gm JOIN groups g ON g.id=gm.group_id JOIN community_members cm ON cm.community_id=g.community_id AND cm.user_id=gm.user_id WHERE gm.group_id=? AND gm.user_id=? AND gm.joined_after<?',m.group_id,userId,m.id)
       && !!one('SELECT 1 FROM e2ee_recipients WHERE message_id=? AND user_id=?',m.id,userId)};
 }

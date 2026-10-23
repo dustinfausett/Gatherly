@@ -1,6 +1,6 @@
 import { api,post } from '../api';
 import * as enc from '../../shared/encryption.js';
-import { saveKey,loadKey,removeKey,confirmRecovery,trustIdentity,verifyContact } from './store';
+import { saveKey,loadKey,removeKey,confirmRecovery,trustIdentity,verifyContact,contactIdentity } from './store';
 import { setEncryptionDevice } from '../api';
 let current=null;
 const localName=id=>`account:${id}`;
@@ -12,12 +12,22 @@ export function browserName(){return /Android/.test(navigator.userAgent) ? 'Andr
 export async function activate(userId,local,account){
   if(local.privateKey.getFingerprint()!==account.identity.fingerprint)throw new Error('This account’s encryption identity changed. Do not share messages until the identity is verified.');
   if(!account.devices.some(d=>d.id===local.deviceId))await registerDevice(userId,local);
-  current={...local,userId,publicKey:account.identity.public_key,fingerprint:account.identity.fingerprint};setEncryptionDevice(local.deviceId);
+  current={...local,userId,publicKey:account.identity.public_key,fingerprint:account.identity.fingerprint,custody:account.identity.custody || 'self',previousPrivateKeys:await Promise.all((local.previousKeys || []).map(enc.readPrivate))};setEncryptionDevice(local.deviceId);
 }
 export async function inspect(userId){
   const [account,local,pending]=await Promise.all([api('/e2ee/account'),loadKey(localName(userId)),loadKey(pendingName(userId))]);
-  if(account.identity && local)await activate(userId,local,account);
-  return {account,local,pending};
+  if(!account.identity || account.identity.custody==='managed'){
+    if(local && account.identity?.fingerprint===local.privateKey.getFingerprint()){await activate(userId,local,account);return {account,local:{...local,recoveryConfirmed:true},pending};}
+    const deviceId=crypto.randomUUID(),deviceName=browserName();
+    const restored=await post('/e2ee/managed-device',{deviceId,deviceName});
+    const privateKey=await enc.readPrivate(restored.privateKey);
+    if(privateKey.getFingerprint()!==restored.identity.fingerprint)throw new Error('The managed identity does not match.');
+    const next={privateKey,deviceId,deviceName,recoveryConfirmed:true,previousKeys:[]};
+    await saveKey(localName(userId),privateKey,{deviceId:next.deviceId,deviceName:next.deviceName,recoveryConfirmed:true});
+    await activate(userId,next,restored);return {account:restored,local:next,pending};
+  }
+  if(account.identity && local && local.privateKey.getFingerprint()===account.identity.fingerprint){await activate(userId,local,account);return {account,local,pending};}
+  return {account,local:null,pending};
 }
 async function registerDevice(userId,local){
   const payload={userId,deviceId:local.deviceId,deviceName:local.deviceName};
@@ -44,9 +54,31 @@ function recoverySecret(code){const value=compact(code.trim().replace(/^CHURP1-/
 export async function recover(userId,code,deviceName){
   const account=await api('/e2ee/account');if(!account.identity)throw new Error('No encryption identity exists yet.');
   let privateKey;try{privateKey=await enc.recoverPrivate(account.identity.backup,recoverySecret(code));}catch{throw new Error('That recovery key could not unlock this account. Check the account and key.');}
-  const local={privateKey,deviceId:crypto.randomUUID(),deviceName,recoveryConfirmed:true};
+  const previousKeys=await historicalKeys(userId,privateKey,account);
+  const local={privateKey,deviceId:crypto.randomUUID(),deviceName,recoveryConfirmed:true,previousKeys};
   if(privateKey.getFingerprint()!==account.identity.fingerprint)throw new Error('The recovered identity does not match this account.');
-  await saveKey(localName(userId),privateKey,{deviceId:local.deviceId,deviceName,recoveryConfirmed:true});await activate(userId,local,account);
+  await saveKey(localName(userId),privateKey,{deviceId:local.deviceId,deviceName,recoveryConfirmed:true,previousKeys});await activate(userId,local,account);
+}
+async function historicalKeys(userId,privateKey,account){
+  if(!account.identity.history_backup)return [];
+  const history=await enc.open(privateKey,account.identity.public_key,account.identity.history_backup);
+  if(history.kind!=='key-history' || history.userId!==userId || !Array.isArray(history.keys) || history.keys.length>20)throw new Error('Earlier encryption keys could not be verified.');
+  for(const key of history.keys){const k=await enc.readPrivate(key);if(k.getUserIDs().length!==1 || k.getUserIDs()[0]!==`Churp account ${userId}`)throw new Error('Earlier encryption keys belong to another account.');}
+  return history.keys;
+}
+export async function prepareSelfManaged(){
+  const self=getCurrent();if(self.custody!=='managed')throw new Error('Self-managed encryption is already enabled.');
+  const generated=await enc.generateIdentity(self.userId),secret=enc.randomSecret(),backup=await enc.protectPrivate(generated.privateKey,secret);
+  const previousKeys=[self.privateKey.armor(),...(self.previousKeys || [])];
+  const historyBackup=await enc.seal(generated.privateKey,[generated.publicKey],{kind:'key-history',userId:self.userId,keys:previousKeys});
+  const payload={userId:self.userId,fromFingerprint:self.fingerprint,toFingerprint:generated.fingerprint,publicKey:generated.publicKey,backupHash:await enc.digest(backup),historyHash:await enc.digest(historyBackup)};
+  return {privateKey:generated.privateKey,previousKeys,code:`CHURP1-${formatCode(secret)}`,body:{publicKey:generated.publicKey,backup,historyBackup,signature:await enc.sign(self.privateKey,'self-managed-transition',payload),newSignature:await enc.sign(generated.privateKey,'accept-self-managed',payload)}};
+}
+export async function enableSelfManaged(candidate){
+  const self=getCurrent(),account=await post('/e2ee/self-managed',candidate.body);
+  const next={privateKey:candidate.privateKey,previousKeys:candidate.previousKeys,deviceId:self.deviceId,deviceName:self.deviceName,recoveryConfirmed:true};
+  await saveKey(localName(self.userId),next.privateKey,{deviceId:next.deviceId,deviceName:next.deviceName,recoveryConfirmed:true,previousKeys:next.previousKeys});
+  await activate(self.userId,next,account);
 }
 export async function forget(userId){await removeKey(localName(userId));await removeKey(pendingName(userId));clearMemory();}
 async function pairingCode(userId,request,rootFingerprint){const key=await enc.readPublic(request.public_key);return (await enc.digest(enc.canonical([userId,key.getFingerprint(),rootFingerprint,request.nonce]))).slice(0,24);}
@@ -63,7 +95,7 @@ export async function approveTransfer(code){
   if(!request)throw new Error('No pending device matches that code. Compare the code on the new device and try again.');
   const finishSecret=enc.randomSecret(16);
   const payload={version:enc.VERSION,kind:'device-transfer',userId:self.userId,transferId:request.id,nonce:request.nonce,
-    identityFingerprint:self.fingerprint,privateKey:self.privateKey.armor(),finishSecret};
+    identityFingerprint:self.fingerprint,privateKey:self.privateKey.armor(),previousKeys:self.previousKeys || [],finishSecret};
   const ciphertext=await enc.seal(self.privateKey,[request.public_key],payload);
   await post(`/e2ee/transfers/${request.id}/approve`,{ciphertext,signature:await enc.sign(self.privateKey,'approve-transfer',{userId:self.userId,transferId:request.id,cipherHash:await enc.digest(ciphertext)})});
   return {code:formatCode(finishSecret),name:request.device_name};
@@ -74,16 +106,29 @@ export async function finishTransfer(userId,pending,ciphertext,finishCode){
   try{payload=await enc.open(pending.privateKey,account.identity.public_key,ciphertext);}catch{throw new Error('The device approval could not be verified. Start again.');}
   if(payload.version!==enc.VERSION || payload.kind!=='device-transfer' || payload.userId!==userId || payload.transferId!==pending.transferId || payload.nonce!==pending.nonce || payload.identityFingerprint!==account.identity.fingerprint || payload.finishSecret!==compact(finishCode))throw new Error('The finish code or device approval does not match.');
   const privateKey=await enc.readPrivate(payload.privateKey);
-  const local={privateKey,deviceId:pending.deviceId,deviceName:pending.deviceName,recoveryConfirmed:true};
+  const previousKeys=await historicalKeys(userId,privateKey,account);
+  const local={privateKey,deviceId:pending.deviceId,deviceName:pending.deviceName,recoveryConfirmed:true,previousKeys};
   if(privateKey.getFingerprint()!==account.identity.fingerprint)throw new Error('The approved identity does not match.');
-  await saveKey(localName(userId),privateKey,{deviceId:local.deviceId,deviceName:local.deviceName,recoveryConfirmed:true});
+  await saveKey(localName(userId),privateKey,{deviceId:local.deviceId,deviceName:local.deviceName,recoveryConfirmed:true,previousKeys});
   await activate(userId,local,account);await api(`/e2ee/transfers/${pending.transferId}`,{method:'DELETE'});await removeKey(pendingName(userId));
 }
 export async function trustedReader(reader){
   const self=getCurrent(),key=await enc.readPublic(reader.public_key);
   if(key.getUserIDs().length!==1 || key.getUserIDs()[0]!==`Churp account ${reader.id}` || key.getFingerprint()!==reader.fingerprint)throw new Error('An encryption identity does not match its account.');
-  if(reader.id===self.userId){if(key.getFingerprint()!==self.fingerprint)throw new Error('Your encryption identity changed.');return {...reader,verified:true};}
-  const pinned=await trustIdentity(self.userId,reader.id,key.getFingerprint());return {...reader,verified:pinned.verified};
+  if(reader.id===self.userId){if(![self.privateKey,...self.previousPrivateKeys].some(k=>k.getFingerprint()===key.getFingerprint()))throw new Error('Your key settings changed on another device. Reload Churp and unlock with your recovery key or an approved device.');return {...reader,verified:true};}
+  let pinned;
+  try{pinned=await trustIdentity(self.userId,reader.id,key.getFingerprint());}
+  catch(original){
+    const known=await contactIdentity(self.userId,reader.id);if(!known)throw original;
+    const info=await api(`/e2ee/identities/${reader.id}`);
+    const forward=info.history.find(h=>h.fingerprint===known.fingerprint && h.next_fingerprint===reader.fingerprint && info.fingerprint===reader.fingerprint);
+    const backward=info.history.find(h=>h.fingerprint===reader.fingerprint && h.next_fingerprint===known.fingerprint && info.fingerprint===known.fingerprint);
+    const h=forward || backward;
+    if(!h || h.payload.userId!==reader.id || h.payload.fromFingerprint!==h.fingerprint || h.payload.toFingerprint!==h.next_fingerprint || h.payload.publicKey!==info.public_key || (await enc.readPublic(h.public_key)).getFingerprint()!==h.fingerprint || (await enc.readPublic(info.public_key)).getFingerprint()!==h.next_fingerprint)throw original;
+    await enc.verify(h.public_key,'self-managed-transition',h.payload,h.transition_signature);
+    pinned=await trustIdentity(self.userId,reader.id,key.getFingerprint(),{fromFingerprint:known.fingerprint,historical:!!backward});
+  }
+  return {...reader,verified:pinned.fingerprint===reader.fingerprint && pinned.verified};
 }
 export async function getRoster(groupId){const rs=await api(`/groups/${groupId}/e2ee/roster`);if(rs.missing.length)throw new Error(`Waiting for ${rs.missing.map(m=>m.name).join(', ')} to set up encrypted messaging.`);return {...rs,readers:await Promise.all(rs.readers.map(trustedReader))};}
 export async function confirmContact(reader){await verifyContact(getCurrent().userId,reader.id,reader.fingerprint);}
@@ -96,7 +141,7 @@ export async function sealMessage(groupId,body,attachments,replyTo,legacy=null){
   if(rs.missing?.length)throw new Error(`Waiting for ${rs.missing.map(u=>u.name).join(', ')} to set up encrypted messaging.`);
   const clientId=legacy ? `legacy-${legacy.id}` : crypto.randomUUID();
   const payload={version:enc.VERSION,kind:'nest-message',groupId,clientId,senderId:legacy?.user_id ?? self.userId,signerId:self.userId,
-    rosterHash:rs.roster_hash,replyTo:replyTo ?? null,migrated:!!legacy,body,attachments};
+    rosterHash:rs.roster_hash,replyTo:replyTo ?? null,migrated:!!legacy,selfEncrypted:!legacy && !!rs.self_encrypted,body,attachments};
   validateContents(payload);
   const ciphertext=await enc.seal(self.privateKey,rs.readers.map(u=>u.public_key),payload),files=attachments.map(f=>f.id);
   const signed=enc.sendPayload({groupId,clientId,rosterHash:rs.roster_hash,cipherHash:await enc.digest(ciphertext),files,replyTo});
@@ -111,9 +156,10 @@ export async function decryptMessages(groupId,messages){
       const signer=await trustedReader({id:m.encrypted_by,public_key:m.signer_key,fingerprint:m.signer_fingerprint});
       const cacheKey=`${self.userId}:${groupId}:${m.id}:${m.ciphertext}:${signer.fingerprint}`;
       let value=decryptedCache.get(cacheKey);
-      if(!value){value=await enc.open(self.privateKey,signer.public_key,m.ciphertext);decryptedCache.set(cacheKey,value);if(decryptedCache.size>500)decryptedCache.delete(decryptedCache.keys().next().value);}
+      if(!value){for(const privateKey of [self.privateKey,...self.previousPrivateKeys]){try{value=await enc.open(privateKey,signer.public_key,m.ciphertext);break;}catch{}}if(!value)throw new Error('This device cannot decrypt the message.');decryptedCache.set(cacheKey,value);if(decryptedCache.size>500)decryptedCache.delete(decryptedCache.keys().next().value);}
       if(value.version!==enc.VERSION || value.kind!=='nest-message' || value.groupId!==groupId || value.clientId!==m.client_id || value.senderId!==m.user_id || value.signerId!==m.encrypted_by || value.rosterHash!==m.recipient_hash || value.replyTo!==(m.reply_to ?? null) || !!value.migrated!==m.client_id.startsWith('legacy-'))throw new Error('The message context does not match.');
       validateContents(value);
+      if(value.selfEncrypted!==undefined && value.selfEncrypted!==!!m.self_encrypted)throw new Error('The message protection status was changed.');
       if(enc.canonical(value.attachments.map(f=>f.id).sort())!==enc.canonical(m.files.map(f=>f.id).sort()))throw new Error('The attachment list was changed.');
       return {...m,body:value.body,files:value.attachments,identityVerified:signer.verified,migrated:value.migrated};
     }catch{return {...m,body:'This message could not be decrypted or verified.',files:[],decryptionError:true};}

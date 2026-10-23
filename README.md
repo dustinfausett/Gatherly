@@ -38,9 +38,13 @@ Production requires HTTPS because cookies use `Secure`. A reverse proxy must for
 
 ## Encrypted messaging
 
-First sign-in now includes encryption setup and a personal recovery key. Save that key outside the browser: a password or Google login alone cannot restore encrypted history on a replacement device. You can also approve a new device from an existing one. Every joined Nest member must complete setup before sending can resume. Explicit sign-out removes the browser's local key.
+Churp automatically manages encryption keys for new accounts, so ordinary sign-in restores access on new devices without extra setup. Messages and files remain encrypted in storage, but this default is not E2EE because Churp can recover a managed participant's key.
 
-New messages, replies, and attachments are encrypted on members' devices. Existing history is converted separately by eligible browsers, with a visible pending banner and converter label. Older backups can still contain plaintext. This version uses long-term account keys without forward secrecy; the Churp protocol has not received an independent security audit. Read [the encryption guide](docs/ENCRYPTION.md) for recovery, identity verification, migration, operator backup responsibilities, and security limits.
+Open **Profile → Message privacy → Use self-managed keys** to opt in. Save a personal recovery key, then confirm. The switch creates a fresh device-held identity, removes its old active managed-vault entry, and preserves historical access through an encrypted key archive. Existing self-managed accounts keep their privacy and recovery requirements. Opt-in is one-way in this release.
+
+A Nest automatically shows a shield when every joined member uses self-managed keys, including muted members. The shield describes new messages; individual messages retain their protection at send time. There is no Nest encryption toggle. A managed member joining removes the shield until everyone remaining qualifies.
+
+Earlier plaintext history converts separately. Old backups can still contain plaintext or former managed keys. This version uses long-term keys without forward secrecy and has not received an independent security audit. Read [the encryption guide](docs/ENCRYPTION.md) for recovery, identity verification, vault persistence, migration, and limits.
 
 ## Tree home
 
@@ -114,11 +118,12 @@ Copy `.env.example` to `.env` if needed. Existing process environment values tak
 | `DATA_DIR` | Persistent SQLite/upload directory, default `.data` |
 | `TRUST_PROXY` | Trusted reverse-proxy hop count, default `0` |
 | `GOOGLE_CLIENT_ID` | Optional public Google Web client ID |
+| `CHURP_KEY_VAULT_SECRET` | Optional managed-key master: 64 hex characters; otherwise preserve `DATA_DIR/key-vault.key` |
 | `VAPID_PUBLIC_KEY` | Public push application key |
 | `VAPID_PRIVATE_KEY` | Private push signing key |
 | `VAPID_SUBJECT` | Public contact email (`mailto:`) or HTTPS URL |
 
-Back up the database and uploads together. For a simple consistent backup, stop the app, copy its entire data directory, and restart. Preserve deployment secrets separately. Encrypted backups require each user's own recovery key to read messages. Older snapshots can retain plaintext; review retention as explained in the encryption guide. This version does not include password recovery, email delivery, malware scanning, or general backup automation.
+Back up the database and uploads together. For a simple consistent backup, stop the app, copy its entire data directory, and restart. Preserve deployment secrets separately. Managed history requires the original vault master; self-managed history requires the user's recovery key or an approved device. Older snapshots can retain plaintext; review retention as explained in the encryption guide. This version does not include password recovery, email delivery, malware scanning, or general backup automation.
 
 The Churp rebrand preserves existing data, session cookies, invitations, push subscriptions, and API identifiers. **Do not rename `gatherly.sqlite`, `gatherly_session`, or existing URLs to apply the branding.** The public name is Churp; internal identifiers remain stable to avoid resetting accounts or sessions.
 

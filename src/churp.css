@@ -389,3 +389,9 @@ input::placeholder, textarea::placeholder { color: #92917f; }
 .security-reader { border-top: 1px solid #e3dcc5; padding: 12px 0; font-size: 12px; }
 .security-reader small { color: #667a48; }
 @media(max-width:600px){ .encryption-gate { padding: 15px 10px; } .encryption-panel { padding: 22px 18px; } .encryption-panel h1 { font-size: 24px; } }
+
+/* The Nest shield describes current member key custody, independently of privacy locks. */
+.privacy-shield { display:inline-flex; flex:none; color:#426c3f; vertical-align:middle; margin-left:5px; }
+.message-protection { font-size:10px; color:#59724a; }
+.encryption-settings .recovery-card { max-width:100%; }
+.encryption-settings .recovery-card textarea { max-width:100%; }
