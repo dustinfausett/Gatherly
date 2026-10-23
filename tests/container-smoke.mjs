@@ -80,6 +80,13 @@ async function browserCheck(cid,gid,recovery,managedFixture){
     await expect.poll(()=>page.locator('.image-attachment img').evaluate(img=>img.naturalWidth)).toBe(1);
     assert.deepEqual(errors,[]);assert.deepEqual(await page.evaluate(()=>window.cspViolations),[]);
     await context.close();console.log('PASS: production browser recovery, local key persistence, encrypted photo rendering and strict CSP over HTTPS.');
+    const visitor=await browser.newContext({ignoreHTTPSErrors:true});
+    const website=await visitor.newPage();website.on('pageerror',error=>errors.push(error.message));
+    await website.addInitScript(()=>{window.cspViolations=[];document.addEventListener('securitypolicyviolation',event=>window.cspViolations.push(event.violatedDirective));});
+    await website.goto(`${origin}/website/`);await expect(website.locator('#hero-heading')).toBeVisible();
+    await website.getByRole('button',{name:'Our family',exact:false}).click();await expect(website.locator('#demo-tree')).toHaveText('The Fausett Family');
+    assert.deepEqual(await website.evaluate(()=>window.cspViolations),[]);await visitor.close();
+    console.log('PASS: public website loads independently of sign-in with working interactions under production CSP.');
     const managed=await browser.newContext({ignoreHTTPSErrors:true}),split=managedFixture.cookie.indexOf('=');
     await managed.addCookies([{name:managedFixture.cookie.slice(0,split),value:managedFixture.cookie.slice(split+1),url:origin,secure:true,httpOnly:true,sameSite:'Lax'}]);
     const mp=await managed.newPage();mp.on('pageerror',error=>errors.push(error.message));await mp.goto(origin);

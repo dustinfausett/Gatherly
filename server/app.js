@@ -11,6 +11,7 @@ import { resolve, join } from 'node:path';
 import { openDatabase } from './database.js';
 import { token, hash, passwordHash, passwordMatches } from './security.js';
 import { installEncryption } from './encryption.js';
+import { installWebsite } from './website.js';
 import { BIRDS, getBird } from '../shared/birds.js';
 
 if (existsSync('.env')) process.loadEnvFile('.env');
@@ -141,6 +142,7 @@ export function createApp(options = {}) {
   const authLimit = rateLimit({ windowMs: 15 * 60 * 1000, limit: options.testing ? 1000 : 30, standardHeaders: 'draft-8', legacyHeaders: false, message: { error: 'Too many attempts. Please try again in 15 minutes.' } });
   app.get('/api/health', (req, res) => res.json({ status: one('SELECT 1 AS ok').ok === 1 ? 'ok' : 'error' }));
   app.get('/api/config', (req, res) => res.json({ googleClientId: googleClientId || null, vapidPublicKey: pushEnabled ? vapidPublic : null, encryptionRequired }));
+  installWebsite(app,{production,appUrl,explicitAppUrl:!!(options.appUrl || process.env.APP_URL)});
   app.post('/api/auth/register', authLimit, async (req, res) => {
     const username = text(req.body.username, 'Username', 30).toLowerCase();
     if (!/^[a-z0-9_]{3,30}$/.test(username)) fail(400, 'Use 3–30 letters, numbers, or underscores for your username.');

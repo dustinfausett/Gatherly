@@ -4,7 +4,7 @@ import { api, post } from './api';
 import { Field, Form, Logo } from './components';
 
 export default function Auth({ onLogin, config }) {
-  const [signup, setSignup] = useState(false), [googleError, setGoogleError] = useState('');
+  const [signup, setSignup] = useState(()=>new URLSearchParams(location.search).get('signup')==='1'), [googleError, setGoogleError] = useState('');
   const googleRef = useRef();
   useEffect(() => {
     if (!config.googleClientId) return;

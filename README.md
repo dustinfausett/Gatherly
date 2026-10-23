@@ -23,6 +23,8 @@ NODE_ENV=production APP_URL=https://your-domain.example npm start
 
 For Railway, follow [the deployment guide](docs/RAILWAY.md). The Dockerfile and `railway.json` build the frontend and backend together. Railway requires a persistent Volume mounted at `/data`. Use one replica: this version uses SQLite, local uploads, and in-process event streams. The server binds `0.0.0.0` and respects Railway's injected `PORT`. Set the public domain's target port to the actual listening port in Deploy Logs.
 
+The public website is available at `/website/` for review. The same service serves it at `churptree.com` and serves messaging at `app.churptree.com`, while preserving the existing Railway app origin. See [website hosting and GoDaddy DNS instructions](docs/WEBSITE.md). Payments remain coming soon; there is no email signup form or public support email.
+
 Production requires HTTPS because cookies use `Secure`. A reverse proxy must forward the app port and disable buffering on `/api/events` for live updates. `TRUST_PROXY` is a proxy hop count; the Railway image uses `1`.
 
 ## Accounts, permissions, and conversations
