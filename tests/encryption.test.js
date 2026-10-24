@@ -21,10 +21,10 @@ async function fixture(t,legacy=false){
   async function managed(a){a.deviceId=randomUUID();a.deviceName='Managed fixture';const account=await ok('/e2ee/managed-device',a,'POST',{deviceId:a.deviceId,deviceName:a.deviceName});a.privateKey=await enc.readPrivate(account.privateKey);a.publicKey=account.identity.public_key;return a;}
   async function selfManaged(a){
     const previous=a.privateKey,keys=await enc.generateIdentity(a.id),recovery=enc.randomSecret(),backup=await enc.protectPrivate(keys.privateKey,recovery);
-    const historyBackup=await enc.seal(keys.privateKey,[keys.publicKey],{kind:'key-history',userId:a.id,keys:[previous.armor()]});
+    const historyBackup=await enc.seal(keys.privateKey,[keys.publicKey],{kind:'key-history',userId:a.id,keys:[previous.armor(),...(a.previousKeys || [])]});
     const payload={userId:a.id,fromFingerprint:previous.getFingerprint(),toFingerprint:keys.fingerprint,publicKey:keys.publicKey,backupHash:await enc.digest(backup),historyHash:await enc.digest(historyBackup)};
     const body={publicKey:keys.publicKey,backup,historyBackup,signature:await enc.sign(previous,'self-managed-transition',payload),newSignature:await enc.sign(keys.privateKey,'accept-self-managed',payload)};
-    await ok('/e2ee/self-managed',a,'POST',body);a.privateKey=keys.privateKey;a.publicKey=keys.publicKey;a.recovery=recovery;return {previous,body,payload};
+    await ok('/e2ee/self-managed',a,'POST',body);a.privateKey=keys.privateKey;a.publicKey=keys.publicKey;a.recovery=recovery;a.previousKeys=[previous.armor(),...(a.previousKeys || [])];return {previous,body,payload};
   }
   async function prepare(a,gid,body,attachments=[],replyTo=null,legacyMessage=null,contentType='chat'){
     const rs=legacyMessage?.roster || await ok(`/groups/${gid}/e2ee/roster`,a),clientId=legacyMessage ? `legacy-${legacyMessage.id}` : randomUUID();
@@ -308,4 +308,29 @@ test('encrypted text edits preserve original history, attachments, author and ti
   const saved=(await f.ok(`/groups/${nest.id}/messages`,alice)).messages.find(m=>m.id===sent.id);assert.equal(saved.edit_version,2);assert.equal(saved.created_at,original.created_at);assert.equal((await enc.open(alice.privateKey,saved.signer_key,saved.ciphertext)).body,'New revision');
   await f.ok(`/messages/${sent.id}`,alice,'DELETE');assert.equal((await f.req(`/messages/${sent.id}/content`,alice,'PUT',second)).status,404);
   assert.deepEqual(f.runtime.db.prepare('PRAGMA foreign_key_check').all(),[]);
+});
+
+
+test('self-managed accounts can entrust keys to Churp and opt in again with a new identity while preserving history',async t=>{
+  const f=await fixture(t),alice=await f.managed(await f.register('custody_cycle'));
+  const tree=(await f.ok('/communities',alice,'POST',{name:'Custody Tree'})).community,nest=(await f.ok(`/communities/${tree.id}/circles`,alice,'POST',{name:'Custody Nest'})).group;
+  const first=alice.privateKey,early=await f.send(alice,nest.id,'Early managed history');await f.selfManaged(alice);
+  const second=alice.privateKey,oldRecovery=alice.recovery,selfMessage=await f.send(alice,nest.id,'Self-managed history');
+  const before=await f.ok('/e2ee/account',alice),privateKey=second.armor(),payload={userId:alice.id,fingerprint:second.getFingerprint(),privateKeyHash:await enc.digest(privateKey),historyHash:await enc.digest(before.identity.history_backup || '')};
+  const body={privateKey,signature:await enc.sign(second,'enable-managed-keys',payload)};
+  assert.equal((await f.req('/e2ee/churp-managed',{...alice,deviceId:randomUUID()},'POST',body)).status,403);
+  assert.equal((await f.req('/e2ee/churp-managed',alice,'POST',{...body,privateKey:first.armor()})).status,400);
+  assert.equal((await f.req('/e2ee/churp-managed',alice,'POST',{...body,signature:'forged'})).status,400);
+  const account=await f.ok('/e2ee/churp-managed',alice,'POST',body);assert.equal(account.identity.custody,'managed');assert.equal(account.identity.fingerprint,second.getFingerprint());assert.equal(account.identity.backup,'');
+  assert.equal((await f.ok(`/communities/${tree.id}`,alice)).community.circles[0].self_encrypted,false);
+  const replacement={...alice,deviceId:randomUUID()},restored=await f.ok('/e2ee/managed-device',replacement,'POST',{deviceId:replacement.deviceId,deviceName:'Fresh phone'}),current=await enc.readPrivate(restored.privateKey);
+  assert.equal((await enc.open(current,alice.publicKey,selfMessage.prepared.ciphertext)).body,'Self-managed history');
+  const history=await enc.open(current,restored.identity.public_key,restored.identity.history_backup);assert.equal(history.keys.length,1);assert.equal((await enc.open(await enc.readPrivate(history.keys[0]),first.toPublic().armor(),early.prepared.ciphertext)).body,'Early managed history');
+  const vault=f.runtime.db.prepare('SELECT encrypted_key FROM e2ee_managed_keys WHERE user_id=?').get(alice.id);assert.ok(!vault.encrypted_key.includes('PRIVATE KEY'));assert.ok(!readFileSync(join(f.dir,'gatherly.sqlite')).includes(Buffer.from(privateKey)));
+  const changed=await f.selfManaged(alice);assert.notEqual(alice.privateKey.getFingerprint(),second.getFingerprint());assert.notEqual(alice.privateKey.getFingerprint(),first.getFingerprint());assert.equal(f.runtime.db.prepare('SELECT COUNT(*) AS n FROM e2ee_managed_keys WHERE user_id=?').get(alice.id).n,0);
+  const selfAccount=await f.ok('/e2ee/account',alice);await assert.rejects(enc.recoverPrivate(selfAccount.identity.backup,oldRecovery));const recovered=await enc.recoverPrivate(selfAccount.identity.backup,alice.recovery),preserved=await enc.open(recovered,alice.publicKey,selfAccount.identity.history_backup);assert.equal(preserved.keys.length,2);
+  const future=await f.send(alice,nest.id,'Fresh self-managed future');await assert.rejects(enc.open(second,alice.publicKey,future.prepared.ciphertext));assert.equal((await enc.open(recovered,alice.publicKey,future.prepared.ciphertext)).body,'Fresh self-managed future');
+  assert.equal((await f.req('/e2ee/churp-managed',alice,'POST',body)).status,400);
+  await enc.verify(second.toPublic().armor(),'self-managed-transition',changed.payload,changed.body.signature);
+  await f.restart();assert.equal((await f.ok('/e2ee/account',alice)).identity.fingerprint,alice.privateKey.getFingerprint());assert.deepEqual(f.runtime.db.prepare('PRAGMA foreign_key_check').all(),[]);
 });

@@ -2,10 +2,12 @@ import React, { useEffect, useRef, useState } from 'react';
 import { ArrowRight, ShieldCheck, Users, Sprout, LockKeyhole } from 'lucide-react';
 import { api, post } from './api';
 import { Field, Form, Logo } from './components';
+import { ForgotPasswordDialog } from './AccountSecurity';
 
 export default function Auth({ onLogin, config }) {
   const [signup, setSignup] = useState(()=>new URLSearchParams(location.search).get('signup')==='1'), [googleError, setGoogleError] = useState('');
   const googleRef = useRef();
+  const [forgot,setForgot]=useState(false);
   useEffect(() => {
     if (!config.googleClientId) return;
     let cancelled = false;
@@ -38,15 +40,18 @@ export default function Auth({ onLogin, config }) {
       {googleError && <div className="error-banner" role="alert">{googleError}</div>}
       <div className="divider"><span>or continue with your username</span></div>
       <Form key={signup ? 'signup' : 'login'} submit={signup ? 'Create your account' : 'Sign in'} onSubmit={async form => {
-        const result = await post(`/auth/${signup ? 'register' : 'login'}`, Object.fromEntries(form)); onLogin(result.user);
+        const result = await post(`/auth/${signup ? 'register' : 'login'}`, Object.fromEntries(form)); onLogin(result.user,result.emailNotice);
       }}>
         {signup && <Field label="Your name" name="name" placeholder="What should we call you?" autoComplete="name" required maxLength={80} />}
         <Field label="Username" name="username" placeholder="e.g. alex_morgan" autoComplete="username" required minLength={3} maxLength={30} pattern="[A-Za-z0-9_]+" />
+        {signup && config.recoveryEmailEnabled && <Field label="Recovery email (recommended)" name="email" type="email" autoComplete="email" maxLength={254} hint="Verify this address to reset a forgotten password."/>}
         <Field label="Password" name="password" type="password" placeholder={signup ? 'At least 8 characters' : 'Enter your password'} autoComplete={signup ? 'new-password' : 'current-password'} required minLength={signup ? 8 : undefined} maxLength={128} />
         {!signup && <p className="auth-session-note"><ShieldCheck size={14} /> You’ll stay signed in on this device.</p>}
       </Form>
+      {!signup && <button type="button" className="text-button auth-forgot-password" onClick={()=>setForgot(true)}>Forgot password?</button>}
       <p className="auth-switch">{signup ? 'Already part of the nest?' : 'New around here?'} <button onClick={() => setSignup(!signup)}>{signup ? 'Sign in' : 'Create an account'} <ArrowRight size={14} /></button></p>
       <p className="auth-fine">Your next great conversation starts here.</p>
     </div><div className="auth-bottom">Churp · A little closer, together.</div></main>
+    {forgot && <ForgotPasswordDialog config={config} onClose={()=>setForgot(false)}/>}
   </div>;
 }

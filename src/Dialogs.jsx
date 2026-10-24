@@ -5,6 +5,7 @@ import { Avatar, AvatarEditor, Empty, Field, Form, Modal, Toggle } from './compo
 import BirdPicker from './BirdPicker';
 import { EncryptionSettings } from './encryption/EncryptionGate';
 import { getBird } from '../shared/birds';
+import { AccountSecuritySettings } from './AccountSecurity';
 
 export function SpaceDialog({ modal, community, onClose, onSave, onDelete }) {
   const { type, entity, parent } = modal;
@@ -141,7 +142,7 @@ export function ProfileDialog({ user, config, onClose, onSave, onAccountUpdate, 
       }}><p className="muted small-text">Have an unlock code? Add more birds to your collection.</p><Field label="Unlock code" name="code" autoComplete="off" required maxLength={64}/></Form> : <p className="bird-unlocked-message" role="status"><Check size={16}/>All 12 birds are unlocked for your account.</p>}
       <button className="button secondary small" disabled>Purchases coming soon</button>
     </div>
-    <EncryptionSettings/><div className="settings-section"><h4><BellRing size={17} /> Stay in the loop</h4><p className="muted small-text">Joined Nests show unread indicators. Enable device notifications for alerts, or mute an individual Nest to take a breather.</p>
+    <AccountSecuritySettings user={user} config={config} onAccountUpdate={onAccountUpdate}/><EncryptionSettings/><div className="settings-section"><h4><BellRing size={17} /> Stay in the loop</h4><p className="muted small-text">Joined Nests show unread indicators. Enable device notifications for alerts, or mute an individual Nest to take a breather.</p>
       <button className="button secondary" onClick={subscribed ? disablePush : enablePush}>{subscribed ? <BellOff size={16} /> : <BellRing size={16} />}{subscribed ? 'Turn off device notifications' : 'Enable device notifications'}</button>
       {!config.vapidPublicKey && <p className="small-text muted">Device push is awaiting server configuration.</p>}{pushState && <p className="info-banner" role="status">{pushState}</p>}
     </div><button className="text-button danger logout" onClick={onLogout}><LogOut size={17} /> Sign out of Churp</button>

@@ -37,15 +37,14 @@ test('Tree, Branch and Nest artwork keeps privacy locks and hidden Nest access',
   await page.screenshot({ path: info.outputPath('nest-icons-home.png'), fullPage: true });
 
   if (info.project.name !== 'desktop') await page.getByRole('button', { name: 'Open navigation', exact: true }).click();
-  await expect(page.locator('.tree-label .space-art-branch')).toBeVisible();
-  for (const name of [root.name, nested.name]) {
-    const entry = page.locator('.tree-group').filter({ hasText: name });
-    await assertLockBeforeNest(entry.locator('.space-icon'));
-    expect((await entry.locator('.space-icon').boundingBox()).width).toBeLessThan(40);
-  }
-  await expect(page.locator('.space-tree .lucide-hash, .space-tree .lucide-message-circle, .space-tree .lucide-bird, .space-tree .lucide-tree-deciduous')).toHaveCount(0);
-  await page.screenshot({ path: info.outputPath('nest-icons-sidebar.png'), fullPage: true });
-  await page.locator('.tree-group').filter({ hasText: root.name }).click();
+  await expect(page.locator('.sidebar-search,.space-tree')).toHaveCount(0);
+  await expect(page.locator('.sidebar').getByRole('button',{name:'Invite someone to this Tree',exact:true})).toBeVisible();
+  await page.locator('.sidebar').getByRole('button',{name:'Invite someone to this Tree',exact:true}).click();
+  await expect(page.getByRole('dialog').getByRole('heading',{name:'Invite to Tree',exact:true})).toBeVisible();
+  await page.getByRole('button',{name:'Create invitation link',exact:true}).click();
+  await expect(page.locator('.copy-field input')).toHaveValue(/invite=/);
+  await page.getByRole('button',{name:'Close dialog',exact:true}).click();
+  await page.getByRole('button',{name:`Open Nest ${root.name}`,exact:true}).click();
   await expect(page.locator('.chat-heading h1')).toHaveText(root.name);
   await assertLockBeforeNest(page.locator('.chat-heading .space-icon'));
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
@@ -60,8 +59,8 @@ test('Tree, Branch and Nest artwork keeps privacy locks and hidden Nest access',
     await member.getByRole('button', { name: 'Open Branch Family life', exact: true }).click();
     await expect(member.getByRole('button', { name: `Open Nest ${root.name}`, exact: true })).toHaveCount(0);
     await expect(member.getByRole('button', { name: `Open Nest ${nested.name}`, exact: true })).toHaveCount(0);
-    await expect(member.locator('.space-tree')).not.toContainText(root.name);
-    await expect(member.locator('.space-tree')).not.toContainText(nested.name);
+    await expect(member.locator('.space-tree')).toHaveCount(0);
+    await expect(member.locator('.sidebar-invitations').getByRole('button',{name:'Invite someone to this Tree',exact:true})).toHaveCount(0);
     await expect(member.getByRole('button', { name: 'Open Nest Daily news', exact: true })).toBeVisible();
   } finally { await guest.close(); }
 });

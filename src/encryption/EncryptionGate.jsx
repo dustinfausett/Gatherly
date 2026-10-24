@@ -64,14 +64,14 @@ export default function EncryptionGate({user,required,onLogout,children}){
 }
 export function EncryptionSettings(){
   const {enabled}=useEncryption();const [finish,setFinish]=useState(null),[recovery,setRecovery]=useState(null),[saved,setSaved]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState('');
-  const [candidate,setCandidate]=useState(null);
+  const [candidate,setCandidate]=useState(null),[managedConfirm,setManagedConfirm]=useState(false);
   async function recoveryAction(fn){if(busy)return;setBusy(true);setError('');try{await fn();}catch(e){setError(e.message);}finally{setBusy(false);}}
   if(!enabled)return null;const self=client.getCurrent();
   if(self.custody==='managed')return <div className="settings-section encryption-settings"><h4><LockKeyhole size={17}/>Message privacy</h4>
     <p className="small-text"><strong>Churp-managed keys</strong></p><p className="small-text muted">Your messages are encrypted. Churp manages your keys so signing in restores access automatically, including on a new device. Churp can recover messages in Nests with managed-key members.</p>
     {!candidate ? <><button className="button secondary small" disabled={busy} onClick={()=>recoveryAction(async()=>setCandidate(await client.prepareSelfManaged()))}>Use self-managed keys</button>
       <p className="small-text muted">Optional: keep your own keys and recovery key. A Nest shows a shield automatically when every joined member uses self-managed keys. This protects future messages; earlier history does not become end-to-end encrypted retroactively.</p></> : <>
-      <p className="info-banner">Self-managed keys require your recovery key or an approved device on a new phone or browser. Churp cannot reset them. This choice cannot be turned off in this version.</p>
+      <p className="info-banner">Self-managed keys require your recovery key or an approved device on a new phone or browser. Churp cannot reset them. You can return to Churp-managed keys later. Each switch to self-managed keys generates a fresh encryption key and recovery code.</p>
       <RecoveryCard code={candidate.code} busy={busy} submitLabel="Enable self-managed encryption" onConfirmed={()=>recoveryAction(async()=>{await client.enableSelfManaged(candidate);location.reload();})}/>
       <button className="text-button" disabled={busy} onClick={()=>setCandidate(null)}>Keep Churp-managed keys</button>
     </>}
@@ -79,6 +79,7 @@ export function EncryptionSettings(){
   </div>;
   return <div className="settings-section encryption-settings"><h4><ShieldCheck size={17}/>Encrypted messaging</h4>
     <p className="small-text"><strong>Self-managed keys are on</strong></p><p className="muted small-text">Churp does not hold your current readable key. A Nest is end-to-end encrypted for new messages only when every joined member uses self-managed keys. Look for its shield. Members added later do not receive earlier messages.</p>
+    <div className="managed-key-choice">{!managedConfirm?<button type="button" className="button secondary small" onClick={()=>setManagedConfirm(true)}>Use Churp-managed keys</button>:<><p className="info-banner">Churp will store your current encryption key and can recover the earlier messages it unlocks, including saved key history. Signing in on a new device will restore those messages automatically. Your Nests will show a shield only while every member uses self-managed keys. If you switch back later, Churp will generate a fresh key and recovery code for future messages.</p><button type="button" className="button primary small" disabled={busy} onClick={()=>recoveryAction(async()=>{await client.enableChurpManaged();location.reload();})}>Confirm Churp-managed keys</button><button type="button" className="text-button" disabled={busy} onClick={()=>setManagedConfirm(false)}>Keep self-managed keys</button></>}</div>
     <details><summary>Your identity security code</summary><code className="identity-code">{client.formatCode(self.fingerprint)}</code><p className="small-text muted">Compare this code with another person using a separate trusted channel. A valid signature confirms a key; comparing codes confirms who owns it.</p></details>
     <h5>Approve a device</h5><Form submit="Approve device" onSubmit={async form=>{setFinish(await client.approveTransfer(form.get('request')));}}>
       <Field label="Request code from new device"><input name="request" autoComplete="off" autoCapitalize="none" required/></Field>

@@ -15,6 +15,7 @@ import { installWebsite } from './website.js';
 import { installPolls } from './polls.js';
 import { installRsvps } from './rsvps.js';
 import { installAssignments } from './assignments.js';
+import { installAccountSecurity,accountMailer,normalizeEmail } from './account-security.js';
 import { parseRsvp, deadline } from '../shared/rsvps.js';
 import { parsePoll } from '../shared/polls.js';
 import { BIRDS, getBird } from '../shared/birds.js';
@@ -65,7 +66,7 @@ export function createApp(options = {}) {
     const earned = new Set(all('SELECT bird_id FROM bird_unlocks WHERE user_id=?', userId).map(b => b.bird_id));
     return BIRDS.filter(b => b.free || earned.has(b.id)).map(b => b.id);
   };
-  const publicUser = u => ({ id: u.id, username: u.username, name: u.name, avatar_id: u.avatar_id,
+  const publicUser = u => ({ has_password:!!u.password,has_google:!!u.google_id,recovery_email:u.email || null,recovery_email_verified:!!u.email_verified_at,pending_recovery_email:u.pending_email || null,id: u.id, username: u.username, name: u.name, avatar_id: u.avatar_id,
     bird_id: u.bird_id, avatar_style: u.avatar_style, unlocked_birds: unlockedBirds(u.id), last_community_id: u.last_community_id });
   const transaction = fn => {
     db.exec('BEGIN');
@@ -145,21 +146,25 @@ export function createApp(options = {}) {
     }
     next();
   });
+  const accountSecurity=installAccountSecurity({app,db,auth,session,transaction,publicUser,refreshUser,endSessions:id=>{for(const stream of streams.get(id) || [])stream.end();},appUrl,testing:options.testing,mailer:options.mailer === undefined ? accountMailer() : options.mailer});
   const authLimit = rateLimit({ windowMs: 15 * 60 * 1000, limit: options.testing ? 1000 : 30, standardHeaders: 'draft-8', legacyHeaders: false, message: { error: 'Too many attempts. Please try again in 15 minutes.' } });
   app.get('/api/health', (req, res) => res.json({ status: one('SELECT 1 AS ok').ok === 1 ? 'ok' : 'error' }));
-  app.get('/api/config', (req, res) => res.json({ googleClientId: googleClientId || null, vapidPublicKey: pushEnabled ? vapidPublic : null, encryptionRequired }));
+  app.get('/api/config', (req, res) => res.json({ googleClientId: googleClientId || null, vapidPublicKey: pushEnabled ? vapidPublic : null, recoveryEmailEnabled:accountSecurity.enabled,encryptionRequired }));
   installWebsite(app,{production,appUrl,explicitAppUrl:!!(options.appUrl || process.env.APP_URL)});
   app.post('/api/auth/register', authLimit, async (req, res) => {
     const username = text(req.body.username, 'Username', 30).toLowerCase();
     if (!/^[a-z0-9_]{3,30}$/.test(username)) fail(400, 'Use 3–30 letters, numbers, or underscores for your username.');
     const name = text(req.body.name, 'Display name');
+    const requestedEmail=req.body.email ? normalizeEmail(req.body.email) : null;
+    if(requestedEmail && !accountSecurity.enabled)fail(503,'Email delivery is awaiting setup. Create your account without an email, then add one in your profile later.');
     const password = req.body.password;
     if (typeof password !== 'string' || password.length < 8 || password.length > 128) fail(400, 'Use a password between 8 and 128 characters.');
     const hashed = await passwordHash(password);
     if (one('SELECT 1 FROM users WHERE username=?', username)) fail(409, 'That username is already taken.');
     const id = randomUUID();
     run("INSERT INTO users(id,username,name,password,avatar_style) VALUES (?,?,?,?,'bird')", id, username, name, hashed);
-    res.status(201).json({ user: session(res, one('SELECT * FROM users WHERE id=?', id)) });
+    let emailNotice=null;if(requestedEmail){try{await accountSecurity.stage(one('SELECT * FROM users WHERE id=?',id),requestedEmail);emailNotice='Check your inbox to verify your recovery email.';}catch{emailNotice='Your account is ready, but the recovery email could not be sent. Try again in your profile.';}}
+    res.status(201).json({ user: session(res, one('SELECT * FROM users WHERE id=?', id)),emailNotice });
   });
   app.post('/api/auth/login', authLimit, async (req, res) => {
     const username = text(req.body.username, 'Username', 30);

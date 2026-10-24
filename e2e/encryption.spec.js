@@ -12,7 +12,7 @@ async function setup(page){
   await page.getByRole('button',{name:'Use self-managed keys',exact:true}).click();
   const recovery=await page.getByRole('textbox',{name:'Your recovery key',exact:true}).inputValue();expect(recovery).toMatch(/^CHURP1-/);
   await page.getByRole('checkbox',{name:'I saved my recovery key somewhere safe.',exact:true}).check();
-  await page.getByRole('button',{name:'Enable self-managed encryption',exact:true}).click();await expect(page.getByRole('button',{name:'Edit your profile',exact:true})).toBeVisible();await expect(page.locator('.recovery-card')).toHaveCount(0);return recovery;
+  await page.getByRole('button',{name:'Enable self-managed encryption',exact:true}).click();await expect(page.getByRole('dialog')).toHaveCount(0);await expect(page.getByRole('button',{name:'Edit your profile',exact:true})).toBeVisible();await expect(page.locator('.recovery-card')).toHaveCount(0);return recovery;
 }
 async function makeTree(context){const tree=(await (await context.request.post('/api/communities',{data:{name:'Private family Tree'}})).json()).community;
   const nest=(await (await context.request.post(`/api/communities/${tree.id}/circles`,{data:{name:'Family chat'}})).json()).group;

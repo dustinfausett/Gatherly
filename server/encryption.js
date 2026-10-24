@@ -3,7 +3,7 @@ import { readFileSync, unlinkSync } from 'node:fs';
 import { join, basename, dirname } from 'node:path';
 import multer from 'multer';
 import { rateLimit } from 'express-rate-limit';
-import { canonical, digest, enrollmentPayload, sendPayload, editPayload, readPublic, generateIdentity, validateBackup, validateCiphertext, validateEncryptedFile, verify, FILE_LIMIT } from '../shared/encryption.js';
+import { canonical, digest, enrollmentPayload, sendPayload, editPayload, readPublic, readPrivate, generateIdentity, validateBackup, validateCiphertext, validateEncryptedFile, verify, FILE_LIMIT } from '../shared/encryption.js';
 import { keyVault } from './key-vault.js';
 
 export function installEncryption({app,db,uploadDir,enabled,transaction,refresh,refreshUser,group,membership,visibleCircle,testing}) {
@@ -153,6 +153,24 @@ export function installEncryption({app,db,uploadDir,enabled,transaction,refresh,
       if(one('SELECT 1 FROM e2ee_devices WHERE id=? AND user_id<>?',deviceId,req.user.id))fail(409,'Device ID is already in use.');
       run('INSERT OR IGNORE INTO e2ee_devices VALUES (?,?,?,?)',deviceId,req.user.id,deviceName.trim(),Date.now());
     });res.json({...publicAccount(req.user.id),privateKey});
+  });
+  app.post('/api/e2ee/churp-managed',limited,async(req,res)=>{
+    device(req);const previous=identity(req.user.id);
+    if(previous?.custody!=='self')fail(409,'Churp-managed keys are already enabled.');
+    const {privateKey,signature}=req.body;
+    let key;
+    try{
+      if(typeof privateKey!=='string' || privateKey.length>20000)throw new Error('Invalid key');
+      key=await readPrivate(privateKey);
+      if(!key.isDecrypted() || key.getFingerprint()!==previous.fingerprint)throw new Error('A matching unlocked key is required');
+      await verify(previous.public_key,'enable-managed-keys',{userId:req.user.id,fingerprint:previous.fingerprint,privateKeyHash:await digest(privateKey),historyHash:await digest(previous.history_backup || '')},signature);
+    }catch{fail(400,'The current encryption key and authorization could not be verified.');}
+    transaction(()=>{
+      const latest=identity(req.user.id);if(latest.custody!=='self' || latest.fingerprint!==previous.fingerprint || latest.history_backup!==previous.history_backup)fail(409,'Key settings changed. Reload before continuing.');
+      run('INSERT INTO e2ee_managed_keys VALUES (?,?,?)',req.user.id,previous.fingerprint,vault.seal(req.user.id,previous.fingerprint,key.armor()));
+      run("UPDATE e2ee_identities SET custody='managed',backup='' WHERE user_id=?",req.user.id);
+      run('DELETE FROM e2ee_transfers WHERE user_id=?',req.user.id);
+    });refresh();res.json(publicAccount(req.user.id));
   });
   app.post('/api/e2ee/self-managed',limited,async(req,res)=>{
     device(req);const previous=identity(req.user.id);

@@ -23,8 +23,9 @@ export async function inspect(userId){
     const restored=await post('/e2ee/managed-device',{deviceId,deviceName});
     const privateKey=await enc.readPrivate(restored.privateKey);
     if(privateKey.getFingerprint()!==restored.identity.fingerprint)throw new Error('The managed identity does not match.');
-    const next={privateKey,deviceId,deviceName,recoveryConfirmed:true,previousKeys:[]};
-    await saveKey(localName(userId),privateKey,{deviceId:next.deviceId,deviceName:next.deviceName,recoveryConfirmed:true});
+    const previousKeys=await historicalKeys(userId,privateKey,restored);
+    const next={privateKey,deviceId,deviceName,recoveryConfirmed:true,previousKeys};
+    await saveKey(localName(userId),privateKey,{deviceId:next.deviceId,deviceName:next.deviceName,recoveryConfirmed:true,previousKeys});
     await activate(userId,next,restored);return {account:restored,local:next,pending};
   }
   if(account.identity && local && local.privateKey.getFingerprint()===account.identity.fingerprint){await activate(userId,local,account);return {account,local,pending};}
@@ -69,6 +70,7 @@ async function historicalKeys(userId,privateKey,account){
 }
 export async function prepareSelfManaged(){
   const self=getCurrent();if(self.custody!=='managed')throw new Error('Self-managed encryption is already enabled.');
+  if((self.previousKeys || []).length>=20)throw new Error('Your account has reached the encryption key history limit. Keep your current key settings to retain earlier messages.');
   const generated=await enc.generateIdentity(self.userId),secret=enc.randomSecret(),backup=await enc.protectPrivate(generated.privateKey,secret);
   const previousKeys=[self.privateKey.armor(),...(self.previousKeys || [])];
   const historyBackup=await enc.seal(generated.privateKey,[generated.publicKey],{kind:'key-history',userId:self.userId,keys:previousKeys});
@@ -80,6 +82,14 @@ export async function enableSelfManaged(candidate){
   const next={privateKey:candidate.privateKey,previousKeys:candidate.previousKeys,deviceId:self.deviceId,deviceName:self.deviceName,recoveryConfirmed:true};
   await saveKey(localName(self.userId),next.privateKey,{deviceId:next.deviceId,deviceName:next.deviceName,recoveryConfirmed:true,previousKeys:next.previousKeys});
   await activate(self.userId,next,account);
+}
+export async function enableChurpManaged(){
+  const self=getCurrent(),account=await api('/e2ee/account');
+  if(self.custody!=='self' || account.identity.fingerprint!==self.fingerprint)throw new Error('Key settings changed. Reload before continuing.');
+  const privateKey=self.privateKey.armor(),payload={userId:self.userId,fingerprint:self.fingerprint,privateKeyHash:await enc.digest(privateKey),historyHash:await enc.digest(account.identity.history_backup || '')};
+  const next=await post('/e2ee/churp-managed',{privateKey,signature:await enc.sign(self.privateKey,'enable-managed-keys',payload)});
+  await saveKey(localName(self.userId),self.privateKey,{deviceId:self.deviceId,deviceName:self.deviceName,recoveryConfirmed:true,previousKeys:self.previousKeys || []});
+  await activate(self.userId,self,next);
 }
 export async function forget(userId){await removeKey(localName(userId));await removeKey(pendingName(userId));clearMemory();}
 async function pairingCode(userId,request,rootFingerprint){const key=await enc.readPublic(request.public_key);return (await enc.digest(enc.canonical([userId,key.getFingerprint(),rootFingerprint,request.nonce]))).slice(0,24);}
@@ -122,12 +132,22 @@ export async function trustedReader(reader){
   catch(original){
     const known=await contactIdentity(self.userId,reader.id);if(!known)throw original;
     const info=await api(`/e2ee/identities/${reader.id}`);
-    const forward=info.history.find(h=>h.fingerprint===known.fingerprint && h.next_fingerprint===reader.fingerprint && info.fingerprint===reader.fingerprint);
-    const backward=info.history.find(h=>h.fingerprint===reader.fingerprint && h.next_fingerprint===known.fingerprint && info.fingerprint===known.fingerprint);
-    const h=forward || backward;
-    if(!h || h.payload.userId!==reader.id || h.payload.fromFingerprint!==h.fingerprint || h.payload.toFingerprint!==h.next_fingerprint || h.payload.publicKey!==info.public_key || (await enc.readPublic(h.public_key)).getFingerprint()!==h.fingerprint || (await enc.readPublic(info.public_key)).getFingerprint()!==h.next_fingerprint)throw original;
-    await enc.verify(h.public_key,'self-managed-transition',h.payload,h.transition_signature);
-    pinned=await trustIdentity(self.userId,reader.id,key.getFingerprint(),{fromFingerprint:known.fingerprint,historical:!!backward});
+    const findPath=(from,to,seen=new Set())=>{
+      if(from===to)return [];
+      if(seen.has(from))return null;seen.add(from);
+      for(const edge of info.history.filter(h=>h.fingerprint===from)){const rest=findPath(edge.next_fingerprint,to,new Set(seen));if(rest)return [edge,...rest];}
+      return null;
+    };
+    const forward=findPath(known.fingerprint,reader.fingerprint),backward=forward ? null : findPath(reader.fingerprint,known.fingerprint);
+    const anchor=findPath(known.fingerprint,info.fingerprint);
+    if((!forward && !backward) || !anchor || (await enc.readPublic(info.public_key)).getFingerprint()!==info.fingerprint)throw original;
+    for(const h of [...(forward || backward),...anchor]){
+      const oldKey=await enc.readPublic(h.public_key),newKey=await enc.readPublic(h.payload.publicKey);
+      if(h.payload.userId!==reader.id || h.payload.fromFingerprint!==h.fingerprint || h.payload.toFingerprint!==h.next_fingerprint || oldKey.getFingerprint()!==h.fingerprint || newKey.getFingerprint()!==h.next_fingerprint || oldKey.getUserIDs()[0]!==`Churp account ${reader.id}` || newKey.getUserIDs()[0]!==`Churp account ${reader.id}`)throw original;
+      await enc.verify(h.public_key,'self-managed-transition',h.payload,h.transition_signature);
+    }
+    try{pinned=await trustIdentity(self.userId,reader.id,key.getFingerprint(),{fromFingerprint:known.fingerprint,historical:!!backward});}
+    catch(e){const latest=await contactIdentity(self.userId,reader.id);if(latest && latest.fingerprint!==known.fingerprint)return trustedReader(reader);throw e;}
   }
   return {...reader,verified:pinned.fingerprint===reader.fingerprint && pinned.verified};
 }

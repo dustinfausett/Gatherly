@@ -29,6 +29,8 @@ Production requires HTTPS because cookies use `Secure`. A reverse proxy must for
 
 ## Accounts, permissions, and conversations
 
+Change your password in your profile. Optional verified recovery email enables **Forgot password?** links; Google-only accounts use Google recovery. Email delivery requires `RESEND_API_KEY`, `CHURP_EMAIL_FROM` and the correct app origin. See [account recovery and setup](docs/ACCOUNT-RECOVERY.md). The sidebar keeps Tree navigation and invitation actions; Nest search and discovery live on Tree home.
+
 Nest chats include **+ → Poll**: a single- or multi-question choice poll delivered as a ballot, with eggs marking basket selections. Polls and responses use the existing encrypted messaging system. See [poll behavior and implementation](docs/POLLS.md).
 
 **+ → RSVP** sends an event invitation in an envelope. Members choose a hatching Going, Maybe, or Can’t go egg, with additional guests for Going/Maybe. Totals stay separate; the creator and Nest admins have named response lists in the app. Invitations can be edited, closed or canceled and have optional deadlines. See [RSVP behavior and implementation](docs/RSVPS.md).
@@ -52,7 +54,7 @@ Tap the bird's Nest in the chat header for **Pictures**, **Documents**, **Polls*
 
 Churp automatically manages encryption keys for new accounts, so ordinary sign-in restores access on new devices without extra setup. Messages and files remain encrypted in storage, but this default is not E2EE because Churp can recover a managed participant's key.
 
-Open **Profile → Message privacy → Use self-managed keys** to opt in. Save a personal recovery key, then confirm. The switch creates a fresh device-held identity, removes its old active managed-vault entry, and preserves historical access through an encrypted key archive. Existing self-managed accounts keep their privacy and recovery requirements. Opt-in is one-way in this release.
+Open **Profile → Message privacy → Use self-managed keys** to opt in. Save a personal recovery key, then confirm. The switch creates a fresh device-held identity, removes its old active managed-vault entry, and preserves historical access through an encrypted key archive. Existing self-managed accounts keep their privacy and recovery requirements. Self-managed users can explicitly switch back to Churp-managed keys, entrusting their current and historical message access to Churp. Returning to self-managed generates a fresh identity and recovery code each time.
 
 A Nest automatically shows a shield when every joined member uses self-managed keys, including muted members. The shield describes new messages; individual messages retain their protection at send time. There is no Nest encryption toggle. A managed member joining removes the shield until everyone remaining qualifies.
 

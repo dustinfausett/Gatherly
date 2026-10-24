@@ -217,6 +217,12 @@ export function openDatabase(path) {
       self_encrypted=CASE WHEN client_id LIKE 'legacy-%' THEN 0 ELSE 1 END
       WHERE e2ee_version=1 AND signer_fingerprint IS NULL;
   `);
+  addColumn('users','email','TEXT');
+  addColumn('users','email_verified_at','INTEGER');
+  addColumn('users','pending_email','TEXT');
+  db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS users_recovery_email ON users(email) WHERE email IS NOT NULL;
+    CREATE TABLE IF NOT EXISTS account_tokens (token_hash TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,kind TEXT NOT NULL CHECK(kind IN ('reset','verify')),email TEXT NOT NULL,created_at INTEGER NOT NULL,expires_at INTEGER NOT NULL);
+    CREATE INDEX IF NOT EXISTS account_tokens_user ON account_tokens(user_id,created_at);`);
   addColumn('users', 'bird_id', "TEXT NOT NULL DEFAULT 'blue'");
   // Keep existing profile pictures. New accounts start with a Bluebird avatar.
   addColumn('users', 'avatar_style', "TEXT NOT NULL DEFAULT 'photo'");

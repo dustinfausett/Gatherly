@@ -138,6 +138,21 @@ async function browserCheck(cid,gid,recovery,managedFixture){
     await page.getByRole('dialog').getByRole('button',{name:/^Assignments/}).click();
     await expect(page.getByRole('dialog').getByRole('button',{name:'Open assignments: Container party preparations',exact:true})).toBeVisible();
     await page.getByRole('button',{name:'Close dialog',exact:true}).click();
+    const originalIdentity=(await (await page.request.get(`${origin}/api/e2ee/account`)).json()).identity.fingerprint;
+    await page.getByRole('button',{name:'Edit your profile',exact:true}).click();
+    await page.getByRole('button',{name:'Use Churp-managed keys',exact:true}).click();
+    await page.getByRole('button',{name:'Confirm Churp-managed keys',exact:true}).click();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect(page.locator('.message-bubble').filter({hasText:'A corrected durable message.'})).toBeVisible();
+    const custodyBrowser=await browser.newContext({ignoreHTTPSErrors:true});await custodyBrowser.addCookies(await context.cookies());
+    const cp=await custodyBrowser.newPage();cp.on('pageerror',error=>errors.push(error.message));await cp.goto(`${origin}/?community=${cid}&group=${gid}`);
+    await expect(cp.locator('.message-bubble').filter({hasText:'A corrected durable message.'})).toBeVisible();await expect(cp.locator('.encryption-gate')).toHaveCount(0);
+    await cp.getByRole('button',{name:'Edit your profile',exact:true}).click();await cp.getByRole('button',{name:'Use self-managed keys',exact:true}).click();
+    await cp.getByRole('checkbox',{name:'I saved my recovery key somewhere safe.',exact:true}).check();
+    await cp.getByRole('button',{name:'Enable self-managed encryption',exact:true}).click();await expect(cp.getByRole('dialog')).toHaveCount(0);
+    await expect(cp.locator('.message-bubble').filter({hasText:'A corrected durable message.'})).toBeVisible();
+    const rotated=(await (await cp.request.get(`${origin}/api/e2ee/account`)).json()).identity;
+    assert.equal(rotated.custody,'self');assert.notEqual(rotated.fingerprint,originalIdentity);await custodyBrowser.close();
     assert.deepEqual(errors,[]);assert.deepEqual(await page.evaluate(()=>window.cspViolations),[]);
     await context.close();console.log('PASS: production browser recovery, local key persistence, encrypted photo rendering and strict CSP over HTTPS.');
     const visitor=await browser.newContext({ignoreHTTPSErrors:true});
@@ -266,6 +281,7 @@ try {
   console.log('PASS: shared library decrypts pictures and documents and opens saved polls under production CSP.');
   console.log('PASS: encrypted RSVP invitations and guest counts survive replacement; envelopes and hatching artwork render under production CSP.');
   console.log('PASS: encrypted assignments, completion and collaboration controls survive replacement and work under production CSP.');
+  console.log('PASS: self-managed keys can return to Churp and rotate again, preserving history on a fresh production browser.');
   console.log('PASS: encrypted edits survive replacement and can be saved in the production browser without losing attachments.');
 } finally {
   for(const name of containers)spawnSync('docker', ['rm', '-f', name], { stdio: 'ignore' });

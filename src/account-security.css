@@ -1,0 +1,19 @@
+.account-security details { margin: 14px 0 22px; }
+.account-security summary { cursor: pointer; color: #647b42; min-height: 44px; padding-block: 11px; font-size: 13px; font-weight: 800; }
+.account-security h5 { margin: 20px 0 10px; font-size: 14px; color: #637d40; }
+.account-security .form { margin-block: 16px; }
+.account-email-status { font-size: 12px; overflow-wrap: anywhere; line-height: 1.7; margin-block: 12px; }
+.account-link-page { min-height: 100dvh; display: flex; align-items: center; justify-content: center; padding: 25px; background: #f7f3e8; }
+.account-link-panel { width: 100%; max-width: 460px; padding: 32px; border: 1px solid #e3d7bd; border-radius: 18px; background: #fffdf7; }
+.account-link-panel>.logo { margin-bottom: 25px; }
+.account-link-panel h1 { font: 800 26px/1.3 Nunito,sans-serif; color: #647a40; margin-bottom: 15px; }
+.account-link-panel>p { margin-block: 17px; line-height: 1.7; font-size: 13px; }
+.account-link-panel>.text-button { margin-top: 20px; min-height: 44px; }
+.auth-forgot-password { margin-top: 16px; min-height: 44px; font-size: 12px; color: #6e844d; }
+.sidebar-invitations { padding: 20px 18px; display: grid; gap: 12px; }
+.sidebar-invitations .sidebar-invite { margin: 0; width: 100%; min-height: 72px; text-align: left; }
+.sidebar-invitations .sidebar-invite strong { font-size: 12px; }
+.sidebar-invitations .sidebar-invite small { font-size: 10px; line-height: 1.6; }
+.sidebar-join { display: flex; align-items: center; gap: 9px; min-height: 44px; padding: 8px; text-align: left; color: #748953; font: inherit; font-size: 12px; }
+.sidebar-bottom { margin-top: auto; }
+@media(max-width:640px) { .account-link-panel { padding: 25px 20px; } .account-link-panel input { font-size: 16px; } .sidebar-invitations { padding: 16px 19px; } }
