@@ -111,6 +111,26 @@ export function openDatabase(path) {
   db.exec('CREATE UNIQUE INDEX IF NOT EXISTS messages_edit_client_id ON messages(edit_client_id) WHERE edit_client_id IS NOT NULL');
   addColumn('messages', 'message_kind', "TEXT NOT NULL DEFAULT 'chat'");
   db.exec(`
+    CREATE TABLE IF NOT EXISTS assignment_lists (
+      message_id INTEGER PRIMARY KEY REFERENCES messages(id) ON DELETE CASCADE,
+      allow_member_adds INTEGER NOT NULL DEFAULT 0 CHECK(allow_member_adds IN (0,1)),
+      revision INTEGER NOT NULL DEFAULT 0,
+      settings_message_id INTEGER REFERENCES messages(id) ON DELETE SET NULL
+    );
+    CREATE TABLE IF NOT EXISTS assignment_items (
+      id TEXT PRIMARY KEY,
+      list_id INTEGER NOT NULL REFERENCES assignment_lists(message_id) ON DELETE CASCADE,
+      assignee_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+      completed INTEGER NOT NULL DEFAULT 0 CHECK(completed IN (0,1)),
+      deleted INTEGER NOT NULL DEFAULT 0 CHECK(deleted IN (0,1))
+    );
+    CREATE TABLE IF NOT EXISTS assignment_operations (
+      message_id INTEGER PRIMARY KEY REFERENCES messages(id) ON DELETE CASCADE,
+      list_id INTEGER NOT NULL REFERENCES assignment_lists(message_id) ON DELETE CASCADE,
+      revision INTEGER NOT NULL,
+      metadata TEXT NOT NULL,
+      UNIQUE(list_id,revision)
+    );
     CREATE TABLE IF NOT EXISTS rsvps (
       message_id INTEGER PRIMARY KEY REFERENCES messages(id) ON DELETE CASCADE,
       closed INTEGER NOT NULL DEFAULT 0 CHECK(closed IN (0,1)),

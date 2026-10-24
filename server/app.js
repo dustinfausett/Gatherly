@@ -14,6 +14,7 @@ import { installEncryption } from './encryption.js';
 import { installWebsite } from './website.js';
 import { installPolls } from './polls.js';
 import { installRsvps } from './rsvps.js';
+import { installAssignments } from './assignments.js';
 import { parseRsvp, deadline } from '../shared/rsvps.js';
 import { parsePoll } from '../shared/polls.js';
 import { BIRDS, getBird } from '../shared/birds.js';
@@ -195,6 +196,7 @@ export function createApp(options = {}) {
   const encryption = installEncryption({app,db,uploadDir,enabled:encryptionRequired,transaction,refresh,refreshUser,group,membership,visibleCircle,testing:options.testing});
   installPolls({app,db,encryption,encryptionRequired,visibleCircle,joined,groupAdmin,transaction,refresh,testing:options.testing});
   installRsvps({app,db,encryption,encryptionRequired,visibleCircle,joined,groupAdmin,transaction,refresh,testing:options.testing});
+  const assignments=installAssignments({app,db,encryption,encryptionRequired,visibleCircle,joined,groupAdmin,transaction,refresh,testing:options.testing});
   app.get('/api/me', (req, res) => res.json({ user: publicUser(req.user) }));
   app.post('/api/me/birds/unlock', rateLimit({ windowMs: 15 * 60 * 1000, limit: options.testing ? 1000 : 10,
     keyGenerator: req => req.user.id, message: { error: 'Too many code attempts. Please try again in 15 minutes.' } }), (req, res) => {
@@ -253,7 +255,7 @@ export function createApp(options = {}) {
       const gm = joined(req.user.id, g.id), admin = groupAdmin(req.user.id, g);
       if (g.private && !gm && !admin) return null;
       const counts = gm ? one(`SELECT COUNT(*) AS unread,COALESCE(SUM(urgent),0) AS urgent_unread FROM messages
-        WHERE group_id=? AND id>? AND user_id<>? AND deleted=0 AND message_kind NOT IN ('poll_vote','rsvp_response') ${encryptionRequired ? 'AND e2ee_version=1 AND id>?' : ''}`, g.id, gm.last_read, req.user.id,...(encryptionRequired ? [gm.joined_after] : [])) : { unread: 0, urgent_unread: 0 };
+        WHERE group_id=? AND id>? AND user_id<>? AND deleted=0 AND message_kind NOT IN ('poll_vote','rsvp_response','assignment_op') ${encryptionRequired ? 'AND e2ee_version=1 AND id>?' : ''}`, g.id, gm.last_read, req.user.id,...(encryptionRequired ? [gm.joined_after] : [])) : { unread: 0, urgent_unread: 0 };
       return { ...g, is_admin: !!admin, joined: !!gm, muted: !!gm?.muted, pin_position: gm?.pin_position ?? null,
         marked_unread: !!gm?.marked_unread, joined_after: gm?.joined_after ?? null, self_encrypted: encryptionRequired && encryption.protection(g.id).self_encrypted, ...counts };
     }).filter(Boolean);
@@ -589,8 +591,8 @@ export function createApp(options = {}) {
       COALESCE(kh.public_key,ei.public_key) AS signer_key,COALESCE(m.signer_fingerprint,ei.fingerprint) AS signer_fingerprint,signer.name AS signer_name FROM messages m JOIN users u ON u.id=m.user_id
       LEFT JOIN e2ee_identities ei ON ei.user_id=m.encrypted_by LEFT JOIN e2ee_key_history kh ON kh.user_id=m.encrypted_by AND kh.fingerprint=m.signer_fingerprint LEFT JOIN users signer ON signer.id=m.encrypted_by
       LEFT JOIN messages p ON p.id=m.reply_to LEFT JOIN users pu ON pu.id=p.user_id
-      WHERE m.group_id=? AND m.id<? AND m.id>? AND m.message_kind NOT IN ('poll_vote','rsvp_response')
-      ${sharedOnly ? "AND m.deleted=0 AND (m.message_kind IN ('poll','rsvp') OR EXISTS(SELECT 1 FROM message_files mf WHERE mf.message_id=m.id))" : ''}
+      WHERE m.group_id=? AND m.id<? AND m.id>? AND m.message_kind NOT IN ('poll_vote','rsvp_response','assignment_op')
+      ${sharedOnly ? "AND m.deleted=0 AND (m.message_kind IN ('poll','rsvp','assignments') OR EXISTS(SELECT 1 FROM message_files mf WHERE mf.message_id=m.id))" : ''}
       ${encryptionRequired ? 'AND m.e2ee_version=1 AND EXISTS(SELECT 1 FROM e2ee_recipients er WHERE er.message_id=m.id AND er.user_id=?)' : ''}
       ORDER BY m.id DESC LIMIT 100`, req.params.id, before,floor,...(encryptionRequired ? [req.user.id] : [])).reverse();
     for (const m of messages) m.files = all('SELECT f.id,f.name,f.mime,f.size FROM files f JOIN message_files mf ON mf.file_id=f.id WHERE mf.message_id=?', m.id);
@@ -601,19 +603,19 @@ export function createApp(options = {}) {
   app.get('/api/groups/:id/threads/:messageId', (req, res) => {
     visibleCircle(req.user.id, req.params.id);
     const root = one('SELECT * FROM messages WHERE id=? AND group_id=?', req.params.messageId, req.params.id) || fail(404, 'Thread not found.');
-    if(['poll_vote','rsvp_response'].includes(root.message_kind))fail(404,'Thread not found.');
+    if(['poll_vote','rsvp_response','assignment_op'].includes(root.message_kind))fail(404,'Thread not found.');
     const rootId = root.reply_to || root.id;
     const floor=encryptionRequired ? encryption.reader(req,req.params.id).gm.joined_after : -1;
     const messages = all(`SELECT m.*,u.name,u.avatar_id,u.bird_id,u.avatar_style,COALESCE(kh.public_key,ei.public_key) AS signer_key,COALESCE(m.signer_fingerprint,ei.fingerprint) AS signer_fingerprint,signer.name AS signer_name FROM messages m JOIN users u ON u.id=m.user_id
       LEFT JOIN e2ee_identities ei ON ei.user_id=m.encrypted_by LEFT JOIN e2ee_key_history kh ON kh.user_id=m.encrypted_by AND kh.fingerprint=m.signer_fingerprint LEFT JOIN users signer ON signer.id=m.encrypted_by WHERE m.group_id=? AND (m.id=? OR m.reply_to=?) AND m.id>?
-      AND m.message_kind NOT IN ('poll_vote','rsvp_response') ${encryptionRequired ? 'AND m.e2ee_version=1 AND EXISTS(SELECT 1 FROM e2ee_recipients er WHERE er.message_id=m.id AND er.user_id=?)' : ''} ORDER BY m.id LIMIT 500`, req.params.id, rootId, rootId,floor,...(encryptionRequired ? [req.user.id] : []));
+      AND m.message_kind NOT IN ('poll_vote','rsvp_response','assignment_op') ${encryptionRequired ? 'AND m.e2ee_version=1 AND EXISTS(SELECT 1 FROM e2ee_recipients er WHERE er.message_id=m.id AND er.user_id=?)' : ''} ORDER BY m.id LIMIT 500`, req.params.id, rootId, rootId,floor,...(encryptionRequired ? [req.user.id] : []));
     for (const m of messages) m.files = all('SELECT f.id,f.name,f.mime,f.size FROM files f JOIN message_files mf ON mf.file_id=f.id WHERE mf.message_id=?', m.id);
     res.json({ messages });
   });
   app.post('/api/groups/:id/messages', rateLimit({ windowMs: 60_000, limit: options.testing ? 1000 : 90, keyGenerator: req => req.user.id, message: { error: 'Please slow down and try again in a moment.' } }), async (req, res) => {
     const messageKind=req.body.message_kind ?? 'chat';
-    if(!['chat','poll','rsvp'].includes(messageKind))fail(400,'Choose a supported message type.');
-    if(['poll','rsvp'].includes(messageKind) && (req.body.reply_to != null || req.body.files?.length))fail(400,'Post a poll or RSVP directly in the Nest without attachments.');
+    if(!['chat','poll','rsvp','assignments'].includes(messageKind))fail(400,'Choose a supported message type.');
+    if(['poll','rsvp','assignments'].includes(messageKind) && (req.body.reply_to != null || req.body.files?.length))fail(400,'Post a poll, RSVP or assignment list directly in the Nest without attachments.');
     const g = visibleCircle(req.user.id, req.params.id);
     if (!joined(req.user.id, g.id)) fail(403, 'Join this Nest to send messages.');
     if (g.admin_only && !groupAdmin(req.user.id, g)) fail(403, 'Only admins can post or reply in this Nest.');
@@ -623,6 +625,7 @@ export function createApp(options = {}) {
       if(existing){if(existing.group_id!==g.id || existing.user_id!==req.user.id || existing.message_kind!==messageKind || existing.ciphertext!==req.body.ciphertext)fail(409,'That encrypted message ID is already in use.');return res.status(201).json({id:existing.id});}
     }
     const checked=encryptionRequired ? await encryption.validateSend(req,g.id) : null;
+    const assignmentSetup=messageKind==='assignments' ? await assignments.prepare(req,g.id) : null;
     const body = encryptionRequired ? '' : req.body.body ?? '';
     const files = req.body.files ?? [];
     const urgent = boolean(req.body.urgent ?? false, 'Urgent');
@@ -637,7 +640,7 @@ export function createApp(options = {}) {
     if (reply !== null) {
       if (!Number.isSafeInteger(reply)) fail(400, 'Invalid reply.');
       const parent = one('SELECT * FROM messages WHERE id=? AND group_id=?', reply, g.id);
-      if (!parent || parent.deleted || ['poll_vote','rsvp_response'].includes(parent.message_kind)) fail(400, 'That message is no longer available to reply to.');
+      if (!parent || parent.deleted || ['poll_vote','rsvp_response','assignment_op'].includes(parent.message_kind)) fail(400, 'That message is no longer available to reply to.');
       if(encryptionRequired && !encryption.canRead(req.user.id,parent))fail(404,'You cannot reply to a message from before you joined.');
       if(encryptionRequired && parent.reply_to)fail(400,'Reply to the visible root message of this thread.');
       reply = parent.reply_to || parent.id;
@@ -653,6 +656,7 @@ export function createApp(options = {}) {
       run('UPDATE messages SET message_kind=? WHERE id=?',messageKind,id);
       if(messageKind==='poll')run('INSERT INTO polls(message_id) VALUES (?)',id);
       if(messageKind==='rsvp')run('INSERT INTO rsvps(message_id,response_deadline) VALUES (?,?)',id,responseDeadline);
+      if(assignmentSetup)assignments.create(id,assignmentSetup);
       for (const fid of files) run('INSERT INTO message_files VALUES (?,?)', id, fid);
       run('UPDATE group_members SET last_read=?,marked_unread=0 WHERE group_id=? AND user_id=?', id, g.id, req.user.id);
       for (const r of recipients) run('INSERT INTO notifications(user_id,message_id) VALUES (?,?)', r.user_id, id);
@@ -669,6 +673,7 @@ export function createApp(options = {}) {
   app.patch('/api/messages/:id', (req, res) => {
     const m = one('SELECT * FROM messages WHERE id=? AND deleted=0', req.params.id) || fail(404, 'Message not found.');
     const g = visibleCircle(req.user.id, m.group_id);
+    if(m.message_kind==='assignment_op')fail(400,'Manage assignments from the shared list.');
     if (m.user_id !== req.user.id && !groupAdmin(req.user.id, g)) fail(403, 'Only the author or a Nest admin can change urgency.');
     if (!joined(req.user.id, g.id) || (g.admin_only && !groupAdmin(req.user.id,g))) fail(403, 'Posting permissions are required to change urgency.');
     run('UPDATE messages SET urgent=? WHERE id=?', boolean(req.body.urgent, 'Urgent'), m.id);
@@ -717,6 +722,7 @@ export function createApp(options = {}) {
   app.delete('/api/messages/:id', (req, res) => {
     const m = one('SELECT * FROM messages WHERE id=?', req.params.id) || fail(404, 'Message not found.');
     const g = visibleCircle(req.user.id, m.group_id);
+    if(m.message_kind==='assignment_op')fail(400,'Manage assignments from the shared list.');
     if (m.user_id !== req.user.id && !groupAdmin(req.user.id, g)) fail(403, 'You can only delete your own messages.');
     transaction(() => {
       run("UPDATE messages SET deleted=1,body='',ciphertext=NULL WHERE id=?", m.id);
@@ -727,6 +733,10 @@ export function createApp(options = {}) {
       if(m.message_kind==='rsvp'){
         run("UPDATE messages SET deleted=1,body='',ciphertext=NULL WHERE reply_to=? AND message_kind='rsvp_response'",m.id);
         run('DELETE FROM rsvp_responses WHERE event_id=?',m.id);
+      }
+      if(m.message_kind==='assignments'){
+        run("UPDATE messages SET deleted=1,body='',ciphertext=NULL WHERE reply_to=? AND message_kind='assignment_op'",m.id);
+        run('DELETE FROM assignment_lists WHERE message_id=?',m.id);
       }
       run('DELETE FROM message_files WHERE message_id=?', m.id);
       run('DELETE FROM notifications WHERE message_id=?', m.id);

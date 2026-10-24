@@ -1,3 +1,4 @@
+import { assignmentProof } from '../../shared/assignments';
 import { api,post } from '../api';
 import * as enc from '../../shared/encryption.js';
 import { saveKey,loadKey,removeKey,confirmRecovery,trustIdentity,verifyContact,contactIdentity } from './store';
@@ -136,8 +137,8 @@ function validateContents(value){
   if(typeof value.body!=='string' || value.body.length>10000 || !Array.isArray(value.attachments) || value.attachments.length>5 || (!value.body.trim() && !value.attachments.length))throw new Error('Invalid message contents.');
   for(const f of value.attachments)if(typeof f.id!=='string' || typeof f.name!=='string' || f.name.length>200 || !Number.isSafeInteger(f.size) || f.size<0 || f.size>enc.FILE_LIMIT || !/^[0-9a-f]{64}$/.test(f.key) || !/^[0-9a-f]{64}$/.test(f.sha256) || typeof f.mime!=='string' || f.mime.length>100)throw new Error('Invalid encrypted attachment.');
 }
-export async function sealMessage(groupId,body,attachments,replyTo,legacy=null,contentType='chat'){
-  const self=getCurrent(),rs=legacy ? {...legacy.roster,readers:await Promise.all(legacy.roster.readers.map(trustedReader))} : await getRoster(groupId);
+export async function sealMessage(groupId,body,attachments,replyTo,legacy=null,contentType='chat',recipientRoster=null){
+  const self=getCurrent(),rs=legacy ? {...legacy.roster,readers:await Promise.all(legacy.roster.readers.map(trustedReader))} : recipientRoster ? {...recipientRoster,readers:await Promise.all(recipientRoster.readers.map(trustedReader))} : await getRoster(groupId);
   if(rs.missing?.length)throw new Error(`Waiting for ${rs.missing.map(u=>u.name).join(', ')} to set up encrypted messaging.`);
   const clientId=legacy ? `legacy-${legacy.id}` : crypto.randomUUID();
   const payload={version:enc.VERSION,kind:'nest-message',groupId,clientId,senderId:legacy?.user_id ?? self.userId,signerId:self.userId,
@@ -224,3 +225,8 @@ export function convertHistory(groupId){
 export function clearMemory(){current=null;decryptedCache.clear();setEncryptionDevice(null);}
 export async function stageRecovery(){const self=getCurrent(),secret=enc.randomSecret(),backup=await enc.protectPrivate(self.privateKey,secret);return {code:`CHURP1-${formatCode(secret)}`,backup,signature:await enc.sign(self.privateKey,'backup',{userId:self.userId,backupHash:await enc.digest(backup)})};}
 export async function replaceRecovery(candidate){await api('/e2ee/backup',{method:'PUT',body:{backup:candidate.backup,signature:candidate.signature}});}
+
+export async function signAssignmentRequest(request,listId,metadata,operation){
+  const self=getCurrent();
+  return {...request,assignmentSignature:await enc.sign(self.privateKey,operation,assignmentProof({listId,clientId:request.clientId,cipherHash:await enc.digest(request.ciphertext),metadata}))};
+}

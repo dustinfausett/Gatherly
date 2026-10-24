@@ -254,10 +254,10 @@ export function installEncryption({app,db,uploadDir,enabled,transaction,refresh,
     const id=randomUUID();run('INSERT INTO files(id,user_id,name,disk_name,mime,size,created_at,encrypted) VALUES (?,?,?,?,?,?,?,1)',id,req.user.id,'encrypted-attachment.pgp',req.file.filename,'application/octet-stream',req.file.size,Date.now());
     res.status(201).json({file:{id}});
   });
-  async function validateSend(req,gid,legacyId=null) {
+  async function validateSend(req,gid,legacyId=null,audienceMessage=null) {
     device(req);const {ciphertext,clientId,rosterHash,signature}=req.body;
     if(typeof clientId!=='string' || (legacyId ? clientId!==`legacy-${legacyId}` : !uuid(clientId)))fail(400,'A unique encrypted message ID is required.');
-    const rs=assertRoster(req,gid,rosterHash,legacyId);
+    const rs=audienceMessage ? assertEditRoster(req,audienceMessage,rosterHash) : assertRoster(req,gid,rosterHash,legacyId);
     try{await validateCiphertext(ciphertext,rs.readers.map(u=>u.public_key));}catch(e){fail(400,e.message);}
     const files=req.body.files ?? [];
     if(!Array.isArray(files) || files.length>5 || files.some(id=>!uuid(id)) || new Set(files).size!==files.length)fail(400,'Attach up to five encrypted files.');

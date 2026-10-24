@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import * as enc from '../shared/encryption.js';
 import { validatePoll,encodeVote,parseVote } from '../shared/polls.js';
 import { validateRsvp,encodeResponse,parseResponse } from '../shared/rsvps.js';
+import { assignmentProof,assignmentSetup,validateAssignments,parseAssignments,encodeAssignmentOperation,operationMetadata,parseAssignmentOperation } from '../shared/assignments.js';
 import { mkdtempSync,readFileSync,rmSync,existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -68,7 +69,8 @@ async function browserCheck(cid,gid,recovery,managedFixture){
     const page=await context.newPage(),errors=[];page.on('pageerror',error=>errors.push(error.message));
     await page.addInitScript(()=>{window.cspViolations=[];document.addEventListener('securitypolicyviolation',event=>window.cspViolations.push(event.violatedDirective));});
     await page.goto(`${origin}/?community=${cid}&group=${gid}`);
-    await page.getByRole('textbox',{name:'Recovery key',exact:true}).fill(`CHURP1-${recovery}`);
+    try { await page.getByRole('textbox',{name:'Recovery key',exact:true}).fill(`CHURP1-${recovery}`); }
+    catch(error){await page.screenshot({path:'/tmp/churp-container-recovery-failure.png',fullPage:true});console.error('Recovery screen diagnostic:',JSON.stringify({url:page.url(),errors,body:await page.locator('body').innerText()}));throw error;}
     await page.getByRole('button',{name:'Restore with recovery key',exact:true}).click();
     await expect(page.locator('.message-bubble').filter({hasText:'A durable message.'})).toBeVisible();
     const durable=page.locator('.message').filter({hasText:'A durable message.'});
@@ -121,6 +123,20 @@ async function browserCheck(cid,gid,recovery,managedFixture){
     await page.getByRole('button',{name:'Open shared items',exact:true}).click();
     await page.getByRole('dialog').getByRole('button',{name:/^RSVPs/}).click();
     await expect(page.getByRole('dialog').getByRole('button',{name:'Open RSVP: Container picnic invitation',exact:true})).toBeVisible();
+    await page.getByRole('button',{name:'Close dialog',exact:true}).click();
+    await page.getByRole('button',{name:'Open assignments: Container party preparations',exact:true}).click();
+    await expect(page.getByRole('dialog').getByRole('status')).toContainText('1 of 1 assignments complete');
+    await expect.poll(()=>page.locator('.assignment-card img').evaluate(img=>img.naturalWidth)).toBeGreaterThan(0);
+    await page.getByRole('button',{name:'Reopen assignment: Bring the cake',exact:true}).click();
+    await expect(page.getByRole('dialog').getByRole('status')).toContainText('0 of 1 assignments complete');
+    await page.getByRole('button',{name:'List settings',exact:true}).click();
+    await page.getByRole('checkbox',{name:/Allow Nest members/}).uncheck();
+    await page.getByRole('button',{name:'Save changes',exact:true}).click();
+    await expect(page.getByRole('dialog')).toContainText('Only the creator and Nest admins can add assignments.');
+    await page.getByRole('button',{name:'Close dialog',exact:true}).click();
+    await page.getByRole('button',{name:'Open shared items',exact:true}).click();
+    await page.getByRole('dialog').getByRole('button',{name:/^Assignments/}).click();
+    await expect(page.getByRole('dialog').getByRole('button',{name:'Open assignments: Container party preparations',exact:true})).toBeVisible();
     await page.getByRole('button',{name:'Close dialog',exact:true}).click();
     assert.deepEqual(errors,[]);assert.deepEqual(await page.evaluate(()=>window.cspViolations),[]);
     await context.close();console.log('PASS: production browser recovery, local key persistence, encrypted photo rendering and strict CSP over HTTPS.');
@@ -189,7 +205,14 @@ try {
     const rs=(await request(`/groups/${gid}/e2ee/roster`)).data,clientId=randomUUID();
     const ciphertext=await enc.seal(keys.privateKey,rs.readers.map(r=>r.public_key),{version:1,kind:'nest-message',groupId:gid,clientId,senderId:registered.data.user.id,signerId:registered.data.user.id,rosterHash:rs.roster_hash,replyTo,migrated:false,selfEncrypted:rs.self_encrypted,contentType:kind,body,attachments:[]});
     const payload=enc.sendPayload({groupId:gid,clientId,rosterHash:rs.roster_hash,cipherHash:await enc.digest(ciphertext),files:[],replyTo});
-    return (await request(['poll','rsvp'].includes(kind) ? `/groups/${gid}/messages` : kind==='rsvp_response' ? `/messages/${replyTo}/rsvp/respond` : `/messages/${replyTo}/poll/vote`,'POST',{ciphertext,clientId,rosterHash:rs.roster_hash,reply_to:replyTo,files:[],...(['poll','rsvp'].includes(kind) ? {message_kind:kind} : kind==='rsvp_response' ? {eventVersion:0} : {}),signature:await enc.sign(keys.privateKey,'send',payload)})).data.id;
+    const message={ciphertext,clientId,rosterHash:rs.roster_hash,reply_to:replyTo,files:[],...(['poll','rsvp','assignments'].includes(kind)?{message_kind:kind}:kind==='rsvp_response'?{eventVersion:0}:{}),signature:await enc.sign(keys.privateKey,'send',payload)};
+    if(kind==='assignments' || kind==='assignment_op'){
+      const metadata=kind==='assignments'?assignmentSetup(parseAssignments(body)):operationMetadata(JSON.parse(body));
+      message.assignmentSignature=await enc.sign(keys.privateKey,kind==='assignments'?'assignment-setup':'assignment-operation',assignmentProof({listId:replyTo,clientId,cipherHash:await enc.digest(ciphertext),metadata}));
+      if(kind==='assignments')message.assignment_setup=metadata;else message.operation=metadata;
+    }
+    const path=['poll','rsvp','assignments'].includes(kind)?`/groups/${gid}/messages`:kind==='assignment_op'?`/messages/${replyTo}/assignments/operations`:kind==='rsvp_response'?`/messages/${replyTo}/rsvp/respond`:`/messages/${replyTo}/poll/vote`;
+    return (await request(path,'POST',message)).data.id;
   }
   const pollId=await typedWrite('poll',JSON.stringify(poll));
   await typedWrite('poll_vote',encodeVote(pollId,poll,[[0]]),pollId);
@@ -197,6 +220,9 @@ try {
   const event=validateRsvp({title:'Container picnic invitation',allDay:true,start:'2027-05-20',timeZone:'UTC',location:'Our park'});
   const eventId=await typedWrite('rsvp',JSON.stringify(event));
   await typedWrite('rsvp_response',encodeResponse(eventId,{choice:'going',guests:2}),eventId);
+  const assignments=validateAssignments({title:'Container party preparations',description:'A shared plan.',dueDate:'2027-06-02',allowMemberAdds:true,items:[{id:randomUUID(),title:'Bring the cake',notes:'Chocolate, please.',dueDate:null,assigneeId:registered.data.user.id}]});
+  const assignmentId=await typedWrite('assignments',JSON.stringify(assignments));
+  await typedWrite('assignment_op',encodeAssignmentOperation(assignmentId,{action:'complete',itemId:assignments.items[0].id,completed:true,expectedVersion:0}),assignmentId);
   const keyBefore = (await request('/config')).data.vapidPublicKey;
   assert.ok(keyBefore);
   assert.deepEqual(await enc.decryptFile((await request(`/files/${fileId}`)).data,attachment),filePlain);
@@ -224,6 +250,11 @@ try {
   const savedEvent=(await request(`/messages/${eventId}/rsvp`)).data;
   assert.equal(savedEvent.responses.length,1);assert.equal(savedEvent.closed,false);
   assert.deepEqual(parseResponse((await enc.open(restored,keys.publicKey,savedEvent.responses[0].ciphertext)).body,eventId),{choice:'going',guests:2});
+  const savedAssignments=(await request(`/messages/${assignmentId}/assignments`)).data;
+  assert.equal(savedAssignments.revision,1);assert.equal(savedAssignments.items[0].completed,1);assert.equal(savedAssignments.allow_member_adds,true);
+  assert.equal(parseAssignments((await enc.open(restored,keys.publicKey,savedAssignments.message.ciphertext)).body).title,'Container party preparations');
+  const savedOperations=(await request(`/messages/${assignmentId}/assignments/operations?version=1`)).data.operations;
+  assert.equal(parseAssignmentOperation((await enc.open(restored,keys.publicKey,savedOperations[0].message.ciphertext)).body,assignmentId,savedOperations[0].metadata).completed,true);
   cookie=managedCookie;deviceId=randomUUID();
   const restoredManaged=(await request('/e2ee/managed-device','POST',{deviceId,deviceName:'After replacement'})).data;
   assert.equal(restoredManaged.identity.fingerprint,managedFingerprint);assert.equal((await enc.readPrivate(restoredManaged.privateKey)).getFingerprint(),managedFingerprint);
@@ -234,6 +265,7 @@ try {
   console.log('PASS: encrypted poll definitions, answers and closure survive replacement; ballot and basket artwork render under production CSP.');
   console.log('PASS: shared library decrypts pictures and documents and opens saved polls under production CSP.');
   console.log('PASS: encrypted RSVP invitations and guest counts survive replacement; envelopes and hatching artwork render under production CSP.');
+  console.log('PASS: encrypted assignments, completion and collaboration controls survive replacement and work under production CSP.');
   console.log('PASS: encrypted edits survive replacement and can be saved in the production browser without losing attachments.');
 } finally {
   for(const name of containers)spawnSync('docker', ['rm', '-f', name], { stdio: 'ignore' });

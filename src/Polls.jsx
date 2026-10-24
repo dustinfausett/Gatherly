@@ -7,10 +7,11 @@ import { sealMessage, decryptMessages } from './encryption/client';
 import { POLL_LIMITS, validatePoll, parsePoll, validateAnswers, encodeVote, parseVote } from '../shared/polls';
 import './polls.css';
 import { parseRsvp } from '../shared/rsvps';
+import { parseAssignments } from '../shared/assignments';
 
 const art = '/brand/polls/';
 const newQuestion = () => ({ text: '', type: 'single', options: ['', ''] });
-export const messagePreview = m => m?.message_kind === 'poll' ? parsePoll(m.body)?.title || 'Poll' : m?.message_kind === 'rsvp' ? parseRsvp(m.body)?.title || 'RSVP' : m?.body;
+export const messagePreview = m => m?.message_kind === 'poll' ? parsePoll(m.body)?.title || 'Poll' : m?.message_kind === 'rsvp' ? parseRsvp(m.body)?.title || 'RSVP' : m?.message_kind === 'assignments' ? parseAssignments(m.body)?.title || 'Assignments' : m?.body;
 
 export function PollBuilder({ group, onClose, onSent }) {
   const { enabled } = useEncryption();
