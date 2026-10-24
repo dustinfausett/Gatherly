@@ -13,6 +13,8 @@ import { token, hash, passwordHash, passwordMatches } from './security.js';
 import { installEncryption } from './encryption.js';
 import { installWebsite } from './website.js';
 import { installPolls } from './polls.js';
+import { installRsvps } from './rsvps.js';
+import { parseRsvp, deadline } from '../shared/rsvps.js';
 import { parsePoll } from '../shared/polls.js';
 import { BIRDS, getBird } from '../shared/birds.js';
 
@@ -20,6 +22,7 @@ if (existsSync('.env')) process.loadEnvFile('.env');
 const SESSION_AGE = 30 * 86400 * 1000;
 const imageTypes = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
 const fail = (status, message) => { throw Object.assign(new Error(message), { status }); };
+function normalizedDeadline(value) { try { return deadline(value); } catch (error) { fail(400,error.message); } }
 function text(value, label, max = 80) {
   if (typeof value !== 'string' || !value.trim() || value.trim().length > max) fail(400, `${label} must be between 1 and ${max} characters.`);
   return value.trim();
@@ -191,6 +194,7 @@ export function createApp(options = {}) {
   app.use('/api', auth);
   const encryption = installEncryption({app,db,uploadDir,enabled:encryptionRequired,transaction,refresh,refreshUser,group,membership,visibleCircle,testing:options.testing});
   installPolls({app,db,encryption,encryptionRequired,visibleCircle,joined,groupAdmin,transaction,refresh,testing:options.testing});
+  installRsvps({app,db,encryption,encryptionRequired,visibleCircle,joined,groupAdmin,transaction,refresh,testing:options.testing});
   app.get('/api/me', (req, res) => res.json({ user: publicUser(req.user) }));
   app.post('/api/me/birds/unlock', rateLimit({ windowMs: 15 * 60 * 1000, limit: options.testing ? 1000 : 10,
     keyGenerator: req => req.user.id, message: { error: 'Too many code attempts. Please try again in 15 minutes.' } }), (req, res) => {
@@ -249,7 +253,7 @@ export function createApp(options = {}) {
       const gm = joined(req.user.id, g.id), admin = groupAdmin(req.user.id, g);
       if (g.private && !gm && !admin) return null;
       const counts = gm ? one(`SELECT COUNT(*) AS unread,COALESCE(SUM(urgent),0) AS urgent_unread FROM messages
-        WHERE group_id=? AND id>? AND user_id<>? AND deleted=0 AND message_kind<>'poll_vote' ${encryptionRequired ? 'AND e2ee_version=1 AND id>?' : ''}`, g.id, gm.last_read, req.user.id,...(encryptionRequired ? [gm.joined_after] : [])) : { unread: 0, urgent_unread: 0 };
+        WHERE group_id=? AND id>? AND user_id<>? AND deleted=0 AND message_kind NOT IN ('poll_vote','rsvp_response') ${encryptionRequired ? 'AND e2ee_version=1 AND id>?' : ''}`, g.id, gm.last_read, req.user.id,...(encryptionRequired ? [gm.joined_after] : [])) : { unread: 0, urgent_unread: 0 };
       return { ...g, is_admin: !!admin, joined: !!gm, muted: !!gm?.muted, pin_position: gm?.pin_position ?? null,
         marked_unread: !!gm?.marked_unread, joined_after: gm?.joined_after ?? null, self_encrypted: encryptionRequired && encryption.protection(g.id).self_encrypted, ...counts };
     }).filter(Boolean);
@@ -585,8 +589,8 @@ export function createApp(options = {}) {
       COALESCE(kh.public_key,ei.public_key) AS signer_key,COALESCE(m.signer_fingerprint,ei.fingerprint) AS signer_fingerprint,signer.name AS signer_name FROM messages m JOIN users u ON u.id=m.user_id
       LEFT JOIN e2ee_identities ei ON ei.user_id=m.encrypted_by LEFT JOIN e2ee_key_history kh ON kh.user_id=m.encrypted_by AND kh.fingerprint=m.signer_fingerprint LEFT JOIN users signer ON signer.id=m.encrypted_by
       LEFT JOIN messages p ON p.id=m.reply_to LEFT JOIN users pu ON pu.id=p.user_id
-      WHERE m.group_id=? AND m.id<? AND m.id>? AND m.message_kind<>'poll_vote'
-      ${sharedOnly ? "AND m.deleted=0 AND (m.message_kind='poll' OR EXISTS(SELECT 1 FROM message_files mf WHERE mf.message_id=m.id))" : ''}
+      WHERE m.group_id=? AND m.id<? AND m.id>? AND m.message_kind NOT IN ('poll_vote','rsvp_response')
+      ${sharedOnly ? "AND m.deleted=0 AND (m.message_kind IN ('poll','rsvp') OR EXISTS(SELECT 1 FROM message_files mf WHERE mf.message_id=m.id))" : ''}
       ${encryptionRequired ? 'AND m.e2ee_version=1 AND EXISTS(SELECT 1 FROM e2ee_recipients er WHERE er.message_id=m.id AND er.user_id=?)' : ''}
       ORDER BY m.id DESC LIMIT 100`, req.params.id, before,floor,...(encryptionRequired ? [req.user.id] : [])).reverse();
     for (const m of messages) m.files = all('SELECT f.id,f.name,f.mime,f.size FROM files f JOIN message_files mf ON mf.file_id=f.id WHERE mf.message_id=?', m.id);
@@ -597,19 +601,19 @@ export function createApp(options = {}) {
   app.get('/api/groups/:id/threads/:messageId', (req, res) => {
     visibleCircle(req.user.id, req.params.id);
     const root = one('SELECT * FROM messages WHERE id=? AND group_id=?', req.params.messageId, req.params.id) || fail(404, 'Thread not found.');
-    if(root.message_kind==='poll_vote')fail(404,'Thread not found.');
+    if(['poll_vote','rsvp_response'].includes(root.message_kind))fail(404,'Thread not found.');
     const rootId = root.reply_to || root.id;
     const floor=encryptionRequired ? encryption.reader(req,req.params.id).gm.joined_after : -1;
     const messages = all(`SELECT m.*,u.name,u.avatar_id,u.bird_id,u.avatar_style,COALESCE(kh.public_key,ei.public_key) AS signer_key,COALESCE(m.signer_fingerprint,ei.fingerprint) AS signer_fingerprint,signer.name AS signer_name FROM messages m JOIN users u ON u.id=m.user_id
       LEFT JOIN e2ee_identities ei ON ei.user_id=m.encrypted_by LEFT JOIN e2ee_key_history kh ON kh.user_id=m.encrypted_by AND kh.fingerprint=m.signer_fingerprint LEFT JOIN users signer ON signer.id=m.encrypted_by WHERE m.group_id=? AND (m.id=? OR m.reply_to=?) AND m.id>?
-      AND m.message_kind<>'poll_vote' ${encryptionRequired ? 'AND m.e2ee_version=1 AND EXISTS(SELECT 1 FROM e2ee_recipients er WHERE er.message_id=m.id AND er.user_id=?)' : ''} ORDER BY m.id LIMIT 500`, req.params.id, rootId, rootId,floor,...(encryptionRequired ? [req.user.id] : []));
+      AND m.message_kind NOT IN ('poll_vote','rsvp_response') ${encryptionRequired ? 'AND m.e2ee_version=1 AND EXISTS(SELECT 1 FROM e2ee_recipients er WHERE er.message_id=m.id AND er.user_id=?)' : ''} ORDER BY m.id LIMIT 500`, req.params.id, rootId, rootId,floor,...(encryptionRequired ? [req.user.id] : []));
     for (const m of messages) m.files = all('SELECT f.id,f.name,f.mime,f.size FROM files f JOIN message_files mf ON mf.file_id=f.id WHERE mf.message_id=?', m.id);
     res.json({ messages });
   });
   app.post('/api/groups/:id/messages', rateLimit({ windowMs: 60_000, limit: options.testing ? 1000 : 90, keyGenerator: req => req.user.id, message: { error: 'Please slow down and try again in a moment.' } }), async (req, res) => {
     const messageKind=req.body.message_kind ?? 'chat';
-    if(!['chat','poll'].includes(messageKind))fail(400,'Choose a supported message type.');
-    if(messageKind==='poll' && (req.body.reply_to != null || req.body.files?.length))fail(400,'Post a poll directly in the Nest without attachments.');
+    if(!['chat','poll','rsvp'].includes(messageKind))fail(400,'Choose a supported message type.');
+    if(['poll','rsvp'].includes(messageKind) && (req.body.reply_to != null || req.body.files?.length))fail(400,'Post a poll or RSVP directly in the Nest without attachments.');
     const g = visibleCircle(req.user.id, req.params.id);
     if (!joined(req.user.id, g.id)) fail(403, 'Join this Nest to send messages.');
     if (g.admin_only && !groupAdmin(req.user.id, g)) fail(403, 'Only admins can post or reply in this Nest.');
@@ -626,12 +630,14 @@ export function createApp(options = {}) {
     if (!Array.isArray(files) || files.length > 5 || files.some(id => typeof id !== 'string') || new Set(files).size !== files.length) fail(400, 'Attach up to five files.');
     if (!encryptionRequired && !body.trim() && !files.length) fail(400, 'Write a message or attach a file.');
     if (!encryptionRequired && messageKind==='poll' && !parsePoll(body))fail(400,'Add a valid poll title, questions and answer options.');
+    const responseDeadline=messageKind==='rsvp' ? normalizedDeadline(req.body.response_deadline) : null;
+    if(!encryptionRequired && messageKind==='rsvp' && (!parseRsvp(body) || parseRsvp(body).responseDeadline!==responseDeadline))fail(400,'Add valid event details and a matching response deadline.');
     for (const id of files) if (!one('SELECT 1 FROM files WHERE id=? AND user_id=?', id, req.user.id) || one('SELECT 1 FROM message_files WHERE file_id=?', id)) fail(400, 'An attachment is unavailable. Please upload it again.');
     let reply = req.body.reply_to ?? null;
     if (reply !== null) {
       if (!Number.isSafeInteger(reply)) fail(400, 'Invalid reply.');
       const parent = one('SELECT * FROM messages WHERE id=? AND group_id=?', reply, g.id);
-      if (!parent || parent.deleted || parent.message_kind==='poll_vote') fail(400, 'That message is no longer available to reply to.');
+      if (!parent || parent.deleted || ['poll_vote','rsvp_response'].includes(parent.message_kind)) fail(400, 'That message is no longer available to reply to.');
       if(encryptionRequired && !encryption.canRead(req.user.id,parent))fail(404,'You cannot reply to a message from before you joined.');
       if(encryptionRequired && parent.reply_to)fail(400,'Reply to the visible root message of this thread.');
       reply = parent.reply_to || parent.id;
@@ -646,6 +652,7 @@ export function createApp(options = {}) {
       if(checked)encryption.recordRecipients(id,checked.rs);
       run('UPDATE messages SET message_kind=? WHERE id=?',messageKind,id);
       if(messageKind==='poll')run('INSERT INTO polls(message_id) VALUES (?)',id);
+      if(messageKind==='rsvp')run('INSERT INTO rsvps(message_id,response_deadline) VALUES (?,?)',id,responseDeadline);
       for (const fid of files) run('INSERT INTO message_files VALUES (?,?)', id, fid);
       run('UPDATE group_members SET last_read=?,marked_unread=0 WHERE group_id=? AND user_id=?', id, g.id, req.user.id);
       for (const r of recipients) run('INSERT INTO notifications(user_id,message_id) VALUES (?,?)', r.user_id, id);
@@ -670,9 +677,9 @@ export function createApp(options = {}) {
   function editableMessage(req) {
     const m=one('SELECT * FROM messages WHERE id=? AND deleted=0',req.params.id) || fail(404,'Message not found.');
     const g=visibleCircle(req.user.id,m.group_id);
-    if(m.user_id!==req.user.id)fail(403,'You can only edit your own messages.');
-    if(m.message_kind!=='chat')fail(400,'Only message text can be edited. Polls and answers cannot be changed here.');
-    if(!joined(req.user.id,g.id) || (g.admin_only && !groupAdmin(req.user.id,g)))fail(403,'Posting permissions are required to edit this message.');
+    if(m.user_id!==req.user.id && !(m.message_kind==='rsvp' && groupAdmin(req.user.id,g)))fail(403,'You can only edit your own messages.');
+    if(!['chat','rsvp'].includes(m.message_kind))fail(400,'Only message text can be edited. Polls and answers cannot be changed here.');
+    if(!joined(req.user.id,g.id) || (m.message_kind==='chat' && g.admin_only && !groupAdmin(req.user.id,g)))fail(403,'Posting permissions are required to edit this message.');
     if(encryptionRequired && (!m.e2ee_version || !encryption.canRead(req.user.id,m)))fail(404,'This message is not available to edit.');
     return {m,g};
   }
@@ -688,6 +695,8 @@ export function createApp(options = {}) {
     if(m.edit_version!==version)fail(409,'This message changed on another device. Close this editor and reopen it to see the latest text.');
     const checked=encryptionRequired ? await encryption.validateEdit(req,m) : null;
     const body=encryptionRequired ? '' : req.body.body;
+    const responseDeadline=m.message_kind==='rsvp' ? normalizedDeadline(req.body.response_deadline) : null;
+    if(!encryptionRequired && m.message_kind==='rsvp' && (!parseRsvp(body) || parseRsvp(body).responseDeadline!==responseDeadline))fail(400,'Add valid event details and a matching response deadline.');
     const attached=one('SELECT COUNT(*) AS n FROM message_files WHERE message_id=?',m.id).n;
     if(!encryptionRequired && (typeof body!=='string' || body.length>10000 || (!body.trim() && !attached)))fail(400,'Write a message of up to 10,000 characters, or keep an attachment.');
     transaction(()=>{
@@ -700,6 +709,7 @@ export function createApp(options = {}) {
         run("UPDATE messages SET body='',ciphertext=?,edit_client_id=?,encrypted_by=?,recipient_hash=?,signer_fingerprint=?,self_encrypted=? WHERE id=?",checked.ciphertext,checked.clientId,req.user.id,checked.rosterHash,encryption.identity(req.user.id).fingerprint,rs.self_encrypted ? 1 : 0,m.id);
         run('DELETE FROM e2ee_recipients WHERE message_id=?',m.id);encryption.recordRecipients(m.id,rs);
       }else run('UPDATE messages SET body=? WHERE id=?',body.trim(),m.id);
+      if(m.message_kind==='rsvp')run('UPDATE rsvps SET response_deadline=? WHERE message_id=?',responseDeadline,m.id);
       run("UPDATE messages SET edit_version=edit_version+1,edited_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=?",m.id);
     });
     refresh(g.community_id);res.json({ok:true,edit_version:version+1});
@@ -713,6 +723,10 @@ export function createApp(options = {}) {
       if(m.message_kind==='poll'){
         run("UPDATE messages SET deleted=1,body='',ciphertext=NULL WHERE reply_to=? AND message_kind='poll_vote'",m.id);
         run('DELETE FROM poll_votes WHERE poll_id=?',m.id);
+      }
+      if(m.message_kind==='rsvp'){
+        run("UPDATE messages SET deleted=1,body='',ciphertext=NULL WHERE reply_to=? AND message_kind='rsvp_response'",m.id);
+        run('DELETE FROM rsvp_responses WHERE event_id=?',m.id);
       }
       run('DELETE FROM message_files WHERE message_id=?', m.id);
       run('DELETE FROM notifications WHERE message_id=?', m.id);

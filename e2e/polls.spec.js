@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
 
-test('encrypted multi-question poll opens an envelope and saves eggs in choice baskets', async ({ page, browser }, info) => {
+test('encrypted multi-question poll opens a ballot and saves eggs in choice baskets', async ({ page, browser }, info) => {
   const errors = [], writes = [];
   page.on('pageerror', e => errors.push(e.message));
   const listen = p => p.on('request', r => { if (r.method() === 'POST' && /\/api\/(groups\/.*\/messages|messages\/.*\/poll\/vote)/.test(r.url())) writes.push(r.postData() || ''); });
@@ -44,7 +44,7 @@ test('encrypted multi-question poll opens an envelope and saves eggs in choice b
       await expect(p.getByText('What day works?', { exact: true })).toHaveCount(0);
       await expect(p.locator('.message-bubble.poll-message')).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
     }
-    await page.screenshot({ path: info.outputPath('poll-envelope-chat.png'), fullPage: true });
+    await page.screenshot({ path: info.outputPath('poll-ballot-chat.png'), fullPage: true });
     await member.getByRole('button', { name: 'Open poll: Family weekend', exact: true }).click();
     const view = member.getByRole('dialog');
     await expect(view.getByRole('heading', { name: 'What day works?', exact: true })).toBeVisible();

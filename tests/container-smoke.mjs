@@ -5,6 +5,7 @@ import { randomUUID } from 'node:crypto';
 import assert from 'node:assert/strict';
 import * as enc from '../shared/encryption.js';
 import { validatePoll,encodeVote,parseVote } from '../shared/polls.js';
+import { validateRsvp,encodeResponse,parseResponse } from '../shared/rsvps.js';
 import { mkdtempSync,readFileSync,rmSync,existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -105,6 +106,22 @@ async function browserCheck(cid,gid,recovery,managedFixture){
     await page.getByRole('button',{name:'Close dialog',exact:true}).click();
     await expect(page.getByRole('dialog').getByRole('heading',{name:'Polls',exact:true})).toBeVisible();
     await page.getByRole('button',{name:'Close dialog',exact:true}).click();
+    await page.getByRole('button',{name:'Open RSVP: Container picnic invitation',exact:true}).click();
+    await expect(page.getByRole('dialog').getByRole('heading',{name:'Container picnic invitation',exact:true})).toBeVisible();
+    await expect(page.getByRole('radio',{name:'Going',exact:true})).toBeChecked();
+    await expect(page.getByRole('spinbutton',{name:'Additional guests',exact:true})).toHaveValue('2');
+    await expect.poll(()=>page.locator('.rsvp-hatch.is-hatched .rsvp-hatchling').evaluate(img=>img.naturalWidth)).toBeGreaterThan(0);
+    await page.getByRole('radio',{name:'Maybe',exact:true}).check();
+    await page.getByRole('spinbutton',{name:'Additional guests',exact:true}).fill('1');
+    await page.getByRole('button',{name:'Update response',exact:true}).click();
+    await expect(page.getByRole('dialog').getByRole('status')).toContainText('Your response is saved: Maybe.');
+    await page.getByRole('button',{name:'Responses',exact:true}).click();
+    await expect(page.locator('.rsvp-totals section').nth(1).locator('strong')).toHaveText('2');
+    await page.getByRole('button',{name:'Close dialog',exact:true}).click();
+    await page.getByRole('button',{name:'Open shared items',exact:true}).click();
+    await page.getByRole('dialog').getByRole('button',{name:/^RSVPs/}).click();
+    await expect(page.getByRole('dialog').getByRole('button',{name:'Open RSVP: Container picnic invitation',exact:true})).toBeVisible();
+    await page.getByRole('button',{name:'Close dialog',exact:true}).click();
     assert.deepEqual(errors,[]);assert.deepEqual(await page.evaluate(()=>window.cspViolations),[]);
     await context.close();console.log('PASS: production browser recovery, local key persistence, encrypted photo rendering and strict CSP over HTTPS.');
     const visitor=await browser.newContext({ignoreHTTPSErrors:true});
@@ -168,15 +185,18 @@ try {
   const edit=enc.editPayload({messageId:mid,expectedVersion:0,groupId:gid,clientId:editId,rosterHash:editRoster.roster_hash,cipherHash:await enc.digest(editCipher),files:[fileId],replyTo:null});
   await request(`/messages/${mid}/content`,'PUT',{ciphertext:editCipher,clientId:editId,rosterHash:editRoster.roster_hash,reply_to:null,files:[fileId],expectedVersion:0,signature:await enc.sign(keys.privateKey,'edit',edit)});
   const poll=validatePoll({title:'Container planning poll',questions:[{text:'Which day?',type:'single',options:['Saturday','Sunday']}]});
-  async function pollWrite(kind,body,replyTo=null){
+  async function typedWrite(kind,body,replyTo=null){
     const rs=(await request(`/groups/${gid}/e2ee/roster`)).data,clientId=randomUUID();
     const ciphertext=await enc.seal(keys.privateKey,rs.readers.map(r=>r.public_key),{version:1,kind:'nest-message',groupId:gid,clientId,senderId:registered.data.user.id,signerId:registered.data.user.id,rosterHash:rs.roster_hash,replyTo,migrated:false,selfEncrypted:rs.self_encrypted,contentType:kind,body,attachments:[]});
     const payload=enc.sendPayload({groupId:gid,clientId,rosterHash:rs.roster_hash,cipherHash:await enc.digest(ciphertext),files:[],replyTo});
-    return (await request(kind==='poll' ? `/groups/${gid}/messages` : `/messages/${replyTo}/poll/vote`,'POST',{ciphertext,clientId,rosterHash:rs.roster_hash,reply_to:replyTo,files:[],...(kind==='poll' ? {message_kind:'poll'} : {}),signature:await enc.sign(keys.privateKey,'send',payload)})).data.id;
+    return (await request(['poll','rsvp'].includes(kind) ? `/groups/${gid}/messages` : kind==='rsvp_response' ? `/messages/${replyTo}/rsvp/respond` : `/messages/${replyTo}/poll/vote`,'POST',{ciphertext,clientId,rosterHash:rs.roster_hash,reply_to:replyTo,files:[],...(['poll','rsvp'].includes(kind) ? {message_kind:kind} : kind==='rsvp_response' ? {eventVersion:0} : {}),signature:await enc.sign(keys.privateKey,'send',payload)})).data.id;
   }
-  const pollId=await pollWrite('poll',JSON.stringify(poll));
-  await pollWrite('poll_vote',encodeVote(pollId,poll,[[0]]),pollId);
+  const pollId=await typedWrite('poll',JSON.stringify(poll));
+  await typedWrite('poll_vote',encodeVote(pollId,poll,[[0]]),pollId);
   await request(`/messages/${pollId}/poll`,'PATCH',{closed:true});
+  const event=validateRsvp({title:'Container picnic invitation',allDay:true,start:'2027-05-20',timeZone:'UTC',location:'Our park'});
+  const eventId=await typedWrite('rsvp',JSON.stringify(event));
+  await typedWrite('rsvp_response',encodeResponse(eventId,{choice:'going',guests:2}),eventId);
   const keyBefore = (await request('/config')).data.vapidPublicKey;
   assert.ok(keyBefore);
   assert.deepEqual(await enc.decryptFile((await request(`/files/${fileId}`)).data,attachment),filePlain);
@@ -201,6 +221,9 @@ try {
   const savedPoll=(await request(`/messages/${pollId}/poll`)).data;
   assert.equal(savedPoll.closed,true);assert.equal(savedPoll.votes.length,1);
   assert.deepEqual(parseVote((await enc.open(restored,keys.publicKey,savedPoll.votes[0].ciphertext)).body,pollId,poll),[[0]]);
+  const savedEvent=(await request(`/messages/${eventId}/rsvp`)).data;
+  assert.equal(savedEvent.responses.length,1);assert.equal(savedEvent.closed,false);
+  assert.deepEqual(parseResponse((await enc.open(restored,keys.publicKey,savedEvent.responses[0].ciphertext)).body,eventId),{choice:'going',guests:2});
   cookie=managedCookie;deviceId=randomUUID();
   const restoredManaged=(await request('/e2ee/managed-device','POST',{deviceId,deviceName:'After replacement'})).data;
   assert.equal(restoredManaged.identity.fingerprint,managedFingerprint);assert.equal((await enc.readPrivate(restoredManaged.privateKey)).getFingerprint(),managedFingerprint);
@@ -208,8 +231,9 @@ try {
   await browserCheck(cid,gid,recovery,{cookie:managedCookie});
   console.log('PASS: production container, HTTPS proxy headers, secure sessions, encrypted Nest messages/files, recovery backup and volume persistence across replacement.');
   console.log('PASS: push keys persist; local .env is excluded; Railway startup requires a Volume.');
-  console.log('PASS: encrypted poll definitions, answers and closure survive replacement; envelope and basket artwork render under production CSP.');
+  console.log('PASS: encrypted poll definitions, answers and closure survive replacement; ballot and basket artwork render under production CSP.');
   console.log('PASS: shared library decrypts pictures and documents and opens saved polls under production CSP.');
+  console.log('PASS: encrypted RSVP invitations and guest counts survive replacement; envelopes and hatching artwork render under production CSP.');
   console.log('PASS: encrypted edits survive replacement and can be saved in the production browser without losing attachments.');
 } finally {
   for(const name of containers)spawnSync('docker', ['rm', '-f', name], { stdio: 'ignore' });

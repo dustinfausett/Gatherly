@@ -155,8 +155,8 @@ export async function sealEdit(message,body){
   const readers=await Promise.all(rs.readers.map(trustedReader)),clientId=crypto.randomUUID();
   // Retain the original client ID for browsers already open on an older bundle.
   // The separately signed edit nonce and version bind this correction to its row.
-  const payload={version:enc.VERSION,kind:'nest-message',groupId:message.group_id,clientId:message.client_id,senderId:self.userId,signerId:self.userId,
-    rosterHash:rs.roster_hash,replyTo:message.reply_to ?? null,migrated:message.client_id.startsWith('legacy-'),selfEncrypted:!!rs.self_encrypted,contentType:'chat',body,attachments:message.files,
+  const payload={version:enc.VERSION,kind:'nest-message',groupId:message.group_id,clientId:message.client_id,senderId:message.user_id,signerId:self.userId,
+    rosterHash:rs.roster_hash,replyTo:message.reply_to ?? null,migrated:message.client_id.startsWith('legacy-'),selfEncrypted:!!rs.self_encrypted,contentType:message.message_kind || 'chat',body,attachments:message.files,
     editVersion:expectedVersion+1,editMessageId:message.id,editClientId:clientId};
   validateContents(payload);
   const ciphertext=await enc.seal(self.privateKey,readers.map(u=>u.public_key),payload),files=message.files.map(f=>f.id);

@@ -6,10 +6,11 @@ import { useEncryption } from './encryption/EncryptionGate';
 import { sealMessage, decryptMessages } from './encryption/client';
 import { POLL_LIMITS, validatePoll, parsePoll, validateAnswers, encodeVote, parseVote } from '../shared/polls';
 import './polls.css';
+import { parseRsvp } from '../shared/rsvps';
 
 const art = '/brand/polls/';
 const newQuestion = () => ({ text: '', type: 'single', options: ['', ''] });
-export const messagePreview = m => m?.message_kind === 'poll' ? parsePoll(m.body)?.title || 'Poll' : m?.body;
+export const messagePreview = m => m?.message_kind === 'poll' ? parsePoll(m.body)?.title || 'Poll' : m?.message_kind === 'rsvp' ? parseRsvp(m.body)?.title || 'RSVP' : m?.body;
 
 export function PollBuilder({ group, onClose, onSent }) {
   const { enabled } = useEncryption();
@@ -28,7 +29,7 @@ export function PollBuilder({ group, onClose, onSent }) {
     } catch (e) { if (e.status === 409) prepared.current = null; setError(e.message); }
     finally { setBusy(false); }
   }
-  return <Modal title="Create a poll" subtitle="One quick question, or a few. Your poll arrives in an envelope." onClose={() => { if (!busy) onClose(); }} wide>
+  return <Modal title="Create a poll" subtitle="One quick question, or a few. Your poll arrives as a ballot." onClose={() => { if (!busy) onClose(); }} wide>
     <form className="form poll-builder" onSubmit={send}>
       <fieldset disabled={busy}>
         <Field label="Poll title" value={title} onChange={e => setTitle(e.target.value)} placeholder="e.g. Our next family get-together" maxLength={POLL_LIMITS.title} required />
@@ -128,24 +129,12 @@ export function PollDialog({ message, ...props }) {
   return poll ? <PollView poll={poll} message={message} {...props} /> : null;
 }
 
-export function PollEnvelope({ message, group, user, version, onOpen }) {
-  const poll = parsePoll(message.body);
-  const [opening, setOpening] = useState(false), [open, setOpen] = useState(false);
-  const [openReady, setOpenReady] = useState(false);
-  const timer = useRef(null), openArt = useRef(null), mounted = useRef(true);
-  useEffect(() => { mounted.current = true; return () => { mounted.current = false; clearTimeout(timer.current); }; }, []);
-  async function touch() {
-    if (opening) return;
-    setOpening(true);
-    try { await openArt.current?.decode(); } catch { /* A failed image must not prevent opening the poll. */ }
-    if (!mounted.current) return;
-    setOpenReady(!!openArt.current?.naturalWidth);
-    timer.current = setTimeout(() => { setOpening(false); if (onOpen) onOpen(message); else setOpen(true); }, 250);
-  }
+export function PollCard({ message, group, user, version, onOpen }) {
+  const poll = parsePoll(message.body), [open, setOpen] = useState(false);
   if (!poll) return <p role="alert">This poll could not be opened.</p>;
   return <>
-    <button type="button" className={`poll-envelope ${opening && openReady ? 'is-opening' : ''}`} aria-label={`Open poll: ${poll.title}`} onClick={touch} aria-haspopup="dialog" aria-busy={opening} disabled={opening}>
-      <img className="envelope-closed" src={`${art}envelope.png`} alt="" width="300" height="200" /><img className="envelope-open" ref={openArt} src={`${art}envelope-open.png`} onLoad={() => setOpenReady(true)} alt="" width="300" height="200" /><strong>{poll.title}</strong>
+    <button type="button" className="poll-ballot" aria-label={`Open poll: ${poll.title}`} aria-haspopup="dialog" onClick={() => onOpen ? onOpen(message) : setOpen(true)}>
+      <img src={`${art}ballot.png`} alt="" width="1254" height="1254" /><strong>{poll.title}</strong>
     </button>
     {open && <PollView poll={poll} message={message} group={group} user={user} version={version} onClose={() => setOpen(false)} />}
   </>;

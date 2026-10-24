@@ -111,6 +111,18 @@ export function openDatabase(path) {
   db.exec('CREATE UNIQUE INDEX IF NOT EXISTS messages_edit_client_id ON messages(edit_client_id) WHERE edit_client_id IS NOT NULL');
   addColumn('messages', 'message_kind', "TEXT NOT NULL DEFAULT 'chat'");
   db.exec(`
+    CREATE TABLE IF NOT EXISTS rsvps (
+      message_id INTEGER PRIMARY KEY REFERENCES messages(id) ON DELETE CASCADE,
+      closed INTEGER NOT NULL DEFAULT 0 CHECK(closed IN (0,1)),
+      canceled INTEGER NOT NULL DEFAULT 0 CHECK(canceled IN (0,1)),
+      response_deadline TEXT
+    );
+    CREATE TABLE IF NOT EXISTS rsvp_responses (
+      event_id INTEGER NOT NULL REFERENCES rsvps(message_id) ON DELETE CASCADE,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      message_id INTEGER NOT NULL UNIQUE REFERENCES messages(id) ON DELETE CASCADE,
+      PRIMARY KEY(event_id,user_id)
+    );
     CREATE TABLE IF NOT EXISTS polls (
       message_id INTEGER PRIMARY KEY REFERENCES messages(id) ON DELETE CASCADE,
       closed INTEGER NOT NULL DEFAULT 0 CHECK(closed IN (0,1))

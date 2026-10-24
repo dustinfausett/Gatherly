@@ -1,17 +1,20 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowLeft, Download, File, FileText, Image as ImageIcon, Mail, Music, Video } from 'lucide-react';
+import { ArrowLeft, Download, File, FileText, Image as ImageIcon, Mail, Vote, Music, Video } from 'lucide-react';
 import { Modal } from './components';
 import { api } from './api';
 import { useEncryption } from './encryption/EncryptionGate';
 import { attachmentUrl, decryptMessages } from './encryption/client';
 import { parsePoll } from '../shared/polls';
-import { PollEnvelope } from './Polls';
+import { PollCard } from './Polls';
 import './shared-library.css';
+import { parseRsvp } from '../shared/rsvps';
+import { RsvpEnvelope } from './Rsvps';
 
 const categories = [
   { id: 'pictures', label: 'Pictures', Icon: ImageIcon, always: true },
   { id: 'documents', label: 'Documents', Icon: FileText, always: true },
-  { id: 'polls', label: 'Polls', Icon: Mail, always: true },
+  { id: 'polls', label: 'Polls', Icon: Vote, always: true },
+  { id: 'rsvps', label: 'RSVPs', Icon: Mail, always: true },
   { id: 'videos', label: 'Videos', Icon: Video },
   { id: 'audio', label: 'Audio', Icon: Music },
   { id: 'files', label: 'Other files', Icon: File },
@@ -70,7 +73,7 @@ function DownloadRow({ item, getUrl }) {
   return <div className="shared-download"><button type="button" disabled={busy} onClick={download}><span className="shared-file-icon"><Icon size={24} /></span><span><strong>{item.file.name}</strong><small>{item.sender} · {dateLabel(item.createdAt)} · {sizeLabel(item.file.size)}</small></span><Download size={18} />{busy && <span className="visually-hidden">Preparing download…</span>}</button>{error && <p role="alert" className="field-error">{error} Tap the file to try again.</p>}</div>;
 }
 
-export default function SharedLibrary({ group, user, version, onClose, onOpenPoll, suspended = false }) {
+export default function SharedLibrary({ group, user, version, onClose, onOpenPoll, onOpenRsvp, suspended = false }) {
   const { enabled } = useEncryption();
   const [items, setItems] = useState([]), [loading, setLoading] = useState(true), [error, setError] = useState(''), [unverified, setUnverified] = useState(0);
   const [category, setCategory] = useState(null), [picture, setPicture] = useState(null), [retry, setRetry] = useState(0);
@@ -105,6 +108,10 @@ export default function SharedLibrary({ group, user, version, onClose, onOpenPol
             const poll = parsePoll(message.body);
             if (poll) found.push({ ...common, id: `poll:${message.id}`, category: 'polls', title: poll.title, index: -1 }); else invalid++;
           }
+          if (message.message_kind === 'rsvp') {
+            const event = parseRsvp(message.body);
+            if (event) found.push({ ...common, id: `rsvp:${message.id}`, category: 'rsvps', title: event.title, index: -1 }); else invalid++;
+          }
           message.files.forEach((file, index) => found.push({ ...common, id: `file:${file.id}`, category: fileCategory(file), file, index }));
         }
         more = result.has_more && messages.length > 0; before = result.messages[0]?.id;
@@ -131,7 +138,7 @@ export default function SharedLibrary({ group, user, version, onClose, onOpenPol
       {picture ? <PictureView item={picture} getUrl={getUrl} /> : !category ? <div className="shared-categories">{categories.filter(c => c.always || items.some(item => item.category === c.id)).map(({ id, label, Icon }) => <button key={id} type="button" ref={el => { categoryButtons.current[id] = el; }} onClick={() => { lastCategory.current = id; setCategory(id); }}><Icon size={27} /><span>{label}</span>{!loading && <small>{items.filter(item => item.category === id).length}</small>}</button>)}</div> : <>
         <p className="shared-sort">Newest first</p>
         {!loading && !shown.length && !error && <p className="shared-empty">No {activeCategory.label.toLowerCase()} have been shared with you in this Nest yet.</p>}
-        <div className={category === 'pictures' ? 'shared-pictures' : 'shared-items'}>{shown.map(item => category === 'pictures' ? <PictureTile key={item.id} item={item} getUrl={getUrl} onOpen={setPicture} /> : category === 'polls' ? <div className="shared-poll" key={item.id}><PollEnvelope message={item.message} group={group} user={user} version={version} onOpen={onOpenPoll} /><p className="shared-item-meta">{item.sender} · {dateLabel(item.createdAt)}</p></div> : <DownloadRow key={item.id} item={item} getUrl={getUrl} />)}</div>
+        <div className={category === 'pictures' ? 'shared-pictures' : 'shared-items'}>{shown.map(item => category === 'pictures' ? <PictureTile key={item.id} item={item} getUrl={getUrl} onOpen={setPicture} /> : category === 'polls' ? <div className="shared-poll" key={item.id}><PollCard message={item.message} group={group} user={user} version={version} onOpen={onOpenPoll} /><p className="shared-item-meta">{item.sender} · {dateLabel(item.createdAt)}</p></div> : category === 'rsvps' ? <div className="shared-poll" key={item.id}><RsvpEnvelope message={item.message} group={group} user={user} version={version} onOpen={onOpenRsvp} /><p className="shared-item-meta">{item.sender} · {dateLabel(item.createdAt)}</p></div> : <DownloadRow key={item.id} item={item} getUrl={getUrl} />)}</div>
       </>}
     </div>
   </Modal>;

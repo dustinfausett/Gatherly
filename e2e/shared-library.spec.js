@@ -28,19 +28,10 @@ test('header Nest opens the encrypted shared library with newest-first pictures,
   }
   const older=await share([file('older.pdf','application/pdf',pdf),file('oldest.png','image/png',png)],'First shared items');
   await poll('Earlier plans');
-  const envelope=page.getByRole('button',{name:'Open poll: Earlier plans',exact:true});
-  await expect.poll(()=>envelope.locator('.envelope-open').evaluate(img=>img.naturalWidth)).toBeGreaterThan(0);
-  await envelope.evaluate(button=>{
-    window.envelopeSwap={};window.envelopeObserver=new MutationObserver(()=>{
-      const state=window.envelopeSwap;
-      if(button.classList.contains('is-opening') && !state.start){state.start=performance.now();state.opacity=getComputedStyle(button.querySelector('.envelope-open')).opacity;}
-      if(document.querySelector('[role=dialog]') && state.start && !state.end)state.end=performance.now();
-    });window.envelopeObserver.observe(document.body,{subtree:true,childList:true,attributes:true,attributeFilter:['class']});
-  });
-  await envelope.click();await expect(page.getByRole('dialog')).toBeVisible();
-  const swap=await page.evaluate(()=>{window.envelopeObserver.disconnect();return window.envelopeSwap;});
-  expect(swap.opacity).toBe('1');expect(swap.end-swap.start).toBeGreaterThanOrEqual(190);expect(swap.end-swap.start).toBeLessThan(500);
-  await expect(page.locator('.poll-envelope-flap,.poll-envelope-letter')).toHaveCount(0);
+  const ballot=page.getByRole('button',{name:'Open poll: Earlier plans',exact:true});
+  await expect(ballot.locator('img')).toHaveAttribute('src','/brand/polls/ballot.png');
+  await ballot.click();await expect(page.getByRole('dialog')).toBeVisible();
+  await expect(page.locator('.envelope-open,.envelope-closed')).toHaveCount(0);
   await page.getByRole('button',{name:'Close dialog',exact:true}).click();
   await share([file('newer.pdf','application/pdf',pdf),file('newest.png','image/png',png),file('voice.mp3','audio/mpeg',Buffer.from('audio fixture')),file('movie.mp4','video/mp4',Buffer.from('video fixture')),file('archive.zip','application/zip',Buffer.from('archive fixture'))],'More recent shared items');
   await poll('Latest plans');
@@ -59,13 +50,13 @@ test('header Nest opens the encrypted shared library with newest-first pictures,
   await dialog.locator('.shared-picture').first().click();await expect(dialog.getByRole('img',{name:'newest.png',exact:true})).toBeVisible();
   await expect.poll(()=>dialog.getByRole('img',{name:'newest.png',exact:true}).evaluate(img=>img.naturalWidth)).toBe(1);
   await dialog.getByRole('button',{name:'Back to Pictures',exact:true}).click();await dialog.getByRole('button',{name:'All shared items',exact:true}).click();
-  await dialog.getByRole('button',{name:/^Polls/}).click();await expect(dialog.locator('.poll-envelope>strong')).toHaveText(['Latest plans','Earlier plans']);
+  await dialog.getByRole('button',{name:/^Polls/}).click();await expect(dialog.locator('.poll-ballot>strong')).toHaveText(['Latest plans','Earlier plans']);
   await dialog.getByRole('button',{name:'Open poll: Latest plans',exact:true}).click();
   await expect(page.getByRole('dialog')).toHaveCount(1);await expect(page.getByRole('dialog').getByRole('heading',{name:'Latest plans',exact:true})).toBeVisible();
   await page.getByRole('radio',{name:'Plan one',exact:true}).check();await page.getByRole('button',{name:'Submit answers',exact:true}).click();
   await expect(page.getByRole('dialog').getByRole('status')).toContainText('Your answers are saved.');
   await page.getByRole('button',{name:'Close dialog',exact:true}).click();
-  dialog=page.getByRole('dialog');await expect(dialog.getByRole('heading',{name:'Polls',exact:true})).toBeVisible();await expect(dialog.locator('.poll-envelope')).toHaveCount(2);
+  dialog=page.getByRole('dialog');await expect(dialog.getByRole('heading',{name:'Polls',exact:true})).toBeVisible();await expect(dialog.locator('.poll-ballot')).toHaveCount(2);
   await page.request.delete(`/api/messages/${older}`);
   await dialog.getByRole('button',{name:'All shared items',exact:true}).click();await dialog.getByRole('button',{name:/^Documents/}).click();
   await expect(dialog.locator('.shared-download strong')).toHaveText(['newer.pdf']);

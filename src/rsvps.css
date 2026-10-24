@@ -1,0 +1,54 @@
+.poll-ballot { display: flex; flex-direction: column; align-items: center; gap: 4px; width: 230px; max-width: 100%; padding: 8px 12px 12px; border: 1px solid #e7d7b8; border-radius: 16px; background: #fff9e9; color: #58442d; font: inherit; text-align: center; cursor: pointer; }
+.poll-ballot img { width: 126px; height: 126px; object-fit: contain; }
+.poll-ballot strong { overflow-wrap: anywhere; font-weight: 800; }
+.poll-ballot:hover { background: #f4ecd7; }
+.poll-ballot:focus-visible { outline: 3px solid #648ba0; outline-offset: 3px; }
+.rsvp-view { margin-top: 20px; }
+.rsvp-card { max-width: 300px; }
+.rsvp-calendar-badge { position: absolute; z-index: 4; left: 13%; top: 18%; display: grid; place-items: center; width: 32px; height: 32px; background: #fff8df; color: #7a8852; border-radius: 8px; box-shadow: 0 1px 3px #57442b25; }
+.rsvp-card-date { font-size: 12px; color: #6c634a; margin: 0 12px 6px; line-height: 1.6; overflow-wrap: anywhere; }
+.rsvp-card-status { display: inline-block; margin: 0 12px 8px; padding: 4px 9px; border-radius: 8px; background: #edf0dc; color: #58623d; font-size: 11px; font-weight: 800; }
+.rsvp-card-status.canceled,.rsvp-canceled { background: #f9e4dc; color: #884f42; }
+.rsvp-canceled { padding: 12px; border-radius: 9px; }
+.rsvp-all-day { display: flex; align-items: center; gap: 9px; margin: 16px 0; min-height: 44px; }
+.rsvp-all-day input { width: 18px; height: 18px; accent-color: #7c9254; }
+.rsvp-date-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.rsvp-builder fieldset { min-width: 0; }
+.rsvp-builder textarea { resize: vertical; min-height: 95px; }
+.rsvp-tabs,.rsvp-response-filters { display: flex; flex-wrap: wrap; gap: 7px; margin: 18px 0; }
+.rsvp-tabs button,.rsvp-response-filters button { border: 1px solid #ded3bb; border-radius: 10px; min-height: 44px; padding: 9px 13px; background: #faf7ee; color: #6c654b; font: inherit; font-size: 13px; }
+.rsvp-tabs button.active,.rsvp-response-filters button.active { background: #e8edd8; border-color: #8ea16a; color: #4e6036; }
+.rsvp-event-detail { display: flex; align-items: flex-start; gap: 10px; margin: 15px 0; font-weight: 700; font-size: 14px; line-height: 1.6; }
+.rsvp-event-detail svg { flex: none; margin-top: 2px; color: #7e8e58; }
+.rsvp-event-detail span { min-width: 0; overflow-wrap: anywhere; }
+.rsvp-event-detail small { display: block; font-weight: 400; color: #80785f; font-size: 11px; }
+.rsvp-description { white-space: pre-wrap; line-height: 1.7; overflow-wrap: anywhere; font-size: 14px; }
+.rsvp-choices { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 8px; margin: 20px 0; border: 0; padding: 0; min-width: 0; }
+.rsvp-choices legend { font-size: 15px; font-weight: 800; margin-bottom: 12px; }
+.rsvp-choice { position: relative; display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 12px 4px; border: 2px solid #e8dec9; border-radius: 15px; background: #f8f0df; text-align: center; cursor: pointer; font-size: 13px; }
+.rsvp-choice.is-selected { border-color: #90a367; background: #edf1df; }
+.rsvp-choice:has(input:focus-visible) { outline: 3px solid #648ba0; outline-offset: 2px; }
+.rsvp-choice input { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; margin: 0; cursor: inherit; z-index: 3; }
+.rsvp-hatch { position: relative; width: 80px; height: 80px; display: inline-block; }
+.rsvp-hatch img { position: absolute; inset: 0; object-fit: contain; width: 100%; height: 100%; }
+.rsvp-hatchling { opacity: 0; }
+.rsvp-hatch.is-hatched .rsvp-egg { animation: rsvp-shell .45s ease-in-out both; }
+.rsvp-hatch.is-hatched .rsvp-hatchling { animation: rsvp-hatch .45s ease-out both; }
+@keyframes rsvp-shell { 0%,15% { transform: rotate(-8deg); opacity: 1; } 30% { transform: rotate(8deg); opacity: 1; } 55%,100% { transform: scale(.8); opacity: 0; } }
+@keyframes rsvp-hatch { 0%,35% { opacity: 0; transform: translateY(9px) scale(.8); } 75% { opacity: 1; transform: translateY(-3px) scale(1.04); } 100% { opacity: 1; transform: none; } }
+.rsvp-guests { border: 1px solid #ddcfb5; background: #faf4e7; border-radius: 12px; padding: 15px; }
+.rsvp-guests .field { margin: 0; }
+.rsvp-guests p { font-size: 12px; color: #776c51; margin: 9px 0 0; }
+.rsvp-guests input { max-width: 160px; }
+.rsvp-totals { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 8px; }
+.rsvp-totals section { display: flex; align-items: center; flex-direction: column; padding: 16px 5px; background: #f5efdf; border-radius: 12px; text-align: center; }
+.rsvp-totals strong { font-size: 27px; color: #526f3c; }
+.rsvp-totals span { font-size: 13px; font-weight: 800; margin-block: 4px; }
+.rsvp-totals small { font-size: 11px; color: #7f755c; }
+.rsvp-response-list { list-style: none; margin: 0; padding: 0; }
+.rsvp-response-list li { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 7px; padding: 12px 0; border-bottom: 1px solid #e9e0cd; font-size: 13px; }
+.rsvp-response-list span { font-size: 12px; color: #7c7258; }
+.rsvp-manage { display: flex; flex-wrap: wrap; gap: 15px; }
+.rsvp-manage .inline-confirm { flex-basis: 100%; }
+@media(max-width:640px) { .rsvp-date-fields { grid-template-columns: 1fr; gap: 0; } .rsvp-builder input,.rsvp-builder textarea,.rsvp-guests input { font-size: 16px; min-width: 0; max-width: 100%; } .rsvp-hatch { width: 66px; height: 66px; } .rsvp-choice { font-size: 12px; } .rsvp-card { max-width: 260px; } }
+@media(prefers-reduced-motion:reduce) { .rsvp-hatch img { animation: none!important; } .rsvp-hatch.is-hatched .rsvp-egg { opacity: 0; } .rsvp-hatch.is-hatched .rsvp-hatchling { opacity: 1; } }
