@@ -14,7 +14,16 @@ test('12 account birds, code redemption, saved avatars and matching flights',asy
   const tree=(await (await page.request.post('/api/communities',{data:{name:'Our bird Tree'}})).json()).community;
   const nest=(await (await page.request.post(`/api/communities/${tree.id}/circles`,{data:{name:'Morning songs'}})).json()).group;
   await page.addInitScript(()=>{
-    window.flightPoses={};
+    window.flightPoses={};window.flightLandings={};
+    const animate=Element.prototype.animate;
+    Element.prototype.animate=function(...args){
+      const animation=animate.apply(this,args);
+      if(this.classList.contains('travelling-bird'))animation.addEventListener('finish',()=>{
+        const moving=this.getBoundingClientRect(),resident=document.querySelector('.resident-bird').getBoundingClientRect();
+        window.flightLandings[this.querySelector('[data-bird-id]').dataset.birdId]={dx:moving.x-resident.x,dy:moving.y-resident.y,dw:moving.width-resident.width,dh:moving.height-resident.height};
+      });
+      return animation;
+    };
     addEventListener('DOMContentLoaded',()=>new MutationObserver(()=>{
       const bird=document.querySelector('.bird-flight [data-bird-id]');
       if(bird){const pose=bird.querySelector('[data-bird-pose]')?.dataset.birdPose;window.flightPoses[bird.dataset.birdId] ||= [];if(pose && !window.flightPoses[bird.dataset.birdId].includes(pose))window.flightPoses[bird.dataset.birdId].push(pose);}
@@ -60,6 +69,16 @@ test('12 account birds, code redemption, saved avatars and matching flights',asy
     const poses=await page.evaluate(id=>window.flightPoses[id],bird.id);
     expect(poses).toEqual(expect.arrayContaining(['up','down','landing']));
     await expect(page.locator('.resident-bird')).toHaveAttribute('data-bird-id',bird.id);
+    const landing=await page.evaluate(id=>window.flightLandings[id],bird.id);
+    for(const difference of Object.values(landing))expect(Math.abs(difference)).toBeLessThan(1);
+    const seat=await page.locator('.chat-landing-nest').evaluate(button=>{
+      const bird=button.querySelector('.resident-bird>.churp-bird'),nest=button.querySelector('.landing-nest-art');
+      const feet=new DOMPoint(256,440).matrixTransform(bird.getScreenCTM()),rim=new DOMPoint(288,350).matrixTransform(nest.getScreenCTM());
+      const rect=button.getBoundingClientRect();return {depth:feet.y-rim.y,width:rect.width,height:rect.height};
+    });
+    expect(seat.depth).toBeGreaterThanOrEqual(0);expect(seat.depth).toBeLessThan(14);
+    expect(seat.width).toBeGreaterThanOrEqual(44);expect(seat.height).toBeGreaterThanOrEqual(44);
+    if(bird.id==='blue')await page.locator('.chat-header').screenshot({path:info.outputPath('bird-seated-in-nest.png')});
     if(info.project.name==='desktop')await page.getByRole('button',{name:'Tree home',exact:true}).click();
     else await page.getByRole('button',{name:'Back to Nests',exact:true}).click();
   }

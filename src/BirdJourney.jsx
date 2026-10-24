@@ -56,14 +56,15 @@ export default function BirdJourney({ journey, onDone }) {
     const node=ref.current, destination=document.querySelector('[data-bird-landing]');
     const motion=window.matchMedia('(prefers-reduced-motion: reduce)');
     if (!node || !destination || !node.animate || motion.matches) {onDone();return;}
-    const target=destination.getBoundingClientRect(), start=journey.start;
+    const start=journey.start;
     // The chat is sliding right when mounted. Land at its final coordinates.
     const chatTransform=new DOMMatrix(getComputedStyle(destination.closest('.chat-layout')).transform);
-    const resident=destination.querySelector('.resident-bird');
-    const residentSize=resident?.getBoundingClientRect().width || target.width;
-    const residentTop=resident ? parseFloat(getComputedStyle(resident).top) : -9;
+    // Measure the artwork, not the button: its minimum touch size can be larger
+    // than the scene. Match the resident exactly for a seamless landing.
+    const resident=(destination.querySelector('.resident-bird') || destination).getBoundingClientRect();
+    const residentSize=resident.width;
     const size=start.width;
-    const end={x:target.left-chatTransform.m41+(target.width-size)/2,y:target.top-chatTransform.m42+residentTop-(size-residentSize)/2};
+    const end={x:resident.left-chatTransform.m41-(size-resident.width)/2,y:resident.top-chatTransform.m42-(start.height-resident.height)/2};
     const panelLeft=document.querySelector('.main-content').getBoundingClientRect().left;
     node.parentElement.style.clipPath=`inset(0 0 0 ${panelLeft}px)`;
     const startX=Math.min(start.x,innerWidth-size), startY=Math.max(0,start.y);

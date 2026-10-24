@@ -273,6 +273,8 @@ input::placeholder, textarea::placeholder { color: #92917f; }
 .bird-flight { position: fixed; inset: 0; z-index: 70; pointer-events: none; overflow: hidden; }
 .travelling-bird { position: absolute; left: 0; top: 0; will-change: transform; }
 .chat-landing-nest { flex-shrink: 0; position: relative; width: 54px; height: 48px; display: block; pointer-events: auto; }
+/* Keep the artwork independent of the larger shared-items tap target. */
+.landing-nest-scene { position: absolute; width: 54px; height: 48px; left: 50%; top: 50%; transform: translate(-50%,-50%); pointer-events: none; }
 .landing-nest-art { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
 .chat-landing-nest .resident-bird { position: absolute; width: 54px; height: 54px; top: -9px; left: 0; }
 .bird-in-transit .resident-bird { opacity: 0; }
@@ -332,7 +334,8 @@ input::placeholder, textarea::placeholder { color: #92917f; }
   .banner-actions { background: #e5edcfd9; }
   .chat-header { gap: 7px; }
   .chat-landing-nest { width: 38px; height: 38px; }
-  .chat-landing-nest .resident-bird { width: 38px; height: 38px; top: -7px; }
+  .landing-nest-scene { width: 38px; height: 38px; }
+  .chat-landing-nest .resident-bird { width: 38px; height: 38px; top: -5px; }
   .chat-header-actions .header-divider { display: none; }
   .request-heading { flex-wrap: wrap; }
 }
