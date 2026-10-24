@@ -7,7 +7,8 @@ import { sealMessage, signAssignmentRequest } from './encryption/client';
 import { readAssignmentList } from './assignmentData';
 import { ASSIGNMENT_LIMITS, assignmentSetup, encodeAssignmentOperation, operationMetadata, parseAssignments, validateAssignments, validateAssignmentItem, validateAssignmentSettings } from '../shared/assignments';
 import './assignments.css';
-const artwork='/brand/assignments/clipboard.png';
+import { activityArtwork } from './activityArtwork';
+import './activity-cards.css';
 const blankItem=()=>({id:crypto.randomUUID(),title:'',notes:'',dueDate:null,assigneeId:null});
 const dateLabel=value=>new Date(value+'T12:00:00Z').toLocaleDateString([],{month:'short',day:'numeric',year:'numeric',timeZone:'UTC'});
 function SettingsFields({value,onChange}){
@@ -96,5 +97,5 @@ export function AssignmentCard({message,group,user,version,onOpen}){
   const {enabled}=useEncryption(),[data,setData]=useState(null),[open,setOpen]=useState(false),[error,setError]=useState(false);
   useEffect(()=>{let active=true;readAssignmentList(group.id,message.id,enabled,false).then(r=>{if(active){setData(r);setError(false);}}).catch(()=>{if(active)setError(true);});return()=>{active=false;};},[message.id,version,enabled]);
   const initial=parseAssignments(message.body),title=data?.title || initial?.title || 'Assignments';
-  return <><button type="button" className="assignment-card" aria-label={`Open assignments: ${title}`} aria-haspopup="dialog" onClick={()=>onOpen?onOpen(message):setOpen(true)}><img src={artwork} alt="" width="1254" height="1254"/><span><strong>{title}</strong><small>{data?`${data.items.filter(i=>i.completed).length} of ${data.items.length} assignments complete`:'Shared assignment list'}</small><span>{error?'Open to reload':'Open assignments'}</span></span></button>{open && <AssignmentDialog message={message} group={group} user={user} version={version} onClose={()=>setOpen(false)}/>}</>;
+  return <><button type="button" className="assignment-card activity-card" aria-label={`Open assignments: ${title}`} aria-haspopup="dialog" onClick={()=>onOpen?onOpen(message):setOpen(true)}><span className="activity-card-art"><img src={activityArtwork.assignments} alt="" width="1254" height="1254"/></span><span className="activity-card-copy"><strong>{title}</strong><small>{data?`${data.items.filter(i=>i.completed).length} of ${data.items.length} assignments complete`:'Shared assignment list'}</small><span className="activity-card-link">{error?'Open to reload':'Open assignments'}</span></span></button>{open && <AssignmentDialog message={message} group={group} user={user} version={version} onClose={()=>setOpen(false)}/>}</>;
 }

@@ -29,7 +29,7 @@ test('header Nest opens the encrypted shared library with newest-first pictures,
   const older=await share([file('older.pdf','application/pdf',pdf),file('oldest.png','image/png',png)],'First shared items');
   await poll('Earlier plans');
   const ballot=page.getByRole('button',{name:'Open poll: Earlier plans',exact:true});
-  await expect(ballot.locator('img')).toHaveAttribute('src','/brand/polls/ballot.png');
+  await expect(ballot.locator('img')).toHaveAttribute('src','/brand/activities/poll-ballot.png');
   await ballot.click();await expect(page.getByRole('dialog')).toBeVisible();
   await expect(page.locator('.envelope-open,.envelope-closed')).toHaveCount(0);
   await page.getByRole('button',{name:'Close dialog',exact:true}).click();
@@ -50,7 +50,7 @@ test('header Nest opens the encrypted shared library with newest-first pictures,
   await dialog.locator('.shared-picture').first().click();await expect(dialog.getByRole('img',{name:'newest.png',exact:true})).toBeVisible();
   await expect.poll(()=>dialog.getByRole('img',{name:'newest.png',exact:true}).evaluate(img=>img.naturalWidth)).toBe(1);
   await dialog.getByRole('button',{name:'Back to Pictures',exact:true}).click();await dialog.getByRole('button',{name:'All shared items',exact:true}).click();
-  await dialog.getByRole('button',{name:/^Polls/}).click();await expect(dialog.locator('.poll-ballot>strong')).toHaveText(['Latest plans','Earlier plans']);
+  await dialog.getByRole('button',{name:/^Polls/}).click();await expect(dialog.locator('.poll-ballot strong')).toHaveText(['Latest plans','Earlier plans']);
   await dialog.getByRole('button',{name:'Open poll: Latest plans',exact:true}).click();
   await expect(page.getByRole('dialog')).toHaveCount(1);await expect(page.getByRole('dialog').getByRole('heading',{name:'Latest plans',exact:true})).toBeVisible();
   await page.getByRole('radio',{name:'Plan one',exact:true}).check();await page.getByRole('button',{name:'Submit answers',exact:true}).click();

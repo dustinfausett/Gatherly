@@ -11,13 +11,14 @@ import { parseRsvp } from '../shared/rsvps';
 import { RsvpEnvelope } from './Rsvps';
 import { AssignmentCard } from './Assignments';
 import { parseAssignments } from '../shared/assignments';
+import { activityArtwork } from './activityArtwork';
 
 const categories = [
   { id: 'pictures', label: 'Pictures', Icon: ImageIcon, always: true },
   { id: 'documents', label: 'Documents', Icon: FileText, always: true },
-  { id: 'polls', label: 'Polls', Icon: Vote, always: true },
-  { id: 'rsvps', label: 'RSVPs', Icon: Mail, always: true },
-  { id: 'assignments', label: 'Assignments', Icon: ClipboardCheck, always: true },
+  { id: 'polls', art: activityArtwork.poll, label: 'Polls', Icon: Vote, always: true },
+  { id: 'rsvps', art: activityArtwork.rsvp, label: 'RSVPs', Icon: Mail, always: true },
+  { id: 'assignments', art: activityArtwork.assignments, label: 'Assignments', Icon: ClipboardCheck, always: true },
   { id: 'videos', label: 'Videos', Icon: Video },
   { id: 'audio', label: 'Audio', Icon: Music },
   { id: 'files', label: 'Other files', Icon: File },
@@ -142,7 +143,7 @@ export default function SharedLibrary({ group, user, version, onClose, onOpenPol
       {error && <div className="error-banner" role="alert">{error}<button className="text-button" type="button" onClick={() => setRetry(n => n + 1)}>Try again</button></div>}
       {loading && <p className="shared-loading" role="status">Loading shared items…</p>}
       {!!unverified && <p className="field-error" role="alert">Some shared items could not be decrypted or verified and aren’t shown.</p>}
-      {picture ? <PictureView item={picture} getUrl={getUrl} /> : !category ? <div className="shared-categories">{categories.filter(c => c.always || items.some(item => item.category === c.id)).map(({ id, label, Icon }) => <button key={id} type="button" ref={el => { categoryButtons.current[id] = el; }} onClick={() => { lastCategory.current = id; setCategory(id); }}><Icon size={27} /><span>{label}</span>{!loading && <small>{items.filter(item => item.category === id).length}</small>}</button>)}</div> : <>
+      {picture ? <PictureView item={picture} getUrl={getUrl} /> : !category ? <div className="shared-categories">{categories.filter(c => c.always || items.some(item => item.category === c.id)).map(({ id, label, Icon, art }) => <button key={id} type="button" ref={el => { categoryButtons.current[id] = el; }} onClick={() => { lastCategory.current = id; setCategory(id); }}><>{art ? <img className="shared-activity-art" src={art} alt="" width="48" height="48" /> : <Icon size={27} />}</><span>{label}</span>{!loading && <small>{items.filter(item => item.category === id).length}</small>}</button>)}</div> : <>
         <p className="shared-sort">Newest first</p>
         {!loading && !shown.length && !error && <p className="shared-empty">No {activeCategory.label.toLowerCase()} have been shared with you in this Nest yet.</p>}
         <div className={category === 'pictures' ? 'shared-pictures' : 'shared-items'}>{shown.map(item => category === 'pictures' ? <PictureTile key={item.id} item={item} getUrl={getUrl} onOpen={setPicture} /> : category === 'polls' ? <div className="shared-poll" key={item.id}><PollCard message={item.message} group={group} user={user} version={version} onOpen={onOpenPoll} /><p className="shared-item-meta">{item.sender} · {dateLabel(item.createdAt)}</p></div> : category === 'rsvps' ? <div className="shared-poll" key={item.id}><RsvpEnvelope message={item.message} group={group} user={user} version={version} onOpen={onOpenRsvp} /><p className="shared-item-meta">{item.sender} · {dateLabel(item.createdAt)}</p></div> : category === 'assignments' ? <div className="shared-poll" key={item.id}><AssignmentCard message={item.message} group={group} user={user} version={version} onOpen={onOpenAssignments} /><p className="shared-item-meta">{item.sender} · {dateLabel(item.createdAt)}</p></div> : <DownloadRow key={item.id} item={item} getUrl={getUrl} />)}</div>

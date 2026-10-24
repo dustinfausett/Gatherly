@@ -1,11 +1,3 @@
-.assignment-card { display: flex; align-items: center; gap: 13px; width: 300px; max-width: 100%; padding: 14px; border: 1px solid #dbc8a5; border-radius: 17px; background: #fcf6e9; color: #5b5037; font: inherit; cursor: pointer; text-align: left; }
-.assignment-card:hover { background: #f5edd9; }
-.assignment-card:focus-visible { outline: 3px solid #648ba0; outline-offset: 3px; }
-.assignment-card>img { flex: none; width: 82px; height: 95px; object-fit: contain; }
-.assignment-card>span { min-width: 0; display: grid; gap: 9px; }
-.assignment-card strong { font-family: Nunito,sans-serif; font-size: 16px; font-weight: 800; overflow-wrap: anywhere; }
-.assignment-card small { font-size: 11px; color: #7a745b; }
-.assignment-card>span>span { font-size: 12px; color: #627b40; font-weight: 800; }
 .assignment-collaboration { display: flex; align-items: flex-start; gap: 10px; padding: 15px; background: #eef1df; border: 1px solid #d5dfbd; border-radius: 12px; margin: 18px 0; cursor: pointer; }
 .assignment-collaboration input { flex: none; width: 19px; height: 19px; accent-color: #6f8949; margin-top: 2px; }
 .assignment-collaboration strong { display: block; color: #5b703f; font-size: 13px; }
@@ -40,4 +32,4 @@
 .assignment-notes { margin-top: 12px; color: #81745b; }
 .assignment-row-actions { display: flex; gap: 17px; flex-wrap: wrap; margin-top: 8px; }
 .assignment-row-actions button { min-height: 44px; }
-@media(max-width:640px) { .assignment-builder input,.assignment-builder textarea,.assignment-builder select,.assignment-editor input,.assignment-editor textarea,.assignment-editor select { font-size: 16px; min-width: 0; } .assignment-card { width: 270px; padding: 12px; gap: 10px; } .assignment-card>img { width: 66px; height: 82px; } .assignment-card strong { font-size: 14px; } .assignment-row { padding: 12px; } .assignment-row-title { gap: 8px; } .assignment-state { padding-inline: 5px; } }
+@media(max-width:640px) { .assignment-builder input,.assignment-builder textarea,.assignment-builder select,.assignment-editor input,.assignment-editor textarea,.assignment-editor select { font-size: 16px; min-width: 0; } .assignment-row { padding: 12px; } .assignment-row-title { gap: 8px; } .assignment-state { padding-inline: 5px; } }

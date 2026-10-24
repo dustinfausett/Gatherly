@@ -6,6 +6,8 @@ import { useEncryption } from './encryption/EncryptionGate';
 import { decryptMessages, sealEdit, sealMessage } from './encryption/client';
 import { RSVP_CHOICES, encodeResponse, parseResponse, parseRsvp, responseSummary, validateResponse, validateRsvp } from '../shared/rsvps';
 import './rsvps.css';
+import { activityArtwork } from './activityArtwork';
+import './activity-cards.css';
 
 const zone = () => Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
 const localInput = value => { if (!value) return ''; const d = new Date(value); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16); };
@@ -52,7 +54,7 @@ export function RsvpBuilder({ group, message, onClose, onSent }) {
   </Modal>;
 }
 function Hatch({ selected, mood }) {
-  return <span className={`rsvp-hatch ${selected ? 'is-hatched' : ''}`} aria-hidden="true"><img className="rsvp-egg" src="/brand/polls/egg.png" alt="" width="80" height="80" /><img className="rsvp-hatchling" src={`/brand/rsvps/${mood}.png`} alt="" width="80" height="80" /></span>;
+  return <span className={`rsvp-hatch ${selected ? 'is-hatched' : ''}`} aria-hidden="true"><img className="rsvp-egg" src={activityArtwork.egg} alt="" width="80" height="80" /><img className="rsvp-hatchling" src={activityArtwork.hatchlings[mood]} alt="" width="80" height="80" /></span>;
 }
 export function RsvpDialog({ message, group, user, version, onClose }) {
   const { enabled } = useEncryption();
@@ -136,9 +138,9 @@ export function RsvpEnvelope({ message, group, user, version, onOpen }) {
     timer.current = setTimeout(() => { setOpening(false); onOpen ? onOpen(message) : setOpen(true); }, 250);
   }
   if (!event) return <p role="alert">This invitation could not be opened.</p>;
-  return <div className="rsvp-card"><button type="button" className={`poll-envelope rsvp-envelope ${opening && ready ? 'is-opening' : ''}`} aria-label={`Open RSVP: ${event.title}`} aria-haspopup="dialog" aria-busy={opening} disabled={opening} onClick={touch}>
-    <img className="envelope-closed" src="/brand/polls/envelope.png" alt="" width="300" height="200" /><img className="envelope-open" ref={openArt} src="/brand/polls/envelope-open.png" onLoad={() => setReady(true)} alt="" width="300" height="200" /><span className="rsvp-calendar-badge"><CalendarDays size={20} /></span><strong>{event.title}</strong>
-  </button><p className="rsvp-card-date">{eventDate(event)}</p>{status?.canceled ? <span className="rsvp-card-status canceled">Canceled</span> : status?.mine && <span className="rsvp-card-status">{status.mine.choice === 'going' ? 'You’re going' : status.mine.choice === 'maybe' ? 'You might go' : 'You can’t go'}</span>}
+  return <div className="rsvp-card"><button type="button" className={`poll-envelope rsvp-envelope activity-card ${opening && ready ? 'is-opening' : ''}`} aria-label={`Open RSVP: ${event.title}`} aria-haspopup="dialog" aria-busy={opening} disabled={opening} onClick={touch}>
+    <span className="activity-card-art"><img className="envelope-closed" src={activityArtwork.rsvp} alt="" width="1254" height="1254" /><img className="envelope-open" ref={openArt} src={activityArtwork.rsvpOpen} onLoad={() => setReady(true)} alt="" width="1254" height="1254" /></span><span className="activity-card-copy"><strong>{event.title}</strong><small className="rsvp-card-date">{eventDate(event)}</small>{status?.canceled ? <span className="rsvp-card-status canceled">Canceled</span> : status?.mine && <span className="rsvp-card-status">{status.mine.choice === 'going' ? 'You’re going' : status.mine.choice === 'maybe' ? 'You might go' : 'You can’t go'}</span>}</span>
+  </button>
     {open && <RsvpDialog message={message} group={group} user={user} version={version} onClose={() => setOpen(false)} />}
   </div>;
 }

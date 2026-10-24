@@ -16,6 +16,6 @@ The server enforces account membership, original poll access, creation/managemen
 
 ## Artwork and checks
 
-Generated artwork is in `public/brand/polls/`: `ballot.png`, `basket.png` and `egg.png`. The original `envelope.png` and `envelope-open.png` are now used by RSVPs. The original generated files are retained in the workspace. Egg motion respects the device's reduced-motion setting, choices use native radio/checkbox semantics, and dialogs use the app's existing focus handling.
+The coordinated activity artwork is in `public/brand/activities/`: `poll-ballot.png`, `poll-basket.png` and `egg.png`. The blue/gold birds, cream paper, olive accents and matte shading match RSVP and Assignments artwork. See the [illustration gallery](../public/brand/activities/README.md). Chat cards share their frame, spacing and illustration scale, and use the same art as the + menu and library categories. Egg motion respects reduced motion, choices use native radio/checkbox semantics, and dialogs keep the existing focus handling.
 
 Run `npm run check` for validation and encrypted API/history/permissions tests. Run `npx playwright test -c playwright.encryption.config.js e2e/polls.spec.js` for the two-user encrypted poll workflow on desktop, iPhone-sized and Android-sized browsers. The encryption browser suite also covers ordinary messages and attachments, recovery, key transitions and history conversion.

@@ -9,7 +9,8 @@ import './polls.css';
 import { parseRsvp } from '../shared/rsvps';
 import { parseAssignments } from '../shared/assignments';
 
-const art = '/brand/polls/';
+import { activityArtwork as art } from './activityArtwork';
+import './activity-cards.css';
 const newQuestion = () => ({ text: '', type: 'single', options: ['', ''] });
 export const messagePreview = m => m?.message_kind === 'poll' ? parsePoll(m.body)?.title || 'Poll' : m?.message_kind === 'rsvp' ? parseRsvp(m.body)?.title || 'RSVP' : m?.message_kind === 'assignments' ? parseAssignments(m.body)?.title || 'Assignments' : m?.body;
 
@@ -38,7 +39,7 @@ export function PollBuilder({ group, onClose, onSent }) {
           <div className="poll-question-heading"><h3>Question {i + 1}</h3>{questions.length > 1 && <button className="icon-button" type="button" aria-label={`Remove question ${i + 1}`} onClick={() => setQuestions(prev => prev.filter((_, n) => n !== i))}><Trash2 size={17} /></button>}</div>
           <Field label={`Question ${i + 1}`} value={q.text} onChange={e => updateQuestion(i, { text: e.target.value })} placeholder="What would you like to ask?" maxLength={POLL_LIMITS.question} required />
           <Field label={`Answer type for question ${i + 1}`}><select value={q.type} onChange={e => updateQuestion(i, { type: e.target.value })}><option value="single">Choose one answer</option><option value="multiple">Choose multiple answers</option></select></Field>
-          <div className="poll-option-editors">{q.options.map((option, n) => <div key={n}><img src={`${art}basket.png`} alt="" width="40" height="40" /><Field label={`Question ${i + 1}, option ${n + 1}`} value={option} onChange={e => updateQuestion(i, { options: q.options.map((o, j) => j === n ? e.target.value : o) })} placeholder={`Answer ${n + 1}`} maxLength={POLL_LIMITS.option} required />{q.options.length > 2 && <button type="button" className="icon-button" aria-label={`Remove option ${n + 1} from question ${i + 1}`} onClick={() => updateQuestion(i, { options: q.options.filter((_, j) => j !== n) })}><Trash2 size={15} /></button>}</div>)}</div>
+          <div className="poll-option-editors">{q.options.map((option, n) => <div key={n}><img src={art.basket} alt="" width="40" height="40" /><Field label={`Question ${i + 1}, option ${n + 1}`} value={option} onChange={e => updateQuestion(i, { options: q.options.map((o, j) => j === n ? e.target.value : o) })} placeholder={`Answer ${n + 1}`} maxLength={POLL_LIMITS.option} required />{q.options.length > 2 && <button type="button" className="icon-button" aria-label={`Remove option ${n + 1} from question ${i + 1}`} onClick={() => updateQuestion(i, { options: q.options.filter((_, j) => j !== n) })}><Trash2 size={15} /></button>}</div>)}</div>
           {q.options.length < POLL_LIMITS.options && <button className="text-button" type="button" onClick={() => updateQuestion(i, { options: [...q.options, ''] })}><Plus size={15} />Add answer</button>}
         </section>)}
         {questions.length < POLL_LIMITS.questions && <button className="button secondary" type="button" onClick={() => setQuestions(prev => [...prev, newQuestion()])}><Plus size={17} />Add another question</button>}
@@ -52,9 +53,9 @@ export function PollBuilder({ group, onClose, onSent }) {
 
 function Basket({ selected }) {
   return <span className={`poll-basket ${selected ? 'has-egg' : ''}`} aria-hidden="true">
-    {selected && <img className="poll-choice-egg" src={`${art}egg.png`} alt="" width="40" height="40" />}
-    <img className="poll-choice-basket" src={`${art}basket.png`} alt="" width="76" height="76" />
-    {selected && <img className="poll-choice-basket-front" src={`${art}basket.png`} alt="" width="76" height="76" />}
+    {selected && <img className="poll-choice-egg" src={art.egg} alt="" width="40" height="40" />}
+    <img className="poll-choice-basket" src={art.basket} alt="" width="76" height="76" />
+    {selected && <img className="poll-choice-basket-front" src={art.basket} alt="" width="76" height="76" />}
   </span>;
 }
 
@@ -134,8 +135,8 @@ export function PollCard({ message, group, user, version, onOpen }) {
   const poll = parsePoll(message.body), [open, setOpen] = useState(false);
   if (!poll) return <p role="alert">This poll could not be opened.</p>;
   return <>
-    <button type="button" className="poll-ballot" aria-label={`Open poll: ${poll.title}`} aria-haspopup="dialog" onClick={() => onOpen ? onOpen(message) : setOpen(true)}>
-      <img src={`${art}ballot.png`} alt="" width="1254" height="1254" /><strong>{poll.title}</strong>
+    <button type="button" className="poll-ballot activity-card" aria-label={`Open poll: ${poll.title}`} aria-haspopup="dialog" onClick={() => onOpen ? onOpen(message) : setOpen(true)}>
+      <span className="activity-card-art"><img src={art.poll} alt="" width="1254" height="1254" /></span><span className="activity-card-copy"><strong>{poll.title}</strong></span>
     </button>
     {open && <PollView poll={poll} message={message} group={group} user={user} version={version} onClose={() => setOpen(false)} />}
   </>;

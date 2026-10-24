@@ -16,7 +16,7 @@ test('encrypted RSVP invitations hatch eggs, separate guest totals, update live 
     const url=`/?community=${tree.id}&group=${nest.id}`;await page.goto(url);await member.goto(url);
     await expect(page.getByRole('textbox',{name:'Write a message',exact:true})).toBeVisible();await expect(member.locator('.read-only')).toBeVisible();
     await page.getByRole('button',{name:'Add to chat',exact:true}).click();
-    await expect(page.getByRole('button',{name:'Poll',exact:true}).locator('img')).toHaveAttribute('src','/brand/polls/ballot.png');
+    await expect(page.getByRole('button',{name:'Poll',exact:true}).locator('img')).toHaveAttribute('src','/brand/activities/poll-ballot.png');
     await page.getByRole('button',{name:'RSVP',exact:true}).click();let dialog=page.getByRole('dialog');
     await dialog.getByRole('textbox',{name:'Event title',exact:true}).fill('Our spring picnic');
     await dialog.getByLabel('Start date and time',{exact:true}).fill('2027-04-17T11:00');
@@ -33,7 +33,7 @@ test('encrypted RSVP invitations hatch eggs, separate guest totals, update live 
     await expect(dialog.getByRole('button',{name:'Edit event',exact:true})).toHaveCount(0);
     await expect(dialog.getByRole('spinbutton',{name:'Additional guests',exact:true})).toHaveCount(0);
     await dialog.getByRole('radio',{name:'Going',exact:true}).check();
-    await expect(dialog.locator('.rsvp-hatch.is-hatched .rsvp-hatchling')).toHaveAttribute('src','/brand/rsvps/happy.png');
+    await expect(dialog.locator('.rsvp-hatch.is-hatched .rsvp-hatchling')).toHaveAttribute('src','/brand/activities/rsvp-happy.png');
     await expect(dialog.getByRole('spinbutton',{name:'Additional guests',exact:true})).toBeVisible();await dialog.getByRole('spinbutton',{name:'Additional guests',exact:true}).fill('2');
     await dialog.getByRole('button',{name:'Save response',exact:true}).click();await expect(dialog.getByRole('status')).toContainText('Your response is saved: Going.');
     await member.screenshot({path:info.outputPath('rsvp-going-hatch.png'),fullPage:true});
@@ -47,11 +47,11 @@ test('encrypted RSVP invitations hatch eggs, separate guest totals, update live 
     await member.getByRole('button',{name:'Close dialog',exact:true}).click();await expect(member.locator('.rsvp-card-status')).toHaveText('You’re going');
     await member.reload();await member.getByRole('button',{name:'Open RSVP: Our spring picnic',exact:true}).click();dialog=member.getByRole('dialog');
     await expect(dialog.getByRole('radio',{name:'Going',exact:true})).toBeChecked();await expect(dialog.getByRole('spinbutton',{name:'Additional guests',exact:true})).toHaveValue('2');
-    await dialog.getByRole('radio',{name:'Maybe',exact:true}).check();await expect(dialog.locator('.rsvp-hatch.is-hatched .rsvp-hatchling')).toHaveAttribute('src','/brand/rsvps/questioning.png');
+    await dialog.getByRole('radio',{name:'Maybe',exact:true}).check();await expect(dialog.locator('.rsvp-hatch.is-hatched .rsvp-hatchling')).toHaveAttribute('src','/brand/activities/rsvp-questioning.png');
     await dialog.getByRole('spinbutton',{name:'Additional guests',exact:true}).fill('1');await dialog.getByRole('button',{name:'Update response',exact:true}).click();await expect(dialog.getByRole('status')).toContainText('Your response is saved: Maybe.');
     await expect(ownerDialog.locator('.rsvp-totals section').nth(0).locator('strong')).toHaveText('0');await expect(ownerDialog.locator('.rsvp-totals section').nth(1).locator('strong')).toHaveText('6');
     await dialog.getByRole('button',{name:'Responses',exact:true}).click();await expect(dialog.locator('.rsvp-response-list')).toHaveCount(0);await expect(dialog.locator('.rsvp-totals section').nth(1).locator('strong')).toHaveText('6');
-    await dialog.getByRole('button',{name:'Invitation',exact:true}).click();await dialog.getByRole('radio',{name:'Can’t go',exact:true}).check();await expect(dialog.locator('.rsvp-hatch.is-hatched .rsvp-hatchling')).toHaveAttribute('src','/brand/rsvps/sad.png');await expect(dialog.getByRole('spinbutton')).toHaveCount(0);
+    await dialog.getByRole('button',{name:'Invitation',exact:true}).click();await dialog.getByRole('radio',{name:'Can’t go',exact:true}).check();await expect(dialog.locator('.rsvp-hatch.is-hatched .rsvp-hatchling')).toHaveAttribute('src','/brand/activities/rsvp-sad.png');await expect(dialog.getByRole('spinbutton')).toHaveCount(0);
     await dialog.getByRole('button',{name:'Update response',exact:true}).click();await expect(dialog.getByRole('status')).toContainText('Your response is saved: Can’t go.');
     await ownerDialog.getByRole('button',{name:'Edit event',exact:true}).click();ownerDialog=page.getByRole('dialog');await ownerDialog.getByRole('textbox',{name:'Event title',exact:true}).fill('Spring picnic updated');await ownerDialog.getByRole('button',{name:'Save event',exact:true}).click();
     await expect(page.getByRole('dialog').getByRole('heading',{name:'Spring picnic updated',exact:true})).toBeVisible();await expect(dialog.getByRole('heading',{name:'Spring picnic updated',exact:true})).toBeVisible();await expect(dialog.getByRole('radio',{name:'Can’t go',exact:true})).toBeChecked();

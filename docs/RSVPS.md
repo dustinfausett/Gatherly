@@ -2,9 +2,9 @@
 
 In a Nest where you can post, choose **+ → RSVP**. Add a title, date/time or all-day date, optional end, location/link, description and optional response deadline. Timed inputs use the device's time zone and are saved as absolute instants alongside the event zone. Readers see their local time; all-day dates stay the same across zones.
 
-The chat invitation uses the original closed envelope with a calendar badge, title and date. Touching it shows the matching opened envelope for 250 milliseconds before opening the invitation. Polls now use a separate generated ballot illustration.
+The chat invitation uses the coordinated blue-and-gold birds holding a closed envelope, with the title and date beside the illustration. Touching it shows the matching opened envelope for 250 milliseconds before opening the invitation. Polls use the same bird pair holding a ballot, and Assignments use them with a clipboard. See the [coordinated illustration gallery](../public/brand/activities/README.md).
 
-Each response option starts as an egg. Selecting Going hatches a happy bird, Maybe a questioning bird, and Can’t go a sad bird. These generated assets match Churp’s blue bird and gold speckled egg; the hatch respects reduced motion. Going/Maybe reveal an **Additional guests** box (0–99, excluding the member). Can’t go always saves zero guests. Save response or Update response persists one current response per member. Changing a response moves its entire party between categories. No chat bubbles, notifications, pushes or unread eggs are created by response updates.
+Each response option starts as an egg. Selecting Going hatches a happy bird, Maybe a questioning bird, and Can’t go a sad bird. These generated assets match the activity set’s blue bird and cream egg with gold speckles; the hatch respects reduced motion. Going/Maybe reveal an **Additional guests** box (0–99, excluding the member). Can’t go always saves zero guests. Save response or Update response persists one current response per member. Changing a response moves its entire party between categories. No chat bubbles, notifications, pushes or unread eggs are created by response updates.
 
 ## Results and management
 

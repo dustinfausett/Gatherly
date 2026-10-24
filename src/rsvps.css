@@ -1,13 +1,6 @@
-.poll-ballot { display: flex; flex-direction: column; align-items: center; gap: 4px; width: 230px; max-width: 100%; padding: 8px 12px 12px; border: 1px solid #e7d7b8; border-radius: 16px; background: #fff9e9; color: #58442d; font: inherit; text-align: center; cursor: pointer; }
-.poll-ballot img { width: 126px; height: 126px; object-fit: contain; }
-.poll-ballot strong { overflow-wrap: anywhere; font-weight: 800; }
-.poll-ballot:hover { background: #f4ecd7; }
-.poll-ballot:focus-visible { outline: 3px solid #648ba0; outline-offset: 3px; }
 .rsvp-view { margin-top: 20px; }
 .rsvp-card { max-width: 300px; }
-.rsvp-calendar-badge { position: absolute; z-index: 4; left: 13%; top: 18%; display: grid; place-items: center; width: 32px; height: 32px; background: #fff8df; color: #7a8852; border-radius: 8px; box-shadow: 0 1px 3px #57442b25; }
-.rsvp-card-date { font-size: 12px; color: #6c634a; margin: 0 12px 6px; line-height: 1.6; overflow-wrap: anywhere; }
-.rsvp-card-status { display: inline-block; margin: 0 12px 8px; padding: 4px 9px; border-radius: 8px; background: #edf0dc; color: #58623d; font-size: 11px; font-weight: 800; }
+.rsvp-card-status { justify-self: start; padding: 4px 8px; border-radius: 8px; background: #edf0dc; color: #58623d; font-size: 11px; font-weight: 800; }
 .rsvp-card-status.canceled,.rsvp-canceled { background: #f9e4dc; color: #884f42; }
 .rsvp-canceled { padding: 12px; border-radius: 9px; }
 .rsvp-all-day { display: flex; align-items: center; gap: 9px; margin: 16px 0; min-height: 44px; }
@@ -50,5 +43,5 @@
 .rsvp-response-list span { font-size: 12px; color: #7c7258; }
 .rsvp-manage { display: flex; flex-wrap: wrap; gap: 15px; }
 .rsvp-manage .inline-confirm { flex-basis: 100%; }
-@media(max-width:640px) { .rsvp-date-fields { grid-template-columns: 1fr; gap: 0; } .rsvp-builder input,.rsvp-builder textarea,.rsvp-guests input { font-size: 16px; min-width: 0; max-width: 100%; } .rsvp-hatch { width: 66px; height: 66px; } .rsvp-choice { font-size: 12px; } .rsvp-card { max-width: 260px; } }
+@media(max-width:640px) { .rsvp-date-fields { grid-template-columns: 1fr; gap: 0; } .rsvp-builder input,.rsvp-builder textarea,.rsvp-guests input { font-size: 16px; min-width: 0; max-width: 100%; } .rsvp-hatch { width: 66px; height: 66px; } .rsvp-choice { font-size: 12px; } .rsvp-card { max-width: 270px; } }
 @media(prefers-reduced-motion:reduce) { .rsvp-hatch img { animation: none!important; } .rsvp-hatch.is-hatched .rsvp-egg { opacity: 0; } .rsvp-hatch.is-hatched .rsvp-hatchling { opacity: 1; } }
