@@ -3,7 +3,7 @@ import { readFileSync, unlinkSync } from 'node:fs';
 import { join, basename, dirname } from 'node:path';
 import multer from 'multer';
 import { rateLimit } from 'express-rate-limit';
-import { canonical, digest, enrollmentPayload, sendPayload, readPublic, generateIdentity, validateBackup, validateCiphertext, validateEncryptedFile, verify, FILE_LIMIT } from '../shared/encryption.js';
+import { canonical, digest, enrollmentPayload, sendPayload, editPayload, readPublic, generateIdentity, validateBackup, validateCiphertext, validateEncryptedFile, verify, FILE_LIMIT } from '../shared/encryption.js';
 import { keyVault } from './key-vault.js';
 
 export function installEncryption({app,db,uploadDir,enabled,transaction,refresh,refreshUser,group,membership,visibleCircle,testing}) {
@@ -53,6 +53,9 @@ export function installEncryption({app,db,uploadDir,enabled,transaction,refresh,
       JOIN community_members cm ON cm.community_id=g.community_id AND cm.user_id=gm.user_id
       LEFT JOIN e2ee_identities i ON i.user_id=u.id
       WHERE gm.group_id=? ${messageId===null ? '' : 'AND gm.joined_after<? AND EXISTS(SELECT 1 FROM e2ee_legacy_readers lr WHERE lr.user_id=u.id AND lr.message_id=?)'} ORDER BY u.id`,gid,...(messageId===null ? [] : [messageId,messageId]));
+    return describeRoster(values);
+  }
+  function describeRoster(values) {
     const roster_hash=createHash('sha256').update(canonical(values.map(u=>[u.id,u.join_token,u.fingerprint,u.custody]))).digest('hex');
     return {readers:values,roster_hash,self_encrypted:values.length>0 && values.every(u=>u.custody==='self' && !one('SELECT 1 FROM e2ee_managed_keys WHERE user_id=?',u.id)),missing:values.filter(u=>!u.public_key).map(({id,name})=>({id,name}))};
   }
@@ -71,6 +74,28 @@ export function installEncryption({app,db,uploadDir,enabled,transaction,refresh,
     if(result.missing.length)fail(409,`${result.missing.map(u=>u.name).join(', ')} must set up encrypted messaging before this content can be encrypted.`);
     if(!result.readers.length || result.roster_hash!==hash)fail(409,'Nest membership changed. Refresh and send again.');
     return result;
+  }
+  function editRoster(req,message) {
+    reader(req,message.group_id);
+    const values=members(message.group_id).readers.filter(u=>u.joined_after<message.id && one('SELECT 1 FROM e2ee_recipients WHERE message_id=? AND user_id=?',message.id,u.id));
+    return describeRoster(values);
+  }
+  function assertEditRoster(req,message,hash) {
+    const result=editRoster(req,message);
+    if(result.missing.length || !result.readers.some(u=>u.id===req.user.id) || result.roster_hash!==hash)fail(409,'The message audience changed. Close this editor and try again.');
+    return result;
+  }
+  async function validateEdit(req,message) {
+    device(req);
+    const {ciphertext,clientId,rosterHash,signature,expectedVersion}=req.body;
+    if(!uuid(clientId))fail(400,'A unique encrypted edit ID is required.');
+    const rs=assertEditRoster(req,message,rosterHash);
+    try{await validateCiphertext(ciphertext,rs.readers.map(u=>u.public_key));}catch(e){fail(400,e.message);}
+    const original=all('SELECT file_id FROM message_files WHERE message_id=? ORDER BY file_id',message.id).map(f=>f.file_id), files=req.body.files;
+    if(!Array.isArray(files) || canonical([...files].sort())!==canonical(original) || (req.body.reply_to ?? null)!==message.reply_to)fail(400,'Editing text must keep the original attachments and reply.');
+    const payload=editPayload({messageId:message.id,expectedVersion,groupId:message.group_id,clientId,rosterHash,cipherHash:await digest(ciphertext),files,replyTo:message.reply_to});
+    await proof(req,'edit',payload,signature);
+    return {rs,clientId,ciphertext,rosterHash};
   }
   async function proof(req,operation,payload,signature) {
     const i=identity(req.user.id);if(!i)fail(403,'Set up encrypted messaging first.');
@@ -264,7 +289,7 @@ export function installEncryption({app,db,uploadDir,enabled,transaction,refresh,
     });
     cleanup();refresh(original.group_id ? group(original.group_id).community_id : null);res.json({ok:true});
   });
-  return {enabled,device,reader,roster,members,assertRoster,validateSend,recordRecipients,identity,cleanup,protection,
+  return {enabled,device,reader,roster,members,assertRoster,validateSend,editRoster,assertEditRoster,validateEdit,recordRecipients,identity,cleanup,protection,
     canRead:(userId,m)=>!!one('SELECT 1 FROM group_members gm JOIN groups g ON g.id=gm.group_id JOIN community_members cm ON cm.community_id=g.community_id AND cm.user_id=gm.user_id WHERE gm.group_id=? AND gm.user_id=? AND gm.joined_after<?',m.group_id,userId,m.id)
       && !!one('SELECT 1 FROM e2ee_recipients WHERE message_id=? AND user_id=?',m.id,userId)};
 }

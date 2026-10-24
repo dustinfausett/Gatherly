@@ -34,9 +34,16 @@ async function fixture(t,legacy=false){
     return {ciphertext,clientId,rosterHash:rs.roster_hash,files,reply_to:replyTo,signature:await enc.sign(a.privateKey,legacyMessage ? 'migrate' : 'send',legacyMessage ? {...payload,legacyId:legacyMessage.id} : payload)};
   }
   async function send(a,gid,body,attachments=[],replyTo=null){const prepared=await prepare(a,gid,body,attachments,replyTo);return {...await ok(`/groups/${gid}/messages`,a,'POST',prepared),prepared};}
+  async function prepareEdit(a,m,body,attachments=[],expectedVersion=m.edit_version || 0){
+    const rs=await ok(`/messages/${m.id}/e2ee/edit-roster`,a),clientId=randomUUID();
+    const value={version:1,kind:'nest-message',groupId:m.group_id,clientId:m.client_id,senderId:a.id,signerId:a.id,rosterHash:rs.roster_hash,replyTo:m.reply_to,migrated:m.client_id.startsWith('legacy-'),selfEncrypted:rs.self_encrypted,contentType:'chat',body,attachments,editVersion:expectedVersion+1,editMessageId:m.id,editClientId:clientId};
+    const ciphertext=await enc.seal(a.privateKey,rs.readers.map(r=>r.public_key),value),files=attachments.map(f=>f.id);
+    const payload=enc.editPayload({messageId:m.id,expectedVersion,groupId:m.group_id,clientId,rosterHash:rs.roster_hash,cipherHash:await enc.digest(ciphertext),files,replyTo:m.reply_to});
+    return {ciphertext,clientId,rosterHash:rs.roster_hash,files,reply_to:m.reply_to,expectedVersion,signature:await enc.sign(a.privateKey,'edit',payload)};
+  }
   async function upload(a,plain,name='private-notes.txt'){const encrypted=await enc.encryptFile(plain),form=new FormData();form.append('file',new Blob([encrypted.encrypted]),'attachment.pgp');const file=(await ok('/e2ee/uploads',a,'POST',form)).file;return {id:file.id,name,size:plain.length,mime:'application/octet-stream',key:encrypted.key,sha256:encrypted.sha256};}
   async function readProof(a,kind,id){const payload={kind,id,deviceId:a.deviceId,time:Date.now(),nonce:enc.randomSecret(16)};return {'x-churp-encryption-proof':JSON.stringify({time:payload.time,nonce:payload.nonce,signature:await enc.sign(a.privateKey,'legacy-read',payload)})};}
-  return {dir,get runtime(){return runtime;},req,ok,register,enroll,managed,selfManaged,prepare,send,upload,readProof,restart:async()=>{await stop();await start();}};
+  return {dir,get runtime(){return runtime;},req,ok,register,enroll,managed,selfManaged,prepare,prepareEdit,send,upload,readProof,restart:async()=>{await stop();await start();}};
 }
 
 test('production-default E2EE protects contents, recipients, history boundaries and recovery',async t=>{
@@ -142,6 +149,11 @@ test('existing history migrates on authorized browsers without granting later jo
   assert.deepEqual((await f.ok(`/groups/${nest.id}/messages`,late)).messages,[]);await assert.rejects(enc.open(late.privateKey,alice.publicKey,prepared.ciphertext));
   assert.ok(!readFileSync(join(f.dir,'gatherly.sqlite')).includes(Buffer.from(plain)));
   const wal=join(f.dir,'gatherly.sqlite-wal');if(existsSync(wal))assert.ok(!readFileSync(wal).includes(Buffer.from(plain)));
+  const correction=await f.prepareEdit(alice,restored,'Corrected earlier history',[attachment]);
+  await f.ok(`/messages/${id}/content`,alice,'PUT',correction);
+  const corrected=(await f.ok(`/groups/${nest.id}/messages`,bob)).messages[0],value=await enc.open(bob.privateKey,alice.publicKey,corrected.ciphertext);
+  assert.equal(corrected.client_id,`legacy-${id}`);assert.equal(corrected.edit_client_id,value.editClientId);assert.equal(value.clientId,corrected.client_id);assert.equal(value.migrated,true);assert.equal(value.editMessageId,id);assert.equal(value.body,'Corrected earlier history');
+  await assert.rejects(enc.open(late.privateKey,alice.publicKey,corrected.ciphertext));
   await f.restart();assert.deepEqual((await f.ok(`/groups/${nest.id}/messages`,late)).messages,[]);
   assert.equal(f.runtime.db.prepare('SELECT COUNT(*) AS n FROM e2ee_legacy_readers WHERE user_id=? AND message_id=?').get(late.id,id).n,0);
 });
@@ -239,4 +251,61 @@ test('shared library finds encrypted older attachments and polls with pagination
   await f.ok(`/messages/${older.id}`,owner,'DELETE');
   assert.deepEqual((await f.ok(`/groups/${nest.id}/shared?before=${oldPoll.id}`,member)).messages,[]);
   await f.ok(`/communities/${tree.id}/members/${member.id}`,owner,'DELETE');assert.equal((await f.req(`/groups/${nest.id}/shared`,member)).status,403);
+});
+
+test('encrypted text edits preserve original history, attachments, author and time with conflict and permission checks',async t=>{
+  const f=await fixture(t),alice=await f.enroll(await f.register('edit_alice')),bob=await f.enroll(await f.register('edit_bob')),carol=await f.enroll(await f.register('edit_late'));
+  const tree=(await f.ok('/communities',alice,'POST',{name:'Editing Tree'})).community;
+  const invite=(await f.ok('/invitations',alice,'POST',{community_id:tree.id})).path.split('invite=')[1];
+  await f.ok('/invitations/accept',bob,'POST',{token:invite});
+  const nest=(await f.ok(`/communities/${tree.id}/circles`,alice,'POST',{name:'Messages'})).group;
+  await f.ok(`/groups/${nest.id}/join`,bob,'POST');
+  const file=await f.upload(alice,enc.bytes('Keep this attachment'),'unchanged.txt');
+  const sent=await f.send(alice,nest.id,'Original typo',[file]);
+  const original=f.runtime.db.prepare('SELECT * FROM messages WHERE id=?').get(sent.id);
+  const reply=await f.send(bob,nest.id,'My reply',[],sent.id);
+  for(const actor of [alice,bob])await f.ok(`/groups/${nest.id}/membership`,actor,'PATCH',{read_to:reply.id});
+  const notifications=f.runtime.db.prepare('SELECT COUNT(*) AS n FROM notifications').get().n;
+  await f.ok('/invitations/accept',carol,'POST',{token:invite});await f.ok(`/groups/${nest.id}/join`,carol,'POST');
+  const rs=await f.ok(`/messages/${sent.id}/e2ee/edit-roster`,alice);
+  assert.deepEqual(new Set(rs.readers.map(r=>r.id)),new Set([alice.id,bob.id]));
+  assert.equal((await f.req(`/messages/${sent.id}/e2ee/edit-roster`,bob)).status,403);
+  assert.equal((await f.req(`/messages/${sent.id}/content`,bob,'PUT',{body:'Not mine',expectedVersion:0})).status,403);
+  assert.equal((await f.req(`/messages/${sent.id}/content`,alice,'PUT',{body:'Never store this plaintext edit',expectedVersion:0})).status,400);
+  const prepared=await f.prepareEdit(alice,original,'Corrected text',[file]);
+  assert.equal((await f.req(`/messages/${sent.id}/content`,alice,'PUT',{...prepared,files:[]})).status,400);
+  assert.equal((await f.req(`/messages/${sent.id}/content`,alice,'PUT',{...prepared,reply_to:reply.id})).status,400);
+  assert.equal((await f.req(`/messages/${sent.id}/content`,alice,'PUT',{...prepared,signature:'invalid'})).status,403);
+  assert.equal((await f.req(`/messages/${sent.id}/content`,{...alice,deviceId:null},'PUT',prepared)).status,403);
+  assert.equal((await f.req(`/messages/${sent.id}/content`,alice,'PUT',{...prepared,expectedVersion:9})).status,409);
+  await f.ok(`/messages/${sent.id}/content`,alice,'PUT',prepared);
+  const edited=f.runtime.db.prepare('SELECT * FROM messages WHERE id=?').get(sent.id);
+  for(const key of ['id','group_id','user_id','created_at','reply_to','client_id','urgent'])assert.equal(edited[key],original[key]);
+  assert.equal(edited.body,'');assert.ok(!edited.ciphertext.includes('Corrected text'));assert.equal(edited.edit_version,1);assert.ok(edited.edited_at);assert.equal(edited.edit_client_id,prepared.clientId);
+  const value=await enc.open(bob.privateKey,alice.publicKey,edited.ciphertext);assert.equal(value.body,'Corrected text');assert.equal(value.clientId,original.client_id);assert.equal(value.editClientId,edited.edit_client_id);assert.equal(value.editMessageId,sent.id);assert.equal(value.editVersion,1);assert.deepEqual(value.attachments,[file]);
+  await assert.rejects(enc.open(carol.privateKey,alice.publicKey,edited.ciphertext));
+  assert.deepEqual((await f.ok(`/groups/${nest.id}/messages`,carol)).messages,[]);
+  assert.deepEqual(await enc.decryptFile(await f.ok(`/files/${file.id}`,bob),file),enc.bytes('Keep this attachment'));
+  assert.equal(f.runtime.db.prepare('SELECT COUNT(*) AS n FROM notifications').get().n,notifications);
+  assert.equal((await f.ok(`/communities/${tree.id}`,bob)).community.circles[0].unread,0);
+  assert.equal((await f.ok(`/messages/${sent.id}/content`,alice,'PUT',prepared)).edit_version,1);
+  const racing=await f.prepareEdit(alice,edited,'New revision',[file]);
+  await f.ok(`/groups/${nest.id}/join`,bob,'DELETE');
+  assert.equal((await f.req(`/messages/${sent.id}/content`,alice,'PUT',racing)).status,409);
+  await f.ok(`/groups/${nest.id}/join`,bob,'POST');
+  const second=await f.prepareEdit(alice,edited,'New revision',[file]);
+  await f.ok(`/messages/${sent.id}/content`,alice,'PUT',second);
+  const newer=f.runtime.db.prepare('SELECT * FROM messages WHERE id=?').get(sent.id);assert.equal(newer.edit_version,2);
+  assert.equal((await f.req(`/messages/${sent.id}/content`,alice,'PUT',prepared)).status,409);
+  assert.equal((await enc.open(alice.privateKey,alice.publicKey,newer.ciphertext)).body,'New revision');
+  for(const actor of [bob,carol]){await assert.rejects(enc.open(actor.privateKey,alice.publicKey,newer.ciphertext));assert.equal((await f.req(`/files/${file.id}`,actor)).status,404);}
+  await f.ok(`/groups/${nest.id}`,alice,'PATCH',{admin_only:true});
+  assert.equal((await f.req(`/messages/${reply.id}/e2ee/edit-roster`,bob)).status,403);
+  assert.equal((await f.req(`/messages/${reply.id}/content`,alice,'PUT',{body:'Admin cannot rewrite another author',expectedVersion:0})).status,403);
+  const poll=await f.ok(`/groups/${nest.id}/messages`,alice,'POST',{...await f.prepare(alice,nest.id,JSON.stringify({churp:'poll',version:1,title:'Do not edit polls here',questions:[{text:'Choose',type:'single',options:['A','B']}]}),[],null,null,'poll'),message_kind:'poll'});
+  assert.equal((await f.req(`/messages/${poll.id}/e2ee/edit-roster`,alice)).status,400);
+  await f.restart();
+  const saved=(await f.ok(`/groups/${nest.id}/messages`,alice)).messages.find(m=>m.id===sent.id);assert.equal(saved.edit_version,2);assert.equal(saved.created_at,original.created_at);assert.equal((await enc.open(alice.privateKey,saved.signer_key,saved.ciphertext)).body,'New revision');
+  await f.ok(`/messages/${sent.id}`,alice,'DELETE');assert.equal((await f.req(`/messages/${sent.id}/content`,alice,'PUT',second)).status,404);
+  assert.deepEqual(f.runtime.db.prepare('PRAGMA foreign_key_check').all(),[]);
 });

@@ -101,3 +101,4 @@ export async function validateEncryptedFile(data) {
 }
 export const enrollmentPayload = ({userId,publicKey,backupHash,deviceId,deviceName}) => ({userId,publicKey,backupHash,deviceId,deviceName});
 export const sendPayload = ({groupId,clientId,rosterHash,cipherHash,files,replyTo}) => ({groupId,clientId,rosterHash,cipherHash,files,replyTo:replyTo ?? null});
+export const editPayload = ({messageId,expectedVersion,...message}) => ({messageId,expectedVersion,...sendPayload(message)});

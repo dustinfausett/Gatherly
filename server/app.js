@@ -667,6 +667,43 @@ export function createApp(options = {}) {
     run('UPDATE messages SET urgent=? WHERE id=?', boolean(req.body.urgent, 'Urgent'), m.id);
     refresh(g.community_id); res.json({ ok: true });
   });
+  function editableMessage(req) {
+    const m=one('SELECT * FROM messages WHERE id=? AND deleted=0',req.params.id) || fail(404,'Message not found.');
+    const g=visibleCircle(req.user.id,m.group_id);
+    if(m.user_id!==req.user.id)fail(403,'You can only edit your own messages.');
+    if(m.message_kind!=='chat')fail(400,'Only message text can be edited. Polls and answers cannot be changed here.');
+    if(!joined(req.user.id,g.id) || (g.admin_only && !groupAdmin(req.user.id,g)))fail(403,'Posting permissions are required to edit this message.');
+    if(encryptionRequired && (!m.e2ee_version || !encryption.canRead(req.user.id,m)))fail(404,'This message is not available to edit.');
+    return {m,g};
+  }
+  app.get('/api/messages/:id/e2ee/edit-roster',(req,res)=>{
+    const {m}=editableMessage(req);encryption.device(req);
+    res.json({...encryption.editRoster(req,m),edit_version:m.edit_version});
+  });
+  app.put('/api/messages/:id/content',rateLimit({windowMs:60_000,limit:options.testing ? 1000 : 60,keyGenerator:req=>req.user.id,message:{error:'Please wait a moment before editing again.'}}),async(req,res)=>{
+    const {m,g}=editableMessage(req),version=req.body.expectedVersion;
+    if(!Number.isSafeInteger(version) || version<0)fail(400,'A message version is required.');
+    if(encryptionRequired && req.body.body!==undefined)fail(400,'Edited message text must be encrypted on your device.');
+    if(encryptionRequired && req.body.clientId===m.edit_client_id && req.body.ciphertext===m.ciphertext && m.edit_version===version+1)return res.json({ok:true,edit_version:m.edit_version});
+    if(m.edit_version!==version)fail(409,'This message changed on another device. Close this editor and reopen it to see the latest text.');
+    const checked=encryptionRequired ? await encryption.validateEdit(req,m) : null;
+    const body=encryptionRequired ? '' : req.body.body;
+    const attached=one('SELECT COUNT(*) AS n FROM message_files WHERE message_id=?',m.id).n;
+    if(!encryptionRequired && (typeof body!=='string' || body.length>10000 || (!body.trim() && !attached)))fail(400,'Write a message of up to 10,000 characters, or keep an attachment.');
+    transaction(()=>{
+      const fresh=editableMessage(req).m;
+      if(fresh.edit_version!==version)fail(409,'This message changed while you were editing. Close this editor and try again.');
+      if(checked){
+        const rs=encryption.assertEditRoster(req,fresh,checked.rosterHash);
+        const reused=one('SELECT id FROM messages WHERE client_id=? OR edit_client_id=?',checked.clientId,checked.clientId);
+        if(reused)fail(409,'That encrypted edit ID is already in use.');
+        run("UPDATE messages SET body='',ciphertext=?,edit_client_id=?,encrypted_by=?,recipient_hash=?,signer_fingerprint=?,self_encrypted=? WHERE id=?",checked.ciphertext,checked.clientId,req.user.id,checked.rosterHash,encryption.identity(req.user.id).fingerprint,rs.self_encrypted ? 1 : 0,m.id);
+        run('DELETE FROM e2ee_recipients WHERE message_id=?',m.id);encryption.recordRecipients(m.id,rs);
+      }else run('UPDATE messages SET body=? WHERE id=?',body.trim(),m.id);
+      run("UPDATE messages SET edit_version=edit_version+1,edited_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=?",m.id);
+    });
+    refresh(g.community_id);res.json({ok:true,edit_version:version+1});
+  });
   app.delete('/api/messages/:id', (req, res) => {
     const m = one('SELECT * FROM messages WHERE id=?', req.params.id) || fail(404, 'Message not found.');
     const g = visibleCircle(req.user.id, m.group_id);

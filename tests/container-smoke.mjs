@@ -70,6 +70,12 @@ async function browserCheck(cid,gid,recovery,managedFixture){
     await page.getByRole('textbox',{name:'Recovery key',exact:true}).fill(`CHURP1-${recovery}`);
     await page.getByRole('button',{name:'Restore with recovery key',exact:true}).click();
     await expect(page.locator('.message-bubble').filter({hasText:'A durable message.'})).toBeVisible();
+    const durable=page.locator('.message').filter({hasText:'A durable message.'});
+    await expect(durable.locator('.message-edited')).toHaveText('edited');
+    await durable.getByRole('button',{name:'Edit message',exact:true}).click();
+    await page.getByRole('textbox',{name:'Message text',exact:true}).fill('A corrected durable message.');
+    await page.getByRole('button',{name:'Save changes',exact:true}).click();await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect(page.locator('.message-bubble').filter({hasText:'A corrected durable message.'})).toBeVisible();
     await page.getByRole('button',{name:'Open poll: Container planning poll',exact:true}).click();
     await expect(page.getByRole('dialog')).toContainText('Closed');
     await expect(page.getByRole('radio',{name:/^Saturday/})).toBeChecked();
@@ -154,9 +160,13 @@ try {
   const fileId = (await request('/e2ee/uploads', 'POST', file)).data.file.id;
   const roster=(await request(`/groups/${gid}/e2ee/roster`)).data,clientId=randomUUID();
   const attachment={id:fileId,name:'notes.txt',size:filePlain.length,mime:'application/octet-stream',key:encryptedFile.key,sha256:encryptedFile.sha256};
-  const ciphertext=await enc.seal(keys.privateKey,roster.readers.map(r=>r.public_key),{version:1,kind:'nest-message',groupId:gid,clientId,senderId:registered.data.user.id,signerId:registered.data.user.id,rosterHash:roster.roster_hash,replyTo:null,migrated:false,body:'A durable message.',attachments:[attachment]});
+  const ciphertext=await enc.seal(keys.privateKey,roster.readers.map(r=>r.public_key),{version:1,kind:'nest-message',groupId:gid,clientId,senderId:registered.data.user.id,signerId:registered.data.user.id,rosterHash:roster.roster_hash,replyTo:null,migrated:false,body:'A durbale message.',attachments:[attachment]});
   const send=enc.sendPayload({groupId:gid,clientId,rosterHash:roster.roster_hash,cipherHash:await enc.digest(ciphertext),files:[fileId],replyTo:null});
   const mid = (await request(`/groups/${gid}/messages`, 'POST', {ciphertext,clientId,rosterHash:roster.roster_hash,files:[fileId],signature:await enc.sign(keys.privateKey,'send',send)})).data.id;
+  const editRoster=(await request(`/messages/${mid}/e2ee/edit-roster`)).data,editId=randomUUID();
+  const editCipher=await enc.seal(keys.privateKey,editRoster.readers.map(r=>r.public_key),{version:1,kind:'nest-message',groupId:gid,clientId,senderId:registered.data.user.id,signerId:registered.data.user.id,rosterHash:editRoster.roster_hash,replyTo:null,migrated:false,selfEncrypted:editRoster.self_encrypted,contentType:'chat',body:'A durable message.',attachments:[attachment],editVersion:1,editMessageId:mid,editClientId:editId});
+  const edit=enc.editPayload({messageId:mid,expectedVersion:0,groupId:gid,clientId:editId,rosterHash:editRoster.roster_hash,cipherHash:await enc.digest(editCipher),files:[fileId],replyTo:null});
+  await request(`/messages/${mid}/content`,'PUT',{ciphertext:editCipher,clientId:editId,rosterHash:editRoster.roster_hash,reply_to:null,files:[fileId],expectedVersion:0,signature:await enc.sign(keys.privateKey,'edit',edit)});
   const poll=validatePoll({title:'Container planning poll',questions:[{text:'Which day?',type:'single',options:['Saturday','Sunday']}]});
   async function pollWrite(kind,body,replyTo=null){
     const rs=(await request(`/groups/${gid}/e2ee/roster`)).data,clientId=randomUUID();
@@ -185,6 +195,7 @@ try {
   const saved=(await request(`/groups/${gid}/messages`)).data.messages.find(m=>m.id===mid);assert.equal(saved.body,'');
   const restored=await enc.recoverPrivate((await request('/e2ee/account')).data.identity.backup,recovery);
   assert.equal((await enc.open(restored,keys.publicKey,saved.ciphertext)).body,'A durable message.');
+  assert.equal(saved.edit_version,1);assert.ok(saved.edited_at);
   assert.deepEqual(await enc.decryptFile((await request(`/files/${fileId}`)).data,attachment),filePlain);
   assert.equal((await request('/config')).data.vapidPublicKey, keyBefore);
   const savedPoll=(await request(`/messages/${pollId}/poll`)).data;
@@ -199,6 +210,7 @@ try {
   console.log('PASS: push keys persist; local .env is excluded; Railway startup requires a Volume.');
   console.log('PASS: encrypted poll definitions, answers and closure survive replacement; envelope and basket artwork render under production CSP.');
   console.log('PASS: shared library decrypts pictures and documents and opens saved polls under production CSP.');
+  console.log('PASS: encrypted edits survive replacement and can be saved in the production browser without losing attachments.');
 } finally {
   for(const name of containers)spawnSync('docker', ['rm', '-f', name], { stdio: 'ignore' });
   spawnSync('docker', ['volume', 'rm', volume], { stdio: 'ignore' });

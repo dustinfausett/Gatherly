@@ -148,6 +148,21 @@ export async function sealMessage(groupId,body,attachments,replyTo,legacy=null,c
   return {ciphertext,clientId,rosterHash:rs.roster_hash,files,reply_to:replyTo ?? null,signature:await enc.sign(self.privateKey,legacy ? 'migrate' : 'send',legacy ? {...signed,legacyId:legacy.id} : signed)};
 }
 const decryptedCache=new Map();
+export async function sealEdit(message,body){
+  const self=getCurrent(),rs=await api(`/messages/${message.id}/e2ee/edit-roster`),expectedVersion=message.edit_version || 0;
+  if(rs.edit_version!==expectedVersion)throw Object.assign(new Error('This message changed on another device. Close this editor and reopen it to see the latest text.'),{status:409});
+  if(rs.missing.length)throw new Error('The message audience is not ready for encrypted edits. Try again shortly.');
+  const readers=await Promise.all(rs.readers.map(trustedReader)),clientId=crypto.randomUUID();
+  // Retain the original client ID for browsers already open on an older bundle.
+  // The separately signed edit nonce and version bind this correction to its row.
+  const payload={version:enc.VERSION,kind:'nest-message',groupId:message.group_id,clientId:message.client_id,senderId:self.userId,signerId:self.userId,
+    rosterHash:rs.roster_hash,replyTo:message.reply_to ?? null,migrated:message.client_id.startsWith('legacy-'),selfEncrypted:!!rs.self_encrypted,contentType:'chat',body,attachments:message.files,
+    editVersion:expectedVersion+1,editMessageId:message.id,editClientId:clientId};
+  validateContents(payload);
+  const ciphertext=await enc.seal(self.privateKey,readers.map(u=>u.public_key),payload),files=message.files.map(f=>f.id);
+  const signed=enc.editPayload({messageId:message.id,expectedVersion,groupId:message.group_id,clientId,rosterHash:rs.roster_hash,cipherHash:await enc.digest(ciphertext),files,replyTo:message.reply_to});
+  return {ciphertext,clientId,rosterHash:rs.roster_hash,files,reply_to:message.reply_to ?? null,expectedVersion,signature:await enc.sign(self.privateKey,'edit',signed)};
+}
 export async function decryptMessages(groupId,messages){
   const self=getCurrent();return Promise.all(messages.map(async m=>{
     if(m.deleted)return {...m,body:'',files:[]};
@@ -157,12 +172,13 @@ export async function decryptMessages(groupId,messages){
       const cacheKey=`${self.userId}:${groupId}:${m.id}:${m.ciphertext}:${signer.fingerprint}`;
       let value=decryptedCache.get(cacheKey);
       if(!value){for(const privateKey of [self.privateKey,...self.previousPrivateKeys]){try{value=await enc.open(privateKey,signer.public_key,m.ciphertext);break;}catch{}}if(!value)throw new Error('This device cannot decrypt the message.');decryptedCache.set(cacheKey,value);if(decryptedCache.size>500)decryptedCache.delete(decryptedCache.keys().next().value);}
-      if(value.version!==enc.VERSION || value.kind!=='nest-message' || value.groupId!==groupId || value.clientId!==m.client_id || value.senderId!==m.user_id || value.signerId!==m.encrypted_by || value.rosterHash!==m.recipient_hash || value.replyTo!==(m.reply_to ?? null) || !!value.migrated!==m.client_id.startsWith('legacy-'))throw new Error('The message context does not match.');
+      const editVersion=m.edit_version || 0;
+      if(value.version!==enc.VERSION || value.kind!=='nest-message' || value.groupId!==groupId || value.clientId!==m.client_id || value.senderId!==m.user_id || value.signerId!==m.encrypted_by || value.rosterHash!==m.recipient_hash || value.replyTo!==(m.reply_to ?? null) || !!value.migrated!==m.client_id.startsWith('legacy-') || (value.editVersion || 0)!==editVersion || (editVersion>0 && (value.editMessageId!==m.id || value.editClientId!==m.edit_client_id)))throw new Error('The message context does not match.');
       validateContents(value);
       if((value.contentType || 'chat')!==(m.message_kind || 'chat'))throw new Error('The message type was changed.');
       if(value.selfEncrypted!==undefined && value.selfEncrypted!==!!m.self_encrypted)throw new Error('The message protection status was changed.');
       if(enc.canonical(value.attachments.map(f=>f.id).sort())!==enc.canonical(m.files.map(f=>f.id).sort()))throw new Error('The attachment list was changed.');
-      return {...m,body:value.body,files:value.attachments,identityVerified:signer.verified,migrated:value.migrated};
+      return {...m,body:value.body,files:value.attachments,identityVerified:signer.verified,migrated:!!value.migrated && !editVersion};
     }catch{return {...m,body:'This message could not be decrypted or verified.',files:[],decryptionError:true};}
   }));
 }

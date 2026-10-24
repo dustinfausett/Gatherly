@@ -105,6 +105,10 @@ export function openDatabase(path) {
   addColumn('group_members', 'pin_position', 'INTEGER');
   addColumn('group_members', 'marked_unread', 'INTEGER NOT NULL DEFAULT 0');
   addColumn('messages', 'urgent', 'INTEGER NOT NULL DEFAULT 0');
+  addColumn('messages', 'edited_at', 'TEXT');
+  addColumn('messages', 'edit_version', 'INTEGER NOT NULL DEFAULT 0');
+  addColumn('messages', 'edit_client_id', 'TEXT');
+  db.exec('CREATE UNIQUE INDEX IF NOT EXISTS messages_edit_client_id ON messages(edit_client_id) WHERE edit_client_id IS NOT NULL');
   addColumn('messages', 'message_kind', "TEXT NOT NULL DEFAULT 'chat'");
   db.exec(`
     CREATE TABLE IF NOT EXISTS polls (
