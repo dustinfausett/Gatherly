@@ -29,6 +29,8 @@ Production requires HTTPS because cookies use `Secure`. A reverse proxy must for
 
 ## Accounts, permissions, and conversations
 
+**Invite your people** provides a QR code, short code and full link. **About this Nest → Invite Tree members** sends an in-app invitation to selected members. The bird-envelope **Invitations** inbox shows pending Nests with Accept/Decline and accepts shared links or codes. All invitations expire after seven days and require valid admin permissions. See [invitation behavior and access controls](docs/INVITATIONS.md).
+
 Change your password in your profile. Optional verified recovery email enables **Forgot password?** links; Google-only accounts use Google recovery. Email delivery requires `RESEND_API_KEY`, `CHURP_EMAIL_FROM` and the correct app origin. See [account recovery and setup](docs/ACCOUNT-RECOVERY.md). The sidebar keeps Tree navigation and invitation actions; Nest search and discovery live on Tree home.
 
 Nest chats include **+ → Poll**: a single- or multi-question choice poll delivered as a ballot, with eggs marking basket selections. Polls and responses use the existing encrypted messaging system. See [poll behavior and implementation](docs/POLLS.md).

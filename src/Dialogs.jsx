@@ -75,27 +75,7 @@ function DeleteSpaceForm({ type, entity, onCancel, onDeleted }) {
     <div className="button-row"><button className="button secondary" type="button" disabled={busy} onClick={onCancel}>Cancel</button><button className="button danger-button" type="submit" disabled={busy || !same}><Trash2 size={16}/>{busy ? 'Deleting…' : `Delete ${label}`}</button></div>
   </form>;
 }
-export function InviteDialog({ community, group, onClose }) {
-  const [link, setLink] = useState(''), [copied, setCopied] = useState(false);
-  return <Modal title={`Invite to ${group ? 'Nest' : 'Tree'}`} subtitle={`Good conversations are better with company. Invite someone to ${group?.name || community.name}.`} onClose={onClose}>
-    <div className="invite-art"><UserPlus size={35} strokeWidth={1.5} /><span>Make a little more room.</span></div>
-    {group && <div className="info-banner">Nest invitations work for existing Tree members. Invite someone to the Tree first if they haven’t joined yet.</div>}
-    {!link ? <Form submit="Create invitation link" onSubmit={async () => {
-      const result = await post('/invitations', { community_id: community.id, group_id: group?.id });
-      setLink(`${window.location.origin}${result.path}`);
-    }}><p className="muted">Anyone with the link can join. Links expire after 7 days and grant member access only.</p></Form> : <div className="form"><Field label="Your invitation link"><div className="copy-field"><input value={link} readOnly aria-label="Invitation link" onFocus={e => e.target.select()} /><button className="icon-button" aria-label="Copy invitation link" onClick={async () => { try { await navigator.clipboard.writeText(link); setCopied(true); } catch { /* input can be manually copied */ } }}>{copied ? <Check size={19} /> : <Copy size={19} />}</button></div></Field><p className="muted small-text">{copied ? 'Copied! Share it with someone you’d like to invite.' : 'Share this link privately. It expires in 7 days.'}</p></div>}
-  </Modal>;
-}
-export function JoinDialog({ onClose, onJoin, initialToken = '' }) {
-  return <Modal title="Come on in." subtitle="Have an invitation? There’s a place waiting for you." onClose={onClose}>
-    <div className="invite-art"><Link size={34} strokeWidth={1.5} /><span>Every connection starts somewhere.</span></div>
-    <Form submit="Accept invitation" onSubmit={async form => {
-      let value = form.get('invitation').trim();
-      try { value = new URL(value).searchParams.get('invite') || value; } catch { /* raw token */ }
-      await onJoin(value); onClose();
-    }}><Field label="Invitation link" name="invitation" placeholder="Paste your invitation link" defaultValue={initialToken} required /></Form>
-  </Modal>;
-}
+export { InviteDialog,JoinDialog } from './Invitations';
 export { default as ProfileDialog } from './ProfileSettings';
 export function MembersDialog({ community, user, onClose, onRefresh, notify }) {
   const [members, setMembers] = useState([]), [assignments, setAssignments] = useState([]), [error, setError] = useState(''), [busy, setBusy] = useState(false);

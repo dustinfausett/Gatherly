@@ -20,6 +20,7 @@ import { parseRsvp, deadline } from '../shared/rsvps.js';
 import { parsePoll } from '../shared/polls.js';
 import { BIRDS, getBird } from '../shared/birds.js';
 import { getAvatar } from '../shared/avatars.js';
+import { installInvitations } from './invitations.js';
 
 if (existsSync('.env')) process.loadEnvFile('.env');
 const SESSION_AGE = 30 * 86400 * 1000;
@@ -490,6 +491,7 @@ export function createApp(options = {}) {
       run('DELETE FROM group_members WHERE user_id=? AND group_id IN (SELECT id FROM groups WHERE community_id=?)', req.params.userId, c.id);
       run(`DELETE FROM scoped_admins WHERE user_id=? AND ((scope_type='subcommunity' AND scope_id IN (SELECT id FROM subcommunities WHERE community_id=?)) OR (scope_type='group' AND scope_id IN (SELECT id FROM groups WHERE community_id=?)))`, req.params.userId, c.id, c.id);
       run("UPDATE creation_requests SET status='cancelled',reviewed_by=?,reviewed_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE community_id=? AND requester_id=? AND status='pending'",req.user.id,c.id,req.params.userId);
+      run('DELETE FROM nest_invitations WHERE recipient_id=? AND group_id IN (SELECT id FROM groups WHERE community_id=?)',req.params.userId,c.id);
       run('DELETE FROM community_members WHERE community_id=? AND user_id=?', c.id, req.params.userId);
       run('UPDATE users SET last_community_id=NULL WHERE id=? AND last_community_id=?', req.params.userId, c.id);
     });
@@ -510,41 +512,14 @@ export function createApp(options = {}) {
     } else run('DELETE FROM scoped_admins WHERE scope_type=? AND scope_id=? AND user_id=?', type, id, userId);
     refresh(entity.community_id); res.json({ ok: true });
   });
-  app.post('/api/invitations', (req, res) => {
-    const { community_id: cid, group_id: gid } = req.body;
-    membership(req.user.id, cid);
-    if (gid) {
-      const g = group(gid);
-      if (g.community_id !== cid || !groupAdmin(req.user.id, g)) fail(403, 'Only Nest admins can invite people into this Nest.');
-    } else if (!communityAdmin(req.user.id, cid)) fail(403, 'Only Tree admins can invite new members.');
-    const value = token();
-    const expires = Date.now() + 7 * 86400 * 1000;
-    run('INSERT INTO invitations VALUES (?,?,?,?,?)', hash(value), cid, gid || null, req.user.id, expires);
-    res.status(201).json({ path: `/?invite=${value}`, expires_at: expires });
-  });
-  app.post('/api/invitations/accept', (req, res) => {
-    if (typeof req.body.token !== 'string') fail(400, 'Paste a valid invitation link.');
-    const inv = one('SELECT * FROM invitations WHERE token_hash=?', hash(req.body.token));
-    if (!inv || inv.expires_at < Date.now()) fail(410, 'This invitation is invalid or has expired. Ask an admin for a new link.');
-    // Revoked admin rights also revoke outstanding invitations from that admin.
-    let stillAdmin = false;
-    try { stillAdmin = inv.group_id ? groupAdmin(inv.created_by, group(inv.group_id)) : communityAdmin(inv.created_by, inv.community_id); } catch { /* removed creator */ }
-    if (!stillAdmin) fail(410, 'This invitation has been revoked. Ask an admin for a new link.');
-    if (inv.group_id && !one('SELECT 1 FROM community_members WHERE community_id=? AND user_id=?', inv.community_id, req.user.id)) fail(403, 'Join the Tree with a Tree invitation before accepting a Nest invitation.');
-    transaction(() => {
-      if (!inv.group_id) run("INSERT OR IGNORE INTO community_members VALUES (?,?,'member')", inv.community_id, req.user.id);
-      if (inv.group_id) { run('INSERT OR IGNORE INTO group_members(group_id,user_id) VALUES (?,?)', inv.group_id, req.user.id); joinParent(req.user.id,group(inv.group_id)); }
-      run('UPDATE users SET last_community_id=? WHERE id=?', inv.community_id, req.user.id);
-    });
-    refresh(inv.community_id);
-    res.json({ community_id: inv.community_id, group_id: inv.group_id });
-  });
+  installInvitations({app,db,appUrl,testing:options.testing,transaction,membership,communityAdmin,groupAdmin,group,joinParent,refresh,refreshUser});
   app.post('/api/groups/:id/join', (req, res) => {
     const g = visibleCircle(req.user.id, req.params.id);
     if (g.private && !groupAdmin(req.user.id, g) && !joined(req.user.id, g.id)) fail(403, 'A Nest admin must invite you.');
     transaction(() => {
       run('INSERT OR IGNORE INTO group_members(group_id,user_id,last_read) VALUES (?,?,?)', g.id, req.user.id, one('SELECT COALESCE(MAX(id),0) AS n FROM messages WHERE group_id=?', g.id).n);
       joinParent(req.user.id,g);
+      run("UPDATE nest_invitations SET status='accepted' WHERE group_id=? AND recipient_id=? AND status='pending'",g.id,req.user.id);
     });
     refresh(g.community_id); res.json({ ok: true });
   });

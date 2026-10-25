@@ -42,7 +42,7 @@ test('Tree, Branch and Nest artwork keeps privacy locks and hidden Nest access',
   await page.locator('.sidebar').getByRole('button',{name:'Invite someone to this Tree',exact:true}).click();
   await expect(page.getByRole('dialog').getByRole('heading',{name:'Invite to Tree',exact:true})).toBeVisible();
   await page.getByRole('button',{name:'Create invitation link',exact:true}).click();
-  await expect(page.locator('.copy-field input')).toHaveValue(/invite=/);
+  await expect(page.getByRole('textbox',{name:'Invitation link',exact:true})).toHaveValue(/invite=/);
   await page.getByRole('button',{name:'Close dialog',exact:true}).click();
   await page.getByRole('button',{name:`Open Nest ${root.name}`,exact:true}).click();
   await expect(page.locator('.chat-heading h1')).toHaveText(root.name);

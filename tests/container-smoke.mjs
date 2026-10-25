@@ -138,6 +138,11 @@ async function browserCheck(cid,gid,recovery,managedFixture){
     await page.getByRole('dialog').getByRole('button',{name:/^Assignments/}).click();
     await expect(page.getByRole('dialog').getByRole('button',{name:'Open assignments: Container party preparations',exact:true})).toBeVisible();
     await page.getByRole('button',{name:'Close dialog',exact:true}).click();
+    await page.getByRole('button',{name:'Invite someone to this Tree',exact:true}).click();
+    await page.getByRole('button',{name:'Create invitation link',exact:true}).click();
+    await expect.poll(()=>page.locator('.invitation-qr').evaluate(img=>img.naturalWidth)).toBe(300);
+    await expect(page.getByRole('textbox',{name:'Invitation code',exact:true})).toHaveValue(/^[A-HJ-NP-Z2-9]{5}-[A-HJ-NP-Z2-9]{5}$/);
+    await page.getByRole('button',{name:'Close dialog',exact:true}).click();
     await page.getByRole('button',{name:'Edit your profile',exact:true}).click();
     await expect(page.locator('.settings-menu>button')).toHaveCount(5);
     await page.getByRole('button',{name:'Profile & avatar',exact:true}).click();
@@ -250,12 +255,16 @@ try {
   const keyBefore = (await request('/config')).data.vapidPublicKey;
   assert.ok(keyBefore);
   assert.deepEqual(await enc.decryptFile((await request(`/files/${fileId}`)).data,attachment),filePlain);
+  const shareInvitation=(await request('/invitations','POST',{community_id:cid})).data;
+  assert.match(shareInvitation.code,/^[A-HJ-NP-Z2-9]{5}-[A-HJ-NP-Z2-9]{5}$/);assert.match(shareInvitation.qr_data_url,/^data:image\/png;base64,/);
   const selfCookie=cookie,selfDevice=deviceId;
   const registeredManaged=await request('/auth/register','POST',{username:'managed_smoke',name:'Managed smoke',password:'Temporary managed password!'});
   const managedCookie=registeredManaged.response.headers.get('set-cookie').split(';')[0];cookie=managedCookie;deviceId=randomUUID();
   const managedAccount=(await request('/e2ee/managed-device','POST',{deviceId,deviceName:'Managed container fixture'})).data;
   const managedFingerprint=managedAccount.identity.fingerprint;assert.equal((await enc.readPrivate(managedAccount.privateKey)).getFingerprint(),managedFingerprint);
+  await request('/invitations/accept','POST',{token:shareInvitation.code});
   cookie=selfCookie;deviceId=selfDevice;
+  await request(`/groups/${gid}/invitations`,'POST',{user_ids:[registeredManaged.data.user.id]});
   docker('stop', container);
   docker('rm', container);
   container=containers[1];
@@ -280,6 +289,8 @@ try {
   const savedOperations=(await request(`/messages/${assignmentId}/assignments/operations?version=1`)).data.operations;
   assert.equal(parseAssignmentOperation((await enc.open(restored,keys.publicKey,savedOperations[0].message.ciphertext)).body,assignmentId,savedOperations[0].metadata).completed,true);
   cookie=managedCookie;deviceId=randomUUID();
+  const savedInvitation=(await request('/invitations')).data.invitations[0];assert.equal(savedInvitation.group_id,gid);
+  await request(`/invitations/${savedInvitation.id}/decline`,'POST');assert.equal((await request('/invitations')).data.invitations.length,0);
   const restoredManaged=(await request('/e2ee/managed-device','POST',{deviceId,deviceName:'After replacement'})).data;
   assert.equal(restoredManaged.identity.fingerprint,managedFingerprint);assert.equal((await enc.readPrivate(restoredManaged.privateKey)).getFingerprint(),managedFingerprint);
   cookie=selfCookie;deviceId=selfDevice;
@@ -291,6 +302,7 @@ try {
   console.log('PASS: encrypted RSVP invitations and guest counts survive replacement; envelopes and hatching artwork render under production CSP.');
   console.log('PASS: encrypted assignments, completion and collaboration controls survive replacement and work under production CSP.');
   console.log('PASS: self-managed keys can return to Churp and rotate again, preserving history on a fresh production browser.');
+  console.log('PASS: short codes and addressed Nest invitations survive replacement; QR images render under production CSP.');
   console.log('PASS: encrypted edits survive replacement and can be saved in the production browser without losing attachments.');
 } finally {
   for(const name of containers)spawnSync('docker', ['rm', '-f', name], { stdio: 'ignore' });

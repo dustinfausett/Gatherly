@@ -237,6 +237,20 @@ export function openDatabase(path) {
     created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
     PRIMARY KEY(user_id,bird_id)
   );`);
+  db.exec(`CREATE TABLE IF NOT EXISTS invitation_codes (
+    code_hash TEXT PRIMARY KEY,token_hash TEXT NOT NULL UNIQUE REFERENCES invitations(token_hash) ON DELETE CASCADE
+  );
+  CREATE TABLE IF NOT EXISTS nest_invitations (
+    id TEXT PRIMARY KEY,group_id TEXT NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+    recipient_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    created_by TEXT NOT NULL REFERENCES users(id),expires_at INTEGER NOT NULL,created_at INTEGER NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','accepted','declined')),
+    UNIQUE(group_id,recipient_id)
+  );
+  CREATE INDEX IF NOT EXISTS nest_invitations_recipient ON nest_invitations(recipient_id,status,expires_at);
+  CREATE TRIGGER IF NOT EXISTS nest_invitation_joined AFTER INSERT ON group_members BEGIN
+    UPDATE nest_invitations SET status='accepted' WHERE group_id=NEW.group_id AND recipient_id=NEW.user_id AND status='pending';
+  END;`);
   // Existing Trees stay moderated when member creation is introduced.
   addColumn('communities', 'branch_approval_required', 'INTEGER NOT NULL DEFAULT 1');
   addColumn('communities', 'nest_approval_required', 'INTEGER NOT NULL DEFAULT 1');
