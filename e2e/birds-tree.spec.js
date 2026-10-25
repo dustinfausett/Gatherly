@@ -7,7 +7,7 @@ const register = async (request,prefix) => {
   expect(r.status()).toBe(201);return (await r.json()).user;
 };
 
-test('12 account birds, code redemption, saved avatars and matching flights',async({page},info)=>{
+test('12 independent pets, code redemption and matching flights',async({page},info)=>{
   test.setTimeout(120000);
   const errors=[];page.on('pageerror',e=>errors.push(e.message));
   await register(page.request,'birds');
@@ -30,20 +30,20 @@ test('12 account birds, code redemption, saved avatars and matching flights',asy
     }).observe(document.body,{childList:true,subtree:true,attributes:true,attributeFilter:['data-bird-pose']}));
   });
   await page.goto('/');
-  await page.getByRole('button',{name:'Edit your profile',exact:true}).click();
+  await page.getByRole('button',{name:'Edit your profile',exact:true}).click();await page.getByRole('button',{name:'My pet',exact:true}).click();
   await expect(page.getByRole('radio')).toHaveCount(12);
   await expect(page.getByRole('radio',{name:'Bluebird',exact:true})).toBeChecked();
   await expect(page.getByRole('radio',{name:'Goldfinch',exact:true})).toBeEnabled();
   await expect(page.locator('.bird-picker input:disabled')).toHaveCount(10);
   await expect(page.getByRole('button',{name:'Purchases coming soon',exact:true})).toBeDisabled();
   await page.locator('.bird-choice').filter({has:page.getByRole('radio',{name:'Goldfinch',exact:true})}).click();
-  await page.getByRole('button',{name:'Save profile',exact:true}).click();
+  await page.getByRole('button',{name:'Save pet',exact:true}).click();
   await expect(page.locator('.banner-bird [data-bird-id]')).toHaveAttribute('data-bird-id','gold');
   const second=await page.context().newPage();
   try {
     await second.goto('/');
     await expect(second.locator('.banner-bird [data-bird-id]')).toHaveAttribute('data-bird-id','gold');
-    await page.getByRole('button',{name:'Edit your profile',exact:true}).click();
+    await page.getByRole('button',{name:'Edit your profile',exact:true}).click();await page.getByRole('button',{name:'My pet',exact:true}).click();
     await page.getByRole('textbox',{name:'Unlock code',exact:true}).fill('wrong');
     await page.getByRole('button',{name:'Redeem code',exact:true}).click();
     await expect(page.getByRole('alert')).toContainText('not recognized');
@@ -51,17 +51,17 @@ test('12 account birds, code redemption, saved avatars and matching flights',asy
     await page.getByRole('textbox',{name:'Unlock code',exact:true}).fill('Churp');
     await page.getByRole('button',{name:'Redeem code',exact:true}).click();
     await expect(page.locator('.bird-picker input:disabled')).toHaveCount(0);
-    await expect(page.getByText('All 12 birds are unlocked for your account.',{exact:true})).toBeVisible();
+    await expect(page.getByText('All 12 pets are unlocked for your account.',{exact:true})).toBeVisible();
     await page.locator('.bird-choice').filter({has:page.getByRole('radio',{name:'Parrot',exact:true})}).click();
     await page.locator('.bird-picker').screenshot({path:info.outputPath('bird-collection.png')});
-    await page.getByRole('button',{name:'Save profile',exact:true}).click();
+    await page.getByRole('button',{name:'Save pet',exact:true}).click();
     await expect(second.locator('.banner-bird [data-bird-id]')).toHaveAttribute('data-bird-id','parrot');
   } finally {await second.close();}
   for(const bird of BIRDS){
-    await page.getByRole('button',{name:'Edit your profile',exact:true}).click();
+    await page.getByRole('button',{name:'Edit your profile',exact:true}).click();await page.getByRole('button',{name:'My pet',exact:true}).click();
     await page.locator('.bird-choice').filter({has:page.getByRole('radio',{name:bird.name,exact:true})}).click();
-    await page.getByRole('button',{name:'Save profile',exact:true}).click();
-    await expect(page.locator('.profile-button [data-bird-id]')).toHaveAttribute('data-bird-id',bird.id);
+    await page.getByRole('button',{name:'Save pet',exact:true}).click();
+    await expect(page.locator('.profile-button [data-avatar-choice]')).toHaveAttribute('data-avatar-choice','blue');
     await expect(page.locator('.banner-bird [data-bird-id]')).toHaveAttribute('data-bird-id',bird.id);
     await page.getByRole('button',{name:'Open Nest Morning songs',exact:true}).click();
     await expect(page.locator('.bird-flight [data-bird-id]')).toHaveAttribute('data-bird-id',bird.id);
@@ -84,7 +84,7 @@ test('12 account birds, code redemption, saved avatars and matching flights',asy
   }
   await page.reload();
   await expect(page.locator('.banner-bird [data-bird-id]')).toHaveAttribute('data-bird-id','hummingbird');
-  await page.getByRole('button',{name:'Edit your profile',exact:true}).click();
+  await page.getByRole('button',{name:'Edit your profile',exact:true}).click();await page.getByRole('button',{name:'My pet',exact:true}).click();
   await expect(page.getByRole('radio',{name:'Hummingbird',exact:true})).toBeChecked();
   await expect(page.locator('.bird-picker input:disabled')).toHaveCount(0);
   for(const collection of ['meadow','canopy','woodland']){

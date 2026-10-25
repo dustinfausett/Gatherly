@@ -19,6 +19,7 @@ import { installAccountSecurity,accountMailer,normalizeEmail } from './account-s
 import { parseRsvp, deadline } from '../shared/rsvps.js';
 import { parsePoll } from '../shared/polls.js';
 import { BIRDS, getBird } from '../shared/birds.js';
+import { getAvatar } from '../shared/avatars.js';
 
 if (existsSync('.env')) process.loadEnvFile('.env');
 const SESSION_AGE = 30 * 86400 * 1000;
@@ -67,7 +68,7 @@ export function createApp(options = {}) {
     return BIRDS.filter(b => b.free || earned.has(b.id)).map(b => b.id);
   };
   const publicUser = u => ({ has_password:!!u.password,has_google:!!u.google_id,recovery_email:u.email || null,recovery_email_verified:!!u.email_verified_at,pending_recovery_email:u.pending_email || null,id: u.id, username: u.username, name: u.name, avatar_id: u.avatar_id,
-    bird_id: u.bird_id, avatar_style: u.avatar_style, unlocked_birds: unlockedBirds(u.id), last_community_id: u.last_community_id });
+    bird_id: u.bird_id, avatar_choice:u.avatar_choice, avatar_style: u.avatar_style, unlocked_birds: unlockedBirds(u.id), last_community_id: u.last_community_id });
   const transaction = fn => {
     db.exec('BEGIN');
     try { const result = fn(); db.exec('COMMIT'); return result; }
@@ -162,7 +163,7 @@ export function createApp(options = {}) {
     const hashed = await passwordHash(password);
     if (one('SELECT 1 FROM users WHERE username=?', username)) fail(409, 'That username is already taken.');
     const id = randomUUID();
-    run("INSERT INTO users(id,username,name,password,avatar_style) VALUES (?,?,?,?,'bird')", id, username, name, hashed);
+    run("INSERT INTO users(id,username,name,password,avatar_style) VALUES (?,?,?,?,'portrait')", id, username, name, hashed);
     let emailNotice=null;if(requestedEmail){try{await accountSecurity.stage(one('SELECT * FROM users WHERE id=?',id),requestedEmail);emailNotice='Check your inbox to verify your recovery email.';}catch{emailNotice='Your account is ready, but the recovery email could not be sent. Try again in your profile.';}}
     res.status(201).json({ user: session(res, one('SELECT * FROM users WHERE id=?', id)),emailNotice });
   });
@@ -186,7 +187,7 @@ export function createApp(options = {}) {
     let user = one('SELECT * FROM users WHERE google_id=?', payload.sub);
     if (!user) {
       const id = randomUUID();
-      run("INSERT INTO users(id,username,name,google_id,avatar_style) VALUES (?,?,?,?,'bird')", id, `g_${id.replaceAll('-', '').slice(0,20)}`, (payload.name || 'New member').slice(0,80), payload.sub);
+      run("INSERT INTO users(id,username,name,google_id,avatar_style) VALUES (?,?,?,?,'portrait')", id, `g_${id.replaceAll('-', '').slice(0,20)}`, (payload.name || 'New member').slice(0,80), payload.sub);
       user = one('SELECT * FROM users WHERE id=?', id);
     }
     res.json({ user: session(res, user) });
@@ -219,10 +220,13 @@ export function createApp(options = {}) {
     if (!getBird(birdId)) fail(400, 'Choose a bird from the collection.');
     if (!unlockedBirds(req.user.id).includes(birdId)) fail(403, 'Unlock this bird before selecting it.');
     const style = req.body.avatar_style ?? (req.body.avatar_id === undefined ? req.user.avatar_style : 'photo');
-    if (!['photo','bird'].includes(style)) fail(400, 'Choose a bird avatar or profile photo.');
+    // Older open clients may still send 'bird'; keep their pet separate from the portrait.
+    if (!['photo','bird','portrait'].includes(style)) fail(400, 'Choose a bird avatar or profile photo.');
+    const choice = req.body.avatar_choice === undefined ? req.user.avatar_choice : req.body.avatar_choice;
+    if (!getAvatar(choice)) fail(400,'Choose an avatar from the collection.');
     const last = req.body.last_community_id === undefined ? req.user.last_community_id : req.body.last_community_id;
     if (last !== null) membership(req.user.id, last);
-    run('UPDATE users SET name=?,avatar_id=?,bird_id=?,avatar_style=?,last_community_id=? WHERE id=?', name, avatarId, birdId, style, last, req.user.id);
+    run('UPDATE users SET name=?,avatar_id=?,bird_id=?,avatar_style=?,avatar_choice=?,last_community_id=? WHERE id=?', name, avatarId, birdId, style === 'bird' ? 'portrait' : style, choice, last, req.user.id);
     refresh();
     res.json({ user: publicUser(one('SELECT * FROM users WHERE id=?', req.user.id)) });
   });
@@ -446,7 +450,7 @@ export function createApp(options = {}) {
   app.post('/api/communities/:id/circles', (req,res) => createSpace(req,res,req.params.id,'nest',req.body.subcommunity_id ?? null));
   app.get('/api/communities/:id/members', (req, res) => {
     membership(req.user.id, req.params.id);
-    res.json({ members: all(`SELECT u.id,u.name,u.username,u.avatar_id,u.bird_id,u.avatar_style,m.role FROM users u
+    res.json({ members: all(`SELECT u.id,u.name,u.username,u.avatar_id,u.bird_id,u.avatar_choice,u.avatar_style,m.role FROM users u
       JOIN community_members m ON m.user_id=u.id WHERE m.community_id=? ORDER BY u.name`, req.params.id),
       assignments: all(`SELECT a.* FROM scoped_admins a WHERE
         (a.scope_type='subcommunity' AND a.scope_id IN (SELECT id FROM subcommunities WHERE community_id=?)) OR
@@ -592,7 +596,7 @@ export function createApp(options = {}) {
     const before = req.query.before === undefined ? Number.MAX_SAFE_INTEGER : Number(req.query.before);
     if (!Number.isSafeInteger(before) || before < 1) fail(400, 'Invalid message cursor.');
     const floor=encryptionRequired ? encryption.reader(req,req.params.id).gm.joined_after : -1;
-    const messages = all(`SELECT m.*,u.name,u.avatar_id,u.bird_id,u.avatar_style,${encryptionRequired ? "''" : 'p.body'} AS parent_body,${encryptionRequired ? 'NULL' : 'pu.name'} AS parent_name,
+    const messages = all(`SELECT m.*,u.name,u.avatar_id,u.bird_id,u.avatar_choice,u.avatar_style,${encryptionRequired ? "''" : 'p.body'} AS parent_body,${encryptionRequired ? 'NULL' : 'pu.name'} AS parent_name,
       COALESCE(kh.public_key,ei.public_key) AS signer_key,COALESCE(m.signer_fingerprint,ei.fingerprint) AS signer_fingerprint,signer.name AS signer_name FROM messages m JOIN users u ON u.id=m.user_id
       LEFT JOIN e2ee_identities ei ON ei.user_id=m.encrypted_by LEFT JOIN e2ee_key_history kh ON kh.user_id=m.encrypted_by AND kh.fingerprint=m.signer_fingerprint LEFT JOIN users signer ON signer.id=m.encrypted_by
       LEFT JOIN messages p ON p.id=m.reply_to LEFT JOIN users pu ON pu.id=p.user_id
@@ -611,7 +615,7 @@ export function createApp(options = {}) {
     if(['poll_vote','rsvp_response','assignment_op'].includes(root.message_kind))fail(404,'Thread not found.');
     const rootId = root.reply_to || root.id;
     const floor=encryptionRequired ? encryption.reader(req,req.params.id).gm.joined_after : -1;
-    const messages = all(`SELECT m.*,u.name,u.avatar_id,u.bird_id,u.avatar_style,COALESCE(kh.public_key,ei.public_key) AS signer_key,COALESCE(m.signer_fingerprint,ei.fingerprint) AS signer_fingerprint,signer.name AS signer_name FROM messages m JOIN users u ON u.id=m.user_id
+    const messages = all(`SELECT m.*,u.name,u.avatar_id,u.bird_id,u.avatar_choice,u.avatar_style,COALESCE(kh.public_key,ei.public_key) AS signer_key,COALESCE(m.signer_fingerprint,ei.fingerprint) AS signer_fingerprint,signer.name AS signer_name FROM messages m JOIN users u ON u.id=m.user_id
       LEFT JOIN e2ee_identities ei ON ei.user_id=m.encrypted_by LEFT JOIN e2ee_key_history kh ON kh.user_id=m.encrypted_by AND kh.fingerprint=m.signer_fingerprint LEFT JOIN users signer ON signer.id=m.encrypted_by WHERE m.group_id=? AND (m.id=? OR m.reply_to=?) AND m.id>?
       AND m.message_kind NOT IN ('poll_vote','rsvp_response','assignment_op') ${encryptionRequired ? 'AND m.e2ee_version=1 AND EXISTS(SELECT 1 FROM e2ee_recipients er WHERE er.message_id=m.id AND er.user_id=?)' : ''} ORDER BY m.id LIMIT 500`, req.params.id, rootId, rootId,floor,...(encryptionRequired ? [req.user.id] : []));
     for (const m of messages) m.files = all('SELECT f.id,f.name,f.mime,f.size FROM files f JOIN message_files mf ON mf.file_id=f.id WHERE mf.message_id=?', m.id);

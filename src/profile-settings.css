@@ -1,0 +1,47 @@
+.profile-settings { color:#64563f; }
+.settings-person { display:flex; align-items:center; gap:15px; padding:4px 0 22px; }
+.settings-person>div { display:grid; gap:5px; min-width:0; }
+.settings-person strong { font:800 20px/1.3 Nunito,sans-serif; color:#536e38; overflow-wrap:anywhere; }
+.settings-person span:not(.avatar) { font-size:12px; color:#94836d; }
+.settings-menu { display:grid; gap:8px; }
+.settings-menu>button { display:flex; align-items:center; gap:13px; width:100%; min-height:76px; padding:13px; border:1px solid #e7ddc9; border-radius:13px; background:#f8f3e8; text-align:left; transition:background .15s,transform .15s; }
+.settings-menu>button:hover { background:#eef0df; }
+.settings-menu>button:active { transform:scale(.985); }
+.settings-menu>button:focus-visible { outline:3px solid #6f9cad; outline-offset:2px; }
+.settings-menu-icon { display:flex; align-items:center; justify-content:center; width:43px; height:43px; flex-shrink:0; border-radius:13px; background:#e7ebd7; color:#688447; }
+.settings-menu-icon.pet-menu-icon { background:#e8f1f1; }
+.pet-menu-icon>.bird-artwork { width:40px; height:40px; }
+.settings-menu>button>span:nth-child(2) { display:grid; gap:5px; flex:1; min-width:0; }
+.settings-menu strong { font:800 15px/1.3 Nunito,sans-serif; color:#5c7040; }
+.settings-menu small { font-size:11px; color:#95866d; line-height:1.5; }
+.settings-menu>button>svg { flex-shrink:0; color:#9aab7f; }
+.settings-sign-out { margin-top:20px; display:flex; align-items:center; gap:9px; min-height:44px; }
+.settings-back { display:inline-flex; align-items:center; gap:7px; min-height:44px; margin:4px 0 16px; font-size:12px; color:#71874e; }
+.settings-detail>.settings-section { margin-top:0; padding-top:0; border-top:0; }
+.settings-intro { font-size:13px; line-height:1.8; margin-bottom:20px; color:#908169; }
+.settings-account-id { display:flex; gap:8px; flex-wrap:wrap; font-size:12px; margin-bottom:20px; }
+.settings-account-id strong { overflow-wrap:anywhere; color:#658047; }
+.avatar-portrait { display:block; width:100%; height:100%; }
+.avatar>.avatar-portrait { padding:3%; }
+.profile-picture-preview { display:flex; align-items:center; gap:17px; margin-bottom:22px; }
+.profile-picture-preview strong,.pet-preview strong { font:800 17px/1.4 Nunito,sans-serif; color:#607a40; }
+.profile-picture-preview p,.pet-preview p { font-size:12px; line-height:1.7; color:#8c7e67; margin-top:5px; }
+.form fieldset.avatar-picker { display:block; border:0; padding:0; margin:20px 0; min-width:0; }
+.avatar-picker legend { font-size:14px; font-weight:800; color:#667c47; margin-bottom:7px; }
+.avatar-picker>p { margin-bottom:14px; }
+.avatar-choice-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:9px; }
+.avatar-choice { display:flex; flex-direction:column; align-items:center; position:relative; background:#f9f3e7; border:1px solid #e6dcc8; border-radius:12px; padding:8px 4px; cursor:pointer; min-width:0; }
+.avatar-choice>input { position:absolute; inset:0; width:100%; height:100%; opacity:0; z-index:1; cursor:inherit; }
+.avatar-choice:has(input:focus-visible) { outline:3px solid #719baa; outline-offset:2px; }
+.avatar-choice.chosen { border-color:#728d4d; background:#edf1dc; box-shadow:0 0 0 1px #728d4d; }
+.avatar-choice-art { width:100%; height:74px; display:block; }
+.avatar-choice strong { font-size:10px; color:#756447; text-align:center; margin-top:6px; line-height:1.5; }
+.avatar-choice-check { position:absolute; right:5px; top:5px; color:#607e3c; background:#f7faec; border-radius:50%; }
+.profile-upload { padding:19px 0 0; border-top:1px solid #e7ddc9; }
+.profile-upload h3 { font-size:14px; color:#6e7f4e; margin-bottom:17px; }
+.profile-upload>.text-button { font-size:12px; margin-top:12px; min-height:44px; }
+.pet-preview { display:flex; align-items:center; gap:16px; margin-bottom:20px; }
+.pet-preview>.bird-artwork { width:100px; height:100px; flex-shrink:0; }
+.pet-preview small { display:block; font-size:11px; color:#9c8a6d; margin-top:7px; }
+@media(max-width:640px) { .settings-menu>button { min-height:72px; padding:10px; gap:11px; } .settings-menu strong { font-size:14px; } .settings-person strong { font-size:18px; } .avatar-choice-grid { gap:7px; } .avatar-choice-art { height:59px; } .avatar-choice strong { font-size:9px; } .profile-settings .field input { font-size:16px; } .pet-preview { gap:10px; } .pet-preview>.bird-artwork { width:82px; height:82px; } }
+@media(prefers-reduced-motion:reduce) { .settings-menu>button { transition:none; } }

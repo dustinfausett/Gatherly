@@ -8,7 +8,7 @@ import * as enc from '../shared/encryption.js';
 const password='encrypted browser fixture password';
 async function register(context,name){const username=`secure_${randomUUID().slice(0,8)}`;const r=await context.request.post('/api/auth/register',{data:{username,name,password}});expect(r.status()).toBe(201);return {...(await r.json()).user,username};}
 async function setup(page){
-  await page.goto('/');await page.getByRole('button',{name:'Edit your profile',exact:true}).click();
+  await page.goto('/');await page.getByRole('button',{name:'Edit your profile',exact:true}).click();await page.getByRole('button',{name:'Security',exact:true}).click();
   await page.getByRole('button',{name:'Use self-managed keys',exact:true}).click();
   const recovery=await page.getByRole('textbox',{name:'Your recovery key',exact:true}).inputValue();expect(recovery).toMatch(/^CHURP1-/);
   await page.getByRole('checkbox',{name:'I saved my recovery key somewhere safe.',exact:true}).check();
@@ -74,7 +74,7 @@ test('new devices need recovery or two-device approval; sign-out removes local k
     await transferContext.request.post('/api/auth/login',{data:{username:user.username,password}});const fresh=await transferContext.newPage();await fresh.goto('/');await fresh.getByRole('button',{name:'Request device approval',exact:true}).click();
     const requestField=fresh.getByRole('textbox',{name:'Device request code',exact:true});await expect(requestField).toHaveValue(/^[A-F0-9]{8}(-[A-F0-9]{8}){2}$/);
     const request=await requestField.inputValue();expect(request.replaceAll('-','')).toHaveLength(24);
-    await page.getByRole('button',{name:'Edit your profile',exact:true}).click();await page.getByRole('textbox',{name:'Request code from new device',exact:true}).fill(request);await page.getByRole('button',{name:'Approve device',exact:true}).click();
+    await page.getByRole('button',{name:'Edit your profile',exact:true}).click();await page.getByRole('button',{name:'Security',exact:true}).click();await page.getByRole('textbox',{name:'Request code from new device',exact:true}).fill(request);await page.getByRole('button',{name:'Approve device',exact:true}).click();
     const finish=await page.getByRole('textbox',{name:'Device approval finish code',exact:true}).inputValue();expect(finish.replaceAll('-','')).toHaveLength(32);
     await fresh.getByRole('textbox',{name:'Finish code from approved device',exact:true}).fill('wrong');await fresh.getByRole('button',{name:'Finish device approval',exact:true}).click();await expect(fresh.getByRole('alert')).toContainText('does not match');
     await fresh.getByRole('textbox',{name:'Finish code from approved device',exact:true}).fill(finish);await fresh.getByRole('button',{name:'Finish device approval',exact:true}).click();await expect(fresh.locator('.encryption-gate')).toHaveCount(0);await openNest(fresh);
@@ -133,7 +133,7 @@ test('managed sign-in is automatic; shields follow member custody and preserve e
   try{
     await other.request.post('/api/auth/login',{data:{username:user.username,password}});const fresh=await other.newPage();await fresh.goto('/');await openNest(fresh);
     await expect(fresh.locator('.message-bubble')).toContainText('Standard history remains readable');await expect(fresh.locator('.recovery-card')).toHaveCount(0);
-    await page.getByRole('button',{name:'Edit your profile',exact:true}).click();await page.getByRole('button',{name:'Use self-managed keys',exact:true}).click();
+    await page.getByRole('button',{name:'Edit your profile',exact:true}).click();await page.getByRole('button',{name:'Security',exact:true}).click();await page.getByRole('button',{name:'Use self-managed keys',exact:true}).click();
     const code=await page.getByRole('textbox',{name:'Your recovery key',exact:true}).inputValue();
     await expect(page.getByRole('button',{name:'Enable self-managed encryption',exact:true})).toBeDisabled();
     await page.getByRole('checkbox',{name:'I saved my recovery key somewhere safe.',exact:true}).check();
@@ -151,7 +151,7 @@ test('managed sign-in is automatic; shields follow member custody and preserve e
     await page.request.patch(`/api/groups/${nest.id}/membership`,{data:{muted:true}});await expect(shield()).toHaveCount(0);
     await send(page,'Mixed-key conversation');await bobPage.reload();await openNest(bobPage);await expect(bobPage.locator('.message-bubble')).toHaveCount(1);
     await expect(bobPage.locator('.message-bubble')).toContainText('Mixed-key conversation');
-    await bobPage.getByRole('button',{name:'Edit your profile',exact:true}).click();await bobPage.getByRole('button',{name:'Use self-managed keys',exact:true}).click();
+    await bobPage.getByRole('button',{name:'Edit your profile',exact:true}).click();await bobPage.getByRole('button',{name:'Security',exact:true}).click();await bobPage.getByRole('button',{name:'Use self-managed keys',exact:true}).click();
     await bobPage.getByRole('checkbox',{name:'I saved my recovery key somewhere safe.',exact:true}).check();await bobPage.getByRole('button',{name:'Enable self-managed encryption',exact:true}).click();
     await expect(page.locator('.chat-heading .privacy-shield')).toBeVisible();await expect(bobPage.getByRole('button',{name:'Edit your profile',exact:true})).toBeVisible();await openNest(bobPage);
     await send(page,'Everyone self-manages now');await expect(bobPage.locator('.message-bubble').filter({hasText:'Everyone self-manages now'})).toBeVisible();

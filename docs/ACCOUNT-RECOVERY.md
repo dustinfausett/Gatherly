@@ -1,6 +1,6 @@
 # Passwords and recovery email
 
-**Profile → Password and account recovery → Change password** requires the current password, creates a new password hash, invalidates password/email recovery tokens, revokes all sign-in sessions and rotates the current session so this browser remains signed in. Encryption identities and existing local message keys are preserved. Google-only accounts use Google account recovery; Churp does not create a separate password for them.
+**Profile → Account settings → Password and account recovery → Change password** requires the current password, creates a new password hash, invalidates password/email recovery tokens, revokes all sign-in sessions and rotates the current session so this browser remains signed in. Encryption identities and existing local message keys are preserved. Google-only accounts use Google account recovery; Churp does not create a separate password for them.
 
 Username/password accounts can add a recovery email while signed in. Changing/removing it requires the current password. The address becomes usable only after the owner clicks the verification link and confirms on the Churp page. Replacing an email leaves the old verified address active until the replacement is verified. Pending addresses are not valid password-reset destinations. Verified recovery emails are unique to accounts and do not appear in Tree membership lists.
 

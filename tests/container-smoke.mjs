@@ -138,8 +138,17 @@ async function browserCheck(cid,gid,recovery,managedFixture){
     await page.getByRole('dialog').getByRole('button',{name:/^Assignments/}).click();
     await expect(page.getByRole('dialog').getByRole('button',{name:'Open assignments: Container party preparations',exact:true})).toBeVisible();
     await page.getByRole('button',{name:'Close dialog',exact:true}).click();
-    const originalIdentity=(await (await page.request.get(`${origin}/api/e2ee/account`)).json()).identity.fingerprint;
     await page.getByRole('button',{name:'Edit your profile',exact:true}).click();
+    await expect(page.locator('.settings-menu>button')).toHaveCount(5);
+    await page.getByRole('button',{name:'Profile & avatar',exact:true}).click();
+    await expect(page.getByRole('radio')).toHaveCount(20);
+    await page.getByRole('radio',{name:'Parrot',exact:true}).check();
+    await page.getByRole('button',{name:'Save profile',exact:true}).click();await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect(page.locator('.profile-button [data-avatar-choice]')).toHaveAttribute('data-avatar-choice','parrot');
+    await expect(page.locator('.resident-bird')).toHaveAttribute('data-bird-id','blue');
+    assert.equal(await page.evaluate(async()=>{const img=new Image();img.src='/brand/avatars/churp-portraits.png';await img.decode();return img.naturalWidth;}),1254);
+    const originalIdentity=(await (await page.request.get(`${origin}/api/e2ee/account`)).json()).identity.fingerprint;
+    await page.getByRole('button',{name:'Edit your profile',exact:true}).click();await page.getByRole('button',{name:'Security',exact:true}).click();
     await page.getByRole('button',{name:'Use Churp-managed keys',exact:true}).click();
     await page.getByRole('button',{name:'Confirm Churp-managed keys',exact:true}).click();
     await expect(page.getByRole('dialog')).toHaveCount(0);
@@ -147,7 +156,7 @@ async function browserCheck(cid,gid,recovery,managedFixture){
     const custodyBrowser=await browser.newContext({ignoreHTTPSErrors:true});await custodyBrowser.addCookies(await context.cookies());
     const cp=await custodyBrowser.newPage();cp.on('pageerror',error=>errors.push(error.message));await cp.goto(`${origin}/?community=${cid}&group=${gid}`);
     await expect(cp.locator('.message-bubble').filter({hasText:'A corrected durable message.'})).toBeVisible();await expect(cp.locator('.encryption-gate')).toHaveCount(0);
-    await cp.getByRole('button',{name:'Edit your profile',exact:true}).click();await cp.getByRole('button',{name:'Use self-managed keys',exact:true}).click();
+    await cp.getByRole('button',{name:'Edit your profile',exact:true}).click();await cp.getByRole('button',{name:'Security',exact:true}).click();await cp.getByRole('button',{name:'Use self-managed keys',exact:true}).click();
     await cp.getByRole('checkbox',{name:'I saved my recovery key somewhere safe.',exact:true}).check();
     await cp.getByRole('button',{name:'Enable self-managed encryption',exact:true}).click();await expect(cp.getByRole('dialog')).toHaveCount(0);
     await expect(cp.locator('.message-bubble').filter({hasText:'A corrected durable message.'})).toBeVisible();

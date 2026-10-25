@@ -1,11 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { Check, Copy, Crown, Link, LogOut, Shield, UserPlus, BellRing, BellOff, Trash2, Users } from 'lucide-react';
+import { Check, Copy, Crown, Link, Shield, UserPlus, Trash2, Users } from 'lucide-react';
 import { api, post, patch } from './api';
 import { Avatar, AvatarEditor, Empty, Field, Form, Modal, Toggle } from './components';
-import BirdPicker from './BirdPicker';
-import { EncryptionSettings } from './encryption/EncryptionGate';
-import { getBird } from '../shared/birds';
-import { AccountSecuritySettings } from './AccountSecurity';
 
 export function SpaceDialog({ modal, community, onClose, onSave, onDelete }) {
   const { type, entity, parent } = modal;
@@ -100,54 +96,7 @@ export function JoinDialog({ onClose, onJoin, initialToken = '' }) {
     }}><Field label="Invitation link" name="invitation" placeholder="Paste your invitation link" defaultValue={initialToken} required /></Form>
   </Modal>;
 }
-export function ProfileDialog({ user, config, onClose, onSave, onAccountUpdate, onLogout, notify }) {
-  const [avatarId, setAvatarId] = useState(user.avatar_id), [pushState, setPushState] = useState('');
-  const [birdId, setBirdId] = useState(user.bird_id || 'blue'), [avatarStyle,setAvatarStyle] = useState(user.avatar_style || 'photo');
-  const [unlocked,setUnlocked] = useState(user.unlocked_birds || ['blue','gold']);
-  const [permission, setPermission] = useState(typeof Notification !== 'undefined' ? Notification.permission : 'unsupported');
-  const [subscribed, setSubscribed] = useState(false);
-  useEffect(() => { if ('serviceWorker' in navigator) navigator.serviceWorker.ready.then(async r => setSubscribed(!!await r.pushManager?.getSubscription())); }, []);
-  async function enablePush() {
-    try {
-      if (!config.vapidPublicKey) throw new Error('Device notifications are awaiting server setup. Your Nest unread indicators still work.');
-      if (!('PushManager' in window) || !window.isSecureContext) throw new Error('Device notifications need a supported browser and HTTPS. On iPhone, add Churp to your Home Screen first.');
-      const allowed = await Notification.requestPermission(); setPermission(allowed);
-      if (allowed !== 'granted') throw new Error('Notifications are blocked. You can allow them in your browser’s site settings.');
-      const registration = await navigator.serviceWorker.ready;
-      const raw = atob(config.vapidPublicKey.replaceAll('-', '+').replaceAll('_', '/'));
-      const applicationServerKey = Uint8Array.from(raw, c => c.charCodeAt(0));
-      const subscription = await registration.pushManager.getSubscription() || await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey });
-      await post('/push/subscribe', { subscription: subscription.toJSON() });
-      setSubscribed(true); setPushState('Device notifications are on for this browser.');
-    } catch (error) { setPushState(error.message); }
-  }
-  async function disablePush() {
-    try {
-      const registration = await navigator.serviceWorker.ready;
-      const subscription = await registration.pushManager.getSubscription();
-      if (subscription) { await api('/push/subscribe', { method: 'DELETE', body: { endpoint: subscription.endpoint } }); await subscription.unsubscribe(); }
-      setSubscribed(false); setPushState('Device notifications are off for this browser.');
-    } catch (error) { setPushState(error.message); }
-  }
-  return <Modal title="Your little corner." subtitle="Make yourself at home." onClose={onClose}>
-    <Form submit="Save profile" onSubmit={async form => { await onSave({ name: form.get('name'), avatar_id: avatarId, bird_id:birdId, avatar_style:avatarStyle }); notify('Profile updated. Looking good!'); onClose(); }}>
-      <div className="profile-bird-preview"><Avatar name={user.name} id={avatarId} birdId={avatarStyle === 'bird' ? birdId : undefined} size={76}/><div><strong>{getBird(birdId)?.name}</strong><p className="muted small-text">Your companion in every Tree.</p></div></div>
-      <BirdPicker selected={avatarStyle === 'bird' ? birdId : null} unlocked={unlocked} onSelect={id=>{setBirdId(id);setAvatarStyle('bird');}}/>
-      <details className="profile-photo-option" open={avatarStyle === 'photo'}><summary>Use a profile photo instead</summary><p className="muted small-text">Your selected bird will still join you in the banner.</p><AvatarEditor name={user.name} value={avatarId} onChange={id=>{setAvatarId(id);setAvatarStyle('photo');}}/>{avatarId && <button type="button" className="text-button" onClick={()=>setAvatarStyle('photo')}>Use this photo</button>}</details>
-      <Field label="Display name" name="name" defaultValue={user.name} required maxLength={80} /><Field label="Username" value={user.username} disabled />
-    </Form>
-    <div className="settings-section bird-unlock"><h4>Grow your bird collection</h4>
-      {unlocked.length < 12 ? <Form submit="Redeem code" onSubmit={async form=>{
-        const result=await post('/me/birds/unlock',{code:form.get('code')});setUnlocked(result.user.unlocked_birds);onAccountUpdate(result.user);notify('All 12 birds are unlocked. Choose your favorite and save your profile.');
-      }}><p className="muted small-text">Have an unlock code? Add more birds to your collection.</p><Field label="Unlock code" name="code" autoComplete="off" required maxLength={64}/></Form> : <p className="bird-unlocked-message" role="status"><Check size={16}/>All 12 birds are unlocked for your account.</p>}
-      <button className="button secondary small" disabled>Purchases coming soon</button>
-    </div>
-    <AccountSecuritySettings user={user} config={config} onAccountUpdate={onAccountUpdate}/><EncryptionSettings/><div className="settings-section"><h4><BellRing size={17} /> Stay in the loop</h4><p className="muted small-text">Joined Nests show unread indicators. Enable device notifications for alerts, or mute an individual Nest to take a breather.</p>
-      <button className="button secondary" onClick={subscribed ? disablePush : enablePush}>{subscribed ? <BellOff size={16} /> : <BellRing size={16} />}{subscribed ? 'Turn off device notifications' : 'Enable device notifications'}</button>
-      {!config.vapidPublicKey && <p className="small-text muted">Device push is awaiting server configuration.</p>}{pushState && <p className="info-banner" role="status">{pushState}</p>}
-    </div><button className="text-button danger logout" onClick={onLogout}><LogOut size={17} /> Sign out of Churp</button>
-  </Modal>;
-}
+export { default as ProfileDialog } from './ProfileSettings';
 export function MembersDialog({ community, user, onClose, onRefresh, notify }) {
   const [members, setMembers] = useState([]), [assignments, setAssignments] = useState([]), [error, setError] = useState(''), [busy, setBusy] = useState(false);
   const [target, setTarget] = useState(null), [scope, setScope] = useState('community'), [confirm, setConfirm] = useState(null);
@@ -161,7 +110,7 @@ export function MembersDialog({ community, user, onClose, onRefresh, notify }) {
   return <Modal title="The people make the place." subtitle={`${community.name} · ${members.length} ${members.length === 1 ? 'member' : 'members'}`} onClose={onClose} wide>
     {error && <div className="error-banner" role="alert">{error}</div>}
     <div className="member-list">{members.map(m => <div className="member-row" key={m.id}>
-      <Avatar name={m.name} id={m.avatar_id} birdId={m.avatar_style === 'bird' ? m.bird_id : undefined} /><div className="member-name"><strong>{m.name} {m.id === user.id && <small>(you)</small>}</strong><small>@{m.username}</small></div>
+      <Avatar name={m.name} id={m.avatar_id} portrait={m.avatar_style !== 'photo' ? m.avatar_choice || 'blue' : undefined} /><div className="member-name"><strong>{m.name} {m.id === user.id && <small>(you)</small>}</strong><small>@{m.username}</small></div>
       <span className={`role-badge ${m.role}`}>{m.role === 'owner' ? <Crown size={12} /> : m.role === 'admin' ? <Shield size={12} /> : null}{m.role}</span>
       {(community.is_admin || scopes.some(s => s.can)) && m.role !== 'owner' && m.id !== user.id && <button className="button secondary small" onClick={() => { setTarget(m.id); setScope(community.role === 'owner' ? 'community' : scopes.find(s => s.can) ? `${scopes.find(s => s.can).type}:${scopes.find(s => s.can).id}` : ''); }}>Manage</button>}
     </div>)}</div>

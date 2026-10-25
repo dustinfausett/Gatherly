@@ -1,0 +1,35 @@
+import {test,expect} from '@playwright/test';
+import {randomUUID} from 'node:crypto';
+
+test('compact settings separates avatars, pets, account security and notifications',async({page},info)=>{
+ const errors=[];page.on('pageerror',e=>errors.push(e.message));
+ await page.request.post('/api/auth/register',{data:{username:`profile_${randomUUID().slice(0,8)}`,name:'Bird friend',password:'Separate avatars and pets!'}});
+ const tree=(await(await page.request.post('/api/communities',{data:{name:'Our Tree'}})).json()).community;
+ const nest=(await(await page.request.post(`/api/communities/${tree.id}/circles`,{data:{name:'Hello birds'}})).json()).group;
+ await page.goto('/');
+ const settings=async()=>{await page.getByRole('button',{name:'Edit your profile',exact:true}).click();};
+ const back=()=>page.getByRole('button',{name:'Back to your settings',exact:true}).click();
+ await settings();
+ const dialog=page.getByRole('dialog');await expect(dialog.locator('.settings-menu>button')).toHaveCount(5);await expect(dialog.getByRole('radio')).toHaveCount(0);await expect(dialog.getByRole('textbox')).toHaveCount(0);await expect(dialog.locator('.encryption-settings')).toHaveCount(0);
+ await page.screenshot({path:info.outputPath('settings-menu.png'),fullPage:true});
+ await dialog.getByRole('button',{name:'Profile & avatar',exact:true}).click();
+ await expect(dialog.getByRole('radio')).toHaveCount(20);await expect(dialog.getByRole('radio',{name:'Parrot',exact:true})).toBeEnabled();await expect(dialog.getByRole('radio',{name:'Bluebird',exact:true})).toBeChecked();
+ await expect.poll(()=>page.evaluate(async()=>{const image=new Image();image.src='/brand/avatars/churp-portraits.png';await image.decode();return image.naturalWidth;})).toBe(1254);
+ await dialog.locator('.avatar-picker').screenshot({path:info.outputPath('twenty-bird-avatars.png')});
+ await dialog.getByRole('radio',{name:'Parrot',exact:true}).check();await dialog.getByRole('textbox',{name:'Display name',exact:true}).fill('New bird friend');await dialog.getByRole('button',{name:'Save profile',exact:true}).click();await expect(dialog).toHaveCount(0);
+ await expect(page.locator('.profile-button [data-avatar-choice]')).toHaveAttribute('data-avatar-choice','parrot');await expect(page.locator('.banner-bird [data-bird-id]')).toHaveAttribute('data-bird-id','blue');
+ let account=(await(await page.request.get('/api/me')).json()).user;expect(account.bird_id).toBe('blue');expect(account.unlocked_birds).toEqual(['blue','gold']);
+ await settings();await dialog.getByRole('button',{name:'My pet',exact:true}).click();await expect(dialog.getByRole('radio')).toHaveCount(12);await expect(dialog.getByRole('radio',{name:'Parrot',exact:true})).toBeDisabled();await dialog.getByRole('radio',{name:'Goldfinch',exact:true}).check();await dialog.getByRole('button',{name:'Save pet',exact:true}).click();await expect(dialog).toHaveCount(0);
+ await expect(page.locator('.profile-button [data-avatar-choice]')).toHaveAttribute('data-avatar-choice','parrot');await expect(page.locator('.banner-bird [data-bird-id]')).toHaveAttribute('data-bird-id','gold');
+ await page.getByRole('button',{name:'Open Nest Hello birds',exact:true}).click();await expect(page.locator('.resident-bird')).toHaveAttribute('data-bird-id','gold');
+ await page.getByRole('textbox',{name:'Write a message',exact:true}).fill('My avatar is a parrot; my pet is gold.');await page.getByRole('button',{name:'Send message',exact:true}).click();await expect(page.locator('.message-bubble')).toContainText('My avatar is a parrot; my pet is gold.');
+ expect((await(await page.request.get(`/api/groups/${nest.id}/messages`)).json()).messages[0].avatar_choice).toBe('parrot');
+ await settings();await dialog.getByRole('button',{name:'Profile & avatar',exact:true}).click();const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aWQ0AAAAASUVORK5CYII=','base64');
+ await dialog.locator('input[type=file]').setInputFiles({name:'my-profile.png',mimeType:'image/png',buffer:png});await expect(dialog.getByRole('button',{name:'Using your uploaded image',exact:true})).toBeVisible();await dialog.getByRole('button',{name:'Save profile',exact:true}).click();await expect(dialog).toHaveCount(0);await expect(page.locator('.profile-button .avatar>img')).toBeVisible();
+ account=(await(await page.request.get('/api/me')).json()).user;expect(account.bird_id).toBe('gold');expect(account.avatar_style).toBe('photo');
+ await settings();await dialog.getByRole('button',{name:'Account settings',exact:true}).click();await expect(dialog.locator('summary').filter({hasText:'Change password'})).toBeVisible();await expect(dialog.locator('.bird-picker')).toHaveCount(0);await expect(dialog.locator('.encryption-settings')).toHaveCount(0);await back();
+ await dialog.getByRole('button',{name:'Security',exact:true}).click();await expect(dialog).toContainText('Encrypted messaging is not enabled');await expect(dialog.getByRole('textbox',{name:'Display name',exact:true})).toHaveCount(0);await back();
+ await dialog.getByRole('button',{name:'Notifications',exact:true}).click();await expect(dialog.getByRole('button',{name:'Enable device notifications',exact:true})).toBeVisible();await back();await dialog.getByRole('button',{name:'Close dialog',exact:true}).click();
+ await page.reload();await expect(page.locator('.profile-button .avatar>img')).toBeVisible();await expect(page.locator('.banner-bird [data-bird-id]')).toHaveAttribute('data-bird-id','gold');
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBeTruthy();expect(errors).toEqual([]);
+});

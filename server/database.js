@@ -226,6 +226,11 @@ export function openDatabase(path) {
   addColumn('users', 'bird_id', "TEXT NOT NULL DEFAULT 'blue'");
   // Keep existing profile pictures. New accounts start with a Bluebird avatar.
   addColumn('users', 'avatar_style', "TEXT NOT NULL DEFAULT 'photo'");
+  if (!db.prepare('PRAGMA table_info(users)').all().some(c=>c.name==='avatar_choice')) {
+    addColumn('users','avatar_choice',"TEXT NOT NULL DEFAULT 'blue'");
+    // Preserve uploaded photos and map legacy bird pictures to independent portraits.
+    db.exec("UPDATE users SET avatar_choice=bird_id,avatar_style='portrait' WHERE avatar_style='bird'");
+  }
   db.exec(`CREATE TABLE IF NOT EXISTS bird_unlocks (
     user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     bird_id TEXT NOT NULL, source TEXT NOT NULL CHECK(source IN ('code','purchase')),

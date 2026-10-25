@@ -2,15 +2,16 @@ import React, { useEffect, useId, useRef, useState } from 'react';
 import { X, Camera, LoaderCircle, Check, ImagePlus } from 'lucide-react';
 import { upload } from './api';
 import { Bird } from './BirdJourney';
+import AvatarPortrait from './AvatarPortrait';
 
 export function Logo({ compact = false }) {
   return <div className={`logo churp-logo ${compact ? 'compact' : ''}`}><img src={compact ? '/brand/churp-nest.webp' : '/brand/churp-logo.webp'} alt="Churp" /></div>;
 }
-export function Avatar({ name = '?', id, birdId, size = 40, className = '', square = false }) {
+export function Avatar({ name = '?', id, birdId, portrait, size = 40, className = '', square = false }) {
   const palette = ['sage', 'rose', 'sand', 'lilac', 'blue'];
   const color = palette[Array.from(name).reduce((n,c) => n + c.charCodeAt(0), 0) % palette.length];
   return <span className={`avatar ${color} ${square ? 'square' : ''} ${className}`} style={{ width: size, height: size, fontSize: size * .34 }}>
-    {birdId ? <Bird birdId={birdId} className="avatar-bird"/> : id ? <img src={`/api/files/${id}`} alt="" /> : name.trim().split(/\s+/).slice(0,2).map(x => x[0]).join('').toUpperCase()}
+    {portrait ? <AvatarPortrait choice={portrait}/> : birdId ? <Bird birdId={birdId} className="avatar-bird"/> : id ? <img src={`/api/files/${id}`} alt="" /> : name.trim().split(/\s+/).slice(0,2).map(x => x[0]).join('').toUpperCase()}
   </span>;
 }
 export function Modal({ title, subtitle, children, onClose, wide = false }) {

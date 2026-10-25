@@ -7,6 +7,7 @@ import { createServer } from 'node:http';
 import { DatabaseSync } from 'node:sqlite';
 import { createApp } from '../server/app.js';
 import { BIRDS } from '../shared/birds.js';
+import { AVATARS } from '../shared/avatars.js';
 
 test('account bird selection, protected code unlocks and photo migration persist', async t => {
   const dir = mkdtempSync(join(tmpdir(),'churp-birds-'));
@@ -33,7 +34,7 @@ test('account bird selection, protected code unlocks and photo migration persist
 
   await t.test('only included birds are available until a valid account unlock',async()=>{
     assert.equal(BIRDS.length,12);assert.equal(new Set(BIRDS.map(b=>b.id)).size,12);
-    assert.equal(owner.bird_id,'blue');assert.equal(owner.avatar_style,'bird');assert.deepEqual(owner.unlocked_birds,['blue','gold']);
+    assert.equal(owner.bird_id,'blue');assert.equal(owner.avatar_style,'portrait');assert.deepEqual(owner.unlocked_birds,['blue','gold']);
     assert.equal((await req('/me',owner,'PATCH',{bird_id:'parrot',avatar_style:'bird',unlocked_birds:['parrot']})).status,403);
     assert.equal((await req('/me',owner,'PATCH',{bird_id:'not-a-bird'})).status,400);
     assert.equal((await req('/me',owner,'PATCH',{avatar_style:'anything'})).status,400);
@@ -41,7 +42,7 @@ test('account bird selection, protected code unlocks and photo migration persist
     for(const code of ['incorrect','',null,123]) assert.equal((await req('/me/birds/unlock',owner,'POST',{code})).status,400);
     assert.deepEqual((await ok('/me',owner)).user.unlocked_birds,['blue','gold']);
     const gold=(await ok('/me',owner,'PATCH',{bird_id:'gold',avatar_style:'bird'})).user;
-    assert.equal(gold.bird_id,'gold');assert.equal(gold.avatar_style,'bird');
+    assert.equal(gold.bird_id,'gold');assert.equal(gold.avatar_style,'portrait');
   });
   await t.test('code redemption is idempotent, account-specific and enforced on every selection',async()=>{
     for(let i=0;i<2;i++) assert.equal((await ok('/me/birds/unlock',owner,'POST',{code:'Churp'})).user.unlocked_birds.length,12);
@@ -51,9 +52,25 @@ test('account bird selection, protected code unlocks and photo migration persist
     await ok('/me',owner,'PATCH',{bird_id:'parrot',avatar_style:'bird'});
     await ok(`/groups/${nest.id}/messages`,owner,'POST',{body:'Hello from Parrot'});
     const message=(await ok(`/groups/${nest.id}/messages`,member)).messages[0];
-    assert.equal(message.bird_id,'parrot');assert.equal(message.avatar_style,'bird');assert.equal(message.unlocked_birds,undefined);
+    assert.equal(message.bird_id,'parrot');assert.equal(message.avatar_style,'portrait');assert.equal(message.unlocked_birds,undefined);
     const listed=(await ok(`/communities/${cid}/members`,member)).members.find(m=>m.id===owner.id);
-    assert.equal(listed.bird_id,'parrot');assert.equal(listed.avatar_style,'bird');
+    assert.equal(listed.bird_id,'parrot');assert.equal(listed.avatar_style,'portrait');
+  });
+  await t.test('all 20 profile portraits are free, independent of pets, and shared in messages and member lists',async()=>{
+    assert.equal(AVATARS.length,20);assert.equal(new Set(AVATARS.map(a=>a.id)).size,20);
+    const before=(await ok('/me',member)).user;
+    assert.equal((await req('/me',member,'PATCH',{avatar_choice:'not-an-avatar',avatar_style:'portrait'})).status,400);
+    for(const avatar of AVATARS){
+      const selected=(await ok('/me',member,'PATCH',{avatar_choice:avatar.id,avatar_style:'portrait'})).user;
+      assert.equal(selected.avatar_choice,avatar.id);assert.equal(selected.bird_id,before.bird_id);assert.deepEqual(selected.unlocked_birds,['blue','gold']);
+    }
+    const pet=(await ok('/me',member,'PATCH',{bird_id:'gold'})).user;
+    assert.equal(pet.avatar_choice,'budgie');assert.equal(pet.avatar_style,'portrait');
+    await ok(`/groups/${nest.id}/messages`,member,'POST',{body:'A budgie portrait with a gold pet'});
+    const messages=(await ok(`/groups/${nest.id}/messages`,owner)).messages;
+    assert.equal(messages.at(-1).avatar_choice,'budgie');assert.equal(messages.at(-1).bird_id,'gold');
+    const listed=(await ok(`/communities/${cid}/members`,owner)).members.find(m=>m.id===member.id);
+    assert.equal(listed.avatar_choice,'budgie');assert.equal(listed.avatar_style,'portrait');
   });
   let photoId;
   await t.test('profile photos remain independent of the selected banner companion',async()=>{
@@ -62,21 +79,32 @@ test('account bird selection, protected code unlocks and photo migration persist
     photoId=(await ok('/uploads',legacy,'POST',form)).file.id;
     assert.equal((await ok('/me',legacy,'PATCH',{avatar_id:photoId})).user.avatar_style,'photo');
     assert.equal((await req('/me',member,'PATCH',{avatar_id:photoId})).status,400,'Another user cannot take the uploaded photo');
+    const changed=(await ok('/me',legacy,'PATCH',{bird_id:'gold'})).user;assert.equal(changed.avatar_id,photoId);assert.equal(changed.avatar_style,'photo');
     const photo=(await ok('/me',owner,'PATCH',{avatar_style:'photo'})).user;assert.equal(photo.bird_id,'parrot');
     await ok('/me',owner,'PATCH',{avatar_style:'bird'});
+  });
+  await t.test('legacy bird avatars migrate to independent portraits without changing photos, pets or unlocks',async()=>{
+    await stop();const db=new DatabaseSync(join(dir,'gatherly.sqlite'));
+    db.prepare("UPDATE users SET avatar_style='bird',bird_id='parrot' WHERE id=?").run(owner.id);
+    db.exec('ALTER TABLE users DROP COLUMN avatar_choice');db.close();await start();
+    const migrated=(await ok('/me',owner)).user;
+    assert.equal(migrated.avatar_choice,'parrot');assert.equal(migrated.avatar_style,'portrait');assert.equal(migrated.bird_id,'parrot');assert.equal(migrated.unlocked_birds.length,12);
+    const uploaded=(await ok('/me',legacy)).user;assert.equal(uploaded.avatar_id,photoId);assert.equal(uploaded.avatar_style,'photo');assert.equal(uploaded.bird_id,'gold');
+    await ok('/me',owner,'PATCH',{avatar_choice:'penguin'});await stop();await start();
+    assert.equal((await ok('/me',owner)).user.avatar_choice,'penguin','Migration does not overwrite a later choice on restart');
   });
   await t.test('migration keeps existing pictures, and paid/code entitlements survive restart',async()=>{
     await stop();
     const db=new DatabaseSync(join(dir,'gatherly.sqlite'));
     // Emulate the deployed users table before bird columns existed.
-    db.exec('ALTER TABLE users DROP COLUMN avatar_style; ALTER TABLE users DROP COLUMN bird_id;');db.close();
+    db.exec('ALTER TABLE users DROP COLUMN avatar_style; ALTER TABLE users DROP COLUMN bird_id; ALTER TABLE users DROP COLUMN avatar_choice;');db.close();
     await start();
     const old=(await ok('/me',legacy)).user;
     assert.equal(old.avatar_id,photoId);assert.equal(old.avatar_style,'photo');assert.equal(old.bird_id,'blue');
     assert.equal((await ok('/me',owner)).user.unlocked_birds.length,12);
     await ok('/me',owner,'PATCH',{bird_id:'owl',avatar_style:'bird'});
     await stop();await start();
-    const kept=(await ok('/me',owner)).user;assert.equal(kept.bird_id,'owl');assert.equal(kept.avatar_style,'bird');assert.equal(kept.unlocked_birds.length,12);
+    const kept=(await ok('/me',owner)).user;assert.equal(kept.bird_id,'owl');assert.equal(kept.avatar_style,'portrait');assert.equal(kept.unlocked_birds.length,12);
     assert.deepEqual((await ok('/me',member)).user.unlocked_birds,['blue','gold']);
     assert.deepEqual(runtime.db.prepare('PRAGMA foreign_key_check').all(),[]);
   });

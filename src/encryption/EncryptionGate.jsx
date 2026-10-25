@@ -49,7 +49,7 @@ export default function EncryptionGate({user,required,onLogout,children}){
       </Form>
       <div className="encryption-transfer"><h2><Smartphone size={19}/>Use another approved device</h2>
         {!pending ? <button className="button secondary" disabled={busy} onClick={()=>action(async()=>{setPending(await client.startTransfer(user.id,deviceName));})}>Request device approval</button> : <>
-          <p>On your approved device, open <strong>your profile → Encrypted messaging → Approve a device</strong> and enter this request code:</p>
+          <p>On your approved device, open <strong>your profile → Security → Encrypted messaging → Approve a device</strong> and enter this request code:</p>
           <textarea aria-label="Device request code" readOnly value={code} onFocus={e=>e.target.select()}/>
           {grant ? <Form submit="Finish device approval" onSubmit={async form=>{await client.finishTransfer(user.id,pending,grant,form.get('finish'));setPhase('ready');}}>
             <Field label="Finish code from approved device"><input name="finish" autoComplete="off" autoCapitalize="none" required/></Field>
