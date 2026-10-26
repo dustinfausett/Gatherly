@@ -29,7 +29,7 @@ test('Tree QR and short code resolve to the same expiring, authorized full invit
  const png=PNG.sync.read(Buffer.from(shared.qr_data_url.split(',')[1],'base64'));assert.equal(jsQR(new Uint8ClampedArray(png.data),png.width,png.height).data,shared.url);
  const stored=f.db.prepare('SELECT * FROM invitation_codes').get();assert.notEqual(stored.code_hash,shared.code.replace('-',''));assert.equal(stored.code_hash.length,64);
  const short=shared.code.toLowerCase().replace('-',' ');assert.equal((await f.ok('/invitations/accept',outsider,'POST',{token:short})).community_id,tree.id);
- assert.equal((await f.req('/invitations',member,'POST',{community_id:tree.id})).status,403);
+ assert.equal((await f.ok('/invitations',member,'POST',{community_id:tree.id})).requires_approval,true);
  assert.equal((await f.req('/invitations/accept',null,'POST',{token:shared.code})).status,401);
  assert.equal((await f.req('/invitations/accept',outsider,'POST',{token:'AAAAA-AAAAA'})).status,410);
  await f.restart();assert.equal((await f.ok('/invitations/accept',member,'POST',{token:shared.url})).community_id,tree.id);

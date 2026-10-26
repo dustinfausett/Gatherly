@@ -21,6 +21,8 @@ import { parsePoll } from '../shared/polls.js';
 import { BIRDS, getBird } from '../shared/birds.js';
 import { getAvatar } from '../shared/avatars.js';
 import { installInvitations } from './invitations.js';
+import { installContacts } from './contacts.js';
+import { installPrivateMessages } from './private-messages.js';
 
 if (existsSync('.env')) process.loadEnvFile('.env');
 const SESSION_AGE = 30 * 86400 * 1000;
@@ -201,6 +203,8 @@ export function createApp(options = {}) {
   });
   app.use('/api', auth);
   const encryption = installEncryption({app,db,uploadDir,enabled:encryptionRequired,transaction,refresh,refreshUser,group,membership,visibleCircle,testing:options.testing});
+  installContacts({app,db,transaction,refreshUser,testing:options.testing});
+  const privateMessages=installPrivateMessages({app,db,encryption,transaction,refreshUser,group,groupAdmin,testing:options.testing,notifyPrivate:(uid,id)=>{if(pushEnabled)for(const s of all('SELECT * FROM push_subscriptions WHERE user_id=?',uid))webPush.sendNotification(JSON.parse(s.subscription),JSON.stringify({title:'New private message on Churp',body:'You have a private message.',url:`/?conversation=${id}`}),{TTL:3600,timeout:10000,proxy:process.env.HTTPS_PROXY || process.env.https_proxy}).catch(()=>{});}});
   installPolls({app,db,encryption,encryptionRequired,visibleCircle,joined,groupAdmin,transaction,refresh,testing:options.testing});
   installRsvps({app,db,encryption,encryptionRequired,visibleCircle,joined,groupAdmin,transaction,refresh,testing:options.testing});
   const assignments=installAssignments({app,db,encryption,encryptionRequired,visibleCircle,joined,groupAdmin,transaction,refresh,testing:options.testing});
@@ -491,6 +495,7 @@ export function createApp(options = {}) {
       run('DELETE FROM group_members WHERE user_id=? AND group_id IN (SELECT id FROM groups WHERE community_id=?)', req.params.userId, c.id);
       run(`DELETE FROM scoped_admins WHERE user_id=? AND ((scope_type='subcommunity' AND scope_id IN (SELECT id FROM subcommunities WHERE community_id=?)) OR (scope_type='group' AND scope_id IN (SELECT id FROM groups WHERE community_id=?)))`, req.params.userId, c.id, c.id);
       run("UPDATE creation_requests SET status='cancelled',reviewed_by=?,reviewed_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE community_id=? AND requester_id=? AND status='pending'",req.user.id,c.id,req.params.userId);
+      run('DELETE FROM tree_join_requests WHERE community_id=? AND user_id=?',c.id,req.params.userId);
       run('DELETE FROM nest_invitations WHERE recipient_id=? AND group_id IN (SELECT id FROM groups WHERE community_id=?)',req.params.userId,c.id);
       run('DELETE FROM community_members WHERE community_id=? AND user_id=?', c.id, req.params.userId);
       run('UPDATE users SET last_community_id=NULL WHERE id=? AND last_community_id=?', req.params.userId, c.id);
@@ -749,6 +754,7 @@ export function createApp(options = {}) {
     let allowed = f.user_id === req.user.id;
     const attached = one('SELECT m.* FROM message_files mf JOIN messages m ON m.id=mf.message_id WHERE mf.file_id=? AND m.deleted=0', f.id);
     if (attached) { allowed=false;try { visibleCircle(req.user.id, attached.group_id); allowed = encryptionRequired ? !!f.encrypted && encryption.canRead(req.user.id,attached) : true; } catch { /* no access */ } }
+    if (!allowed && f.encrypted && privateMessages.canReadFile(req.user.id,f.id)) allowed=true;
     if (!allowed && one('SELECT 1 FROM users WHERE avatar_id=?', f.id)) allowed = true;
     if (!allowed) for (const c of all('SELECT id FROM communities WHERE avatar_id=?', f.id)) if (one('SELECT 1 FROM community_members WHERE community_id=? AND user_id=?', c.id, req.user.id)) allowed = true;
     if (!allowed) for (const s of all('SELECT community_id FROM subcommunities WHERE avatar_id=?', f.id)) if (one('SELECT 1 FROM community_members WHERE community_id=? AND user_id=?', s.community_id, req.user.id)) allowed = true;

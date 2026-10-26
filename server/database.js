@@ -251,6 +251,35 @@ export function openDatabase(path) {
   CREATE TRIGGER IF NOT EXISTS nest_invitation_joined AFTER INSERT ON group_members BEGIN
     UPDATE nest_invitations SET status='accepted' WHERE group_id=NEW.group_id AND recipient_id=NEW.user_id AND status='pending';
   END;`);
+  db.exec(`CREATE TABLE IF NOT EXISTS personal_contacts (
+    id TEXT PRIMARY KEY,owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,phone TEXT,linked_user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+    created_at INTEGER NOT NULL,UNIQUE(owner_id,phone),UNIQUE(owner_id,linked_user_id)
+  );
+  CREATE TABLE IF NOT EXISTS birdhouses(id TEXT PRIMARY KEY,owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,name TEXT NOT NULL);
+  CREATE TABLE IF NOT EXISTS birdhouse_contacts(birdhouse_id TEXT REFERENCES birdhouses(id) ON DELETE CASCADE,contact_id TEXT REFERENCES personal_contacts(id) ON DELETE CASCADE,PRIMARY KEY(birdhouse_id,contact_id));
+  CREATE TABLE IF NOT EXISTS private_conversations (
+    id TEXT PRIMARY KEY,user_low TEXT NOT NULL REFERENCES users(id),user_high TEXT NOT NULL REFERENCES users(id),
+    blocked_low INTEGER NOT NULL DEFAULT 0,blocked_high INTEGER NOT NULL DEFAULT 0,
+    read_low INTEGER NOT NULL DEFAULT 0,read_high INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL,CHECK(user_low<user_high),UNIQUE(user_low,user_high)
+  );
+  CREATE TABLE IF NOT EXISTS private_messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,conversation_id TEXT NOT NULL REFERENCES private_conversations(id) ON DELETE CASCADE,
+    user_id TEXT NOT NULL REFERENCES users(id),client_id TEXT NOT NULL,recipient_hash TEXT NOT NULL,
+    ciphertext TEXT NOT NULL,signer_fingerprint TEXT NOT NULL,self_encrypted INTEGER NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),UNIQUE(user_id,client_id)
+  );
+  CREATE INDEX IF NOT EXISTS private_messages_conversation ON private_messages(conversation_id,id);
+  CREATE TABLE IF NOT EXISTS private_message_files(message_id INTEGER REFERENCES private_messages(id) ON DELETE CASCADE,file_id TEXT NOT NULL REFERENCES files(id),PRIMARY KEY(message_id,file_id));
+  CREATE TABLE IF NOT EXISTS tree_join_requests (
+    id TEXT PRIMARY KEY,community_id TEXT NOT NULL REFERENCES communities(id) ON DELETE CASCADE,
+    user_id TEXT NOT NULL REFERENCES users(id),invited_by TEXT NOT NULL REFERENCES users(id),
+    status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','approved','declined')),
+    created_at INTEGER NOT NULL,reviewed_by TEXT REFERENCES users(id),UNIQUE(community_id,user_id)
+  );`);
+  addColumn('invitations','requires_approval','INTEGER NOT NULL DEFAULT 0');
+  db.exec("CREATE TRIGGER IF NOT EXISTS tree_request_joined AFTER INSERT ON community_members BEGIN UPDATE tree_join_requests SET status='approved' WHERE community_id=NEW.community_id AND user_id=NEW.user_id AND status='pending'; END;");
   // Existing Trees stay moderated when member creation is introduced.
   addColumn('communities', 'branch_approval_required', 'INTEGER NOT NULL DEFAULT 1');
   addColumn('communities', 'nest_approval_required', 'INTEGER NOT NULL DEFAULT 1');

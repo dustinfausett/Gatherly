@@ -307,7 +307,7 @@ export function installEncryption({app,db,uploadDir,enabled,transaction,refresh,
     });
     cleanup();refresh(original.group_id ? group(original.group_id).community_id : null);res.json({ok:true});
   });
-  return {enabled,device,reader,roster,members,assertRoster,validateSend,editRoster,assertEditRoster,validateEdit,recordRecipients,identity,cleanup,protection,
+  return {enabled,ensureManaged,device,reader,roster,members,assertRoster,validateSend,editRoster,assertEditRoster,validateEdit,recordRecipients,identity,cleanup,protection,
     canRead:(userId,m)=>!!one('SELECT 1 FROM group_members gm JOIN groups g ON g.id=gm.group_id JOIN community_members cm ON cm.community_id=g.community_id AND cm.user_id=gm.user_id WHERE gm.group_id=? AND gm.user_id=? AND gm.joined_after<?',m.group_id,userId,m.id)
       && !!one('SELECT 1 FROM e2ee_recipients WHERE message_id=? AND user_id=?',m.id,userId)};
 }
