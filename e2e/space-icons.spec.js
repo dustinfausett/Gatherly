@@ -60,7 +60,7 @@ test('Tree, Branch and Nest artwork keeps privacy locks and hidden Nest access',
     await expect(member.getByRole('button', { name: `Open Nest ${root.name}`, exact: true })).toHaveCount(0);
     await expect(member.getByRole('button', { name: `Open Nest ${nested.name}`, exact: true })).toHaveCount(0);
     await expect(member.locator('.space-tree')).toHaveCount(0);
-    await expect(member.locator('.sidebar-invitations').getByRole('button',{name:'Invite someone to this Tree',exact:true})).toHaveCount(0);
+    await expect(member.locator('.sidebar-invitations').getByRole('button',{name:'Invite someone to this Tree',exact:true})).toHaveCount(1);
     await expect(member.getByRole('button', { name: 'Open Nest Daily news', exact: true })).toBeVisible();
   } finally { await guest.close(); }
 });

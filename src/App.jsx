@@ -5,6 +5,9 @@ import { Avatar, Logo, Toast } from './components';
 import Auth from './Auth';
 import { AccountLink } from './AccountSecurity';
 import { InvitationIcon } from './Invitations';
+import Contacts,{NavigationArt} from './Contacts';
+import PrivateMessages from './PrivateMessages';
+import './personal.css';
 import EncryptionGate from './encryption/EncryptionGate';
 import PrivacyShield from './encryption/PrivacyShield';
 import { forget as forgetEncryption } from './encryption/client';
@@ -29,6 +32,7 @@ export default function App() {
   const [switcher, setSwitcher] = useState(false), [mobileNav, setMobileNav] = useState(false), [search, setSearch] = useState('');
   const [expandedGroups, setExpandedGroups] = useState({});
   const [invitationCount,setInvitationCount]=useState(0);
+  const [tab,setTab]=useState(initialParams.get('conversation')?'messages':'tree'),[conversationId,setConversationId]=useState(initialParams.get('conversation')),[compose,setCompose]=useState(null),[privateUnread,setPrivateUnread]=useState(0);
   const [openingId,setOpeningId]=useState(null), [journey,setJourney]=useState(null);
   const navigationTimer=useRef(), navigationToken=useRef(0), returnFocus=useRef(null);
   const [mobileSwitcher, setMobileSwitcher] = useState(false);
@@ -50,9 +54,9 @@ export default function App() {
     let active = true;
     (async () => {
       try {
-        const [list, account, inbox] = await Promise.all([api('/communities'),api('/me'),api('/invitations')]);
+        const [list, account, inbox, privateList] = await Promise.all([api('/communities'),api('/me'),api('/invitations'),api('/private/conversations')]);
         if (!active) return;
-        setCommunities(list.communities); setUser(account.user); setInvitationCount(inbox.invitations.length);
+        setCommunities(list.communities); setUser(account.user); setInvitationCount(inbox.invitations.length+(inbox.join_request_count||0));setPrivateUnread(privateList.conversations.reduce((n,c)=>n+c.unread,0));
         let cid = view.cid;
         if (!cid) cid = list.communities.find(c => c.id === account.user.last_community_id)?.id || list.communities[0]?.id;
         if (cid && !list.communities.some(c => c.id === cid)) cid = list.communities[0]?.id;
@@ -86,10 +90,12 @@ export default function App() {
     document.addEventListener('mousedown', outside); document.addEventListener('keydown', escape);
     return () => { document.removeEventListener('mousedown', outside); document.removeEventListener('keydown', escape); };
   }, []);
-  async function finishInvitation(result){sessionStorage.removeItem('gatherly_invite');await chooseCommunity(result.community_id,result.group_id);await reload();notify(result.group_id?'You’ve joined the Nest.':'You’re in. Welcome to the Tree!');}
+  async function finishInvitation(result){sessionStorage.removeItem('gatherly_invite');if(result.pending){await reload();notify('Your request is awaiting Tree or Branch admin approval.');return result;}await chooseCommunity(result.community_id,result.group_id);await reload();notify(result.group_id?'You’ve joined the Nest.':'You’re in. Welcome to the Tree!');}
+  async function openPrivate(id){try{const r=await post('/private/conversations',{user_id:id});setConversationId(r.conversation.id);setTab('messages');}catch(e){notify(e.message,true);}}
   function cancelEntry() {clearTimeout(navigationTimer.current);navigationToken.current++;setOpeningId(null);setJourney(null);}
   useEffect(()=>()=>clearTimeout(navigationTimer.current),[]);
   async function chooseCommunity(id, gid = null) {
+    setTab('tree');
     cancelEntry();
     setView({ cid: id, gid }); setSwitcher(false); setMobileSwitcher(false); setMobileNav(false); setSearch('');
     if (id !== view.cid) setCommunity(null);
@@ -97,10 +103,10 @@ export default function App() {
     catch (err) { notify(err.message, true); }
     const url = new URL(window.location.href); url.search = ''; window.history.replaceState({}, '', url);
   }
-  const communityHome = () => { cancelEntry(); setSearch(''); setView(prev => ({ ...prev, gid:null, page:null })); setMobileNav(false); };
+  const communityHome = () => { setTab('tree');cancelEntry(); setSearch(''); setView(prev => ({ ...prev, gid:null, page:null })); setMobileNav(false); };
   const openGroup = id => { cancelEntry(); setSearch(''); setExpandedGroups(prev => ({...prev,[view.cid]:{...prev[view.cid],[id]:true}})); setView(prev => ({ ...prev, gid:null, page:null })); setMobileNav(false); };
   const toggleGroup = id => setExpandedGroups(prev => ({...prev,[view.cid]:{...prev[view.cid],[id]:!prev[view.cid]?.[id]}}));
-  const openDetails = () => { cancelEntry(); setView(prev => ({ ...prev, gid:null, page:'details' })); setMobileNav(false); };
+  const openDetails = () => { setTab('tree');cancelEntry(); setView(prev => ({ ...prev, gid:null, page:'details' })); setMobileNav(false); };
   const finishJourney=useCallback(()=>setJourney(null),[]);
   const openCircle = id => {
     if(openingId || view.gid === id) return;
@@ -141,8 +147,8 @@ export default function App() {
   if (!user && error) return <div className="boot-screen"><Logo /><p className="error-banner">{error}</p><button className="button primary" onClick={boot}>Try again</button></div>;
   if(accountAction)return <AccountLink action={accountAction} onDone={async reset=>{setAccountAction(null);if(reset)setUser(null);await boot();}}/>;
   if (!user) return <Auth config={config} onLogin={(u,notice) => { if(notice)notify(notice);setUser(u); setView({ cid: u.last_community_id, gid: null }); }} />;
-  return <EncryptionGate key={user.id} user={user} required={!!config.encryptionRequired} onLogout={logout}><div className={`app ${group ? 'showing-chat' : ''} ${journey ? 'bird-in-transit' : ''}`} style={{'--nest-entry-duration':`${NEST_MOTION.slide}ms`}}>
-    <header className="topbar"><div className="brand-zone"><button className="icon-button mobile-only" aria-label="Open navigation" onClick={() => setMobileNav(true)}><Menu size={22} /></button><span className={community ? 'desktop-logo' : ''}><Logo /></span>{community && <div className="mobile-community-switcher" ref={mobileSwitcherRef}>
+  return <EncryptionGate key={user.id} user={user} required={!!config.encryptionRequired} onLogout={logout}><div className={`app phase-one ${tab==='tree'&&group ? 'showing-chat' : ''} ${journey ? 'bird-in-transit' : ''}`} style={{'--nest-entry-duration':`${NEST_MOTION.slide}ms`}}>
+    <header className="topbar"><div className="brand-zone"><button className="icon-button mobile-only" aria-label="Open navigation" onClick={() => setMobileNav(true)}><Menu size={22} /></button><span className={community&&tab==='tree' ? 'desktop-logo' : ''}><Logo /></span>{community&&tab==='tree' && <div className="mobile-community-switcher" ref={mobileSwitcherRef}>
         <button className="mobile-community-button" aria-label="My Orchard" aria-expanded={mobileSwitcher} onClick={() => setMobileSwitcher(!mobileSwitcher)}><Avatar name={community.name} id={community.avatar_id} size={30} square /><span><strong>{community.name}</strong><small>YOUR TREE</small></span><ChevronDown size={13} /></button>
         {mobileSwitcher && <div className="switcher-menu"><div className="menu-label">My Orchard</div>{communities.map(c => <button className="switcher-item" key={c.id} onClick={() => chooseCommunity(c.id)}><Avatar name={c.name} id={c.avatar_id} size={30} square /><span>{c.name}</span>{view.cid === c.id && <Check size={15} />}</button>)}<div className="menu-divider" /><button onClick={() => { setMobileSwitcher(false); setModal({ kind: 'space', type: 'community' }); }}><Plus size={16} />Create a Tree</button><button onClick={() => { setMobileSwitcher(false); setModal({ kind: 'join' }); }}><InvitationIcon/>Invitations</button></div>}
       </div>}</div><span className="topbar-message">A little closer, together.<Sprout size={15} /></span><div className="topbar-actions"><button className="profile-button" onClick={() => setModal({ kind: 'profile' })} aria-label="Edit your profile"><Avatar name={user.name} id={user.avatar_id} portrait={user.avatar_style !== 'photo' ? user.avatar_choice || 'blue' : undefined} size={33} /><span>{user.name.split(' ')[0]}</span><ChevronDown size={14} /></button></div></header>
@@ -151,10 +157,11 @@ export default function App() {
       {switcher && <div className="switcher-menu"><div className="menu-label">My Orchard</div>{communities.map(c => <button className="switcher-item" key={c.id} onClick={() => chooseCommunity(c.id)}><Avatar name={c.name} id={c.avatar_id} size={32} square /><span>{c.name}</span>{view.cid === c.id && <Check size={16} />}</button>)}<div className="menu-divider" /><button onClick={() => { setSwitcher(false); setModal({ kind: 'space', type: 'community' }); }}><Plus size={16} /> Create a Tree</button><button onClick={() => { setSwitcher(false); setModal({ kind: 'join' }); }}><InvitationIcon/> Invitations</button></div>}
     </div>
       <nav className="sidebar-nav"><button className={!view.gid && !view.page ? 'selected' : ''} onClick={communityHome}><SpaceIcon kind="tree" size={21} />Tree home</button>{community && <><button className={view.page === 'details' ? 'selected' : ''} onClick={openDetails}><Info size={19} />Tree details</button><button onClick={() => { setModal({ kind: 'members' }); setMobileNav(false); }}><Users size={19} />Members</button><button onClick={()=>{setModal({kind:"creation-requests"});setMobileNav(false);}}><ClipboardCheck size={19}/>Creation requests{community.pending_creation_count > 0 && <span className="request-count">{community.pending_creation_count}</span>}</button></>}</nav>
-      <section className="sidebar-invitations" aria-label="Invitations">{community?.is_admin && <button className="sidebar-invite" aria-label="Invite someone to this Tree" onClick={()=>{setMobileNav(false);setModal({kind:'invite'});}}><span className="invite-mini-icon"><InvitationIcon/></span><span><strong>Invite your people</strong><small>Share a QR code, code or link</small></span><Plus size={18}/></button>}<button className="sidebar-join" aria-label="Invitations" aria-description={`${invitationCount} pending invitations`} onClick={()=>{setMobileNav(false);setModal({kind:'join'});}}><InvitationIcon/>Invitations{invitationCount>0 && <span className="invitation-count" aria-label={`${invitationCount} pending invitations`}>{invitationCount}</span>}</button></section>
+      <section className="sidebar-invitations" aria-label="Invitations">{community && <button className="sidebar-invite" aria-label="Invite someone to this Tree" onClick={()=>{setMobileNav(false);setModal({kind:'invite'});}}><span className="invite-mini-icon"><InvitationIcon/></span><span><strong>Invite your people</strong><small>Share a QR code, code or link</small></span><Plus size={18}/></button>}<button className="sidebar-join" aria-label="Invitations" aria-description={`${invitationCount} pending invitations`} onClick={()=>{setMobileNav(false);setModal({kind:'join'});}}><InvitationIcon/>Invitations{invitationCount>0 && <span className="invitation-count" aria-label={`${invitationCount} pending invitations`}>{invitationCount}</span>}</button></section>
       <div className="sidebar-bottom"><div className="sidebar-footer"><span><span className="online-dot" /> Your space to connect</span>{community?.is_admin && <button className="icon-button" aria-label="Tree settings" onClick={() => setModal({ kind: 'space', type: 'community', entity: community })}><Settings2 size={17} /></button>}</div></div>
     </aside>
-    <main className="main-content">{error && <div className="workspace-error" role="alert">{error}<button onClick={reload}>Retry</button></div>}{view.page === 'details' && community ? <CommunityDetails community={community} onBack={communityHome} onModal={setModal} /> : group && community ? <Chat key={group.id} community={community} group={group} user={user} version={version} onRefresh={reload} onModal={setModal} notify={notify} onBack={communityHome} /> : community ? <CommunityHome key={community.id} community={community} birdId={user.bird_id} openingId={openingId} expandedGroups={expandedGroups[community.id] || {}} onToggleGroup={toggleGroup} search={search} onModal={setModal} onCircle={openCircle} onRefresh={reload} notify={notify} /> : !communities.length ? <Welcome user={user} onModal={setModal} /> : <div className="boot-screen"><span className="loading-dot" /><p>Opening your Tree…</p></div>}</main>
+    <main className={`main-content tab-${tab}`}>{tab==='contacts'?<Contacts version={version} notify={notify} onMessage={openPrivate}/>:tab==='messages'?<PrivateMessages user={user} version={version} conversationId={conversationId} onConversation={setConversationId} compose={compose} onCompose={setCompose} notify={notify}/>:<>{error && <div className="workspace-error" role="alert">{error}<button onClick={reload}>Retry</button></div>}{view.page === 'details' && community ? <CommunityDetails community={community} onBack={communityHome} onModal={setModal} /> : group && community ? <Chat key={group.id} community={community} group={group} user={user} version={version} onRefresh={reload} onModal={setModal} notify={notify} onBack={communityHome} onSendIndividually={g=>{cancelEntry();setCompose({kind:'individual',source:g});setTab('messages');}} /> : community ? <CommunityHome key={community.id} community={community} birdId={user.bird_id} openingId={openingId} expandedGroups={expandedGroups[community.id] || {}} onToggleGroup={toggleGroup} search={search} onModal={setModal} onCircle={openCircle} onRefresh={reload} notify={notify} /> : !communities.length ? <Welcome user={user} onModal={setModal} /> : <div className="boot-screen"><span className="loading-dot" /><p>Opening your Tree…</p></div>}</>}</main>
+    <nav className="bottom-navigation" aria-label="Main navigation">{[{id:'tree',label:'Tree'},{id:'messages',label:'Messages'},{id:'contacts',label:'Contacts'}].map(t=><button key={t.id} aria-label={t.label} aria-current={tab===t.id?'page':undefined} className={tab===t.id?'active':''} onClick={()=>{cancelEntry();setTab(t.id);setMobileNav(false);}}>{t.id==='tree'?<SpaceIcon kind="tree" size={28}/>:<NavigationArt kind={t.id}/>}<span>{t.label}</span>{t.id==='messages'&&privateUnread>0&&<span className="tab-unread" aria-label={`${privateUnread} unread private messages`}>{privateUnread}</span>}</button>)}</nav>
     {journey && group?.id === journey.id && <BirdJourney journey={journey} onDone={finishJourney}/>}
     <Toast toast={toast} />
     {modal?.kind === 'space' && <SpaceDialog modal={modal} community={community} onClose={() => setModal(null)} onDelete={async (result,type,entity)=>{cancelEntry();if(type === 'community'){setCommunity(null);setCommunities(prev=>prev.filter(c=>c.id !== entity.id));setUser(prev=>({...prev,last_community_id:prev.last_community_id === entity.id ? null : prev.last_community_id}));setView({cid:null,gid:null});}if(type === 'group' && view.gid === entity.id) communityHome();if(type === 'subcommunity')setExpandedGroups(prev=>({...prev,[view.cid]:{...prev[view.cid],[entity.id]:false}}));await reload();notify(type === 'community' ? 'Tree deleted.' : type === 'subcommunity' ? 'Branch deleted. Its Nests are kept at Tree level.' : 'Nest deleted.');}} onSave={async (result,type) => { if (type === 'community' && result.community) await chooseCommunity(result.community.id); if (type === 'group' && result.group) openCircle(result.group.id); if (type === 'subcommunity' && result.subcommunity) openGroup(result.subcommunity.id); await reload(); notify(result.request ? 'Submitted for approval. Follow its status in Creation requests.' : modal.entity ? 'Changes saved.' : `${type === 'subcommunity' ? 'Branch' : type === 'group' ? 'Nest' : 'Tree'} created. Make yourself at home!`); }} />}

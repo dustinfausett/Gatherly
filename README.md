@@ -1,6 +1,6 @@
 # Churp
 
-A warm, responsive messaging app organized as **Tree → optional Branch → Nest**. A Tree is the whole workspace, a Branch organizes Nests and delegates admin rights, and a Nest is where conversations happen. **My Orchard** labels the Tree chooser; it is not another tier.
+A warm, responsive messaging app organized as **Tree → optional Branch → Nest**. A Tree is the whole workspace, a Branch organizes Nests and delegates admin rights, and a Nest is where group conversations happen. Personal 1:1 conversations live in Messages. **My Orchard** labels the Tree chooser; it is not another tier.
 
 The Churp wordmark and birds-and-nest mark appear on sign-in, navigation, browser icons, and Home Screen icons. Self-hosted Nunito and Nunito Sans fonts pair with leafy greens, cream backgrounds, and soft brown Nest rows. Read Nest rows are brown; unread rows remain yellow with a yellow egg, and urgent unread rows remain red with a red egg. Received messages use blue bubbles; your own use gold bubbles. Urgent messages keep their bubble color and have an urgent label and outline.
 
@@ -27,9 +27,13 @@ The public website is available at `/website/` for review. The same service serv
 
 Production requires HTTPS because cookies use `Secure`. A reverse proxy must forward the app port and disable buffering on `/api/events` for live updates. `TRUST_PROXY` is a proxy hop count; the Railway image uses `1`.
 
+## Personal navigation and messaging
+
+The footer has exactly **Tree / Messages / Contacts**. Tree preserves the existing optional Branches and Nests. Messages contains encrypted private 1:1 chats and in-app Send Individually. Contacts contains owner-only Birdhouses followed by alphabetical contacts, with manual entry and selected CSV/vCard/phone-picker imports. [Delivered behavior, privacy, demo setup and deferred SMS work](docs/PERSONAL-MESSAGING.md).
+
 ## Accounts, permissions, and conversations
 
-**Invite your people** provides a QR code, short code and full link. **About this Nest → Invite Tree members** sends an in-app invitation to selected members. The bird-envelope **Invitations** inbox shows pending Nests with Accept/Decline and accepts shared links or codes. All invitations expire after seven days and require valid admin permissions. See [invitation behavior and access controls](docs/INVITATIONS.md).
+**Invite your people** provides a QR code, short code and full link. **About this Nest → Invite Tree members** sends an in-app invitation to selected members. The bird-envelope **Invitations** inbox shows pending Nests with Accept/Decline and accepts shared links or codes. All invitations expire after seven days. Admin-created Tree links join immediately; member-created Tree links await a Tree or Branch admin’s approval. Nest invitations remain admin-only. See [invitation behavior and access controls](docs/INVITATIONS.md).
 
 Change your password in your profile. Optional verified recovery email enables **Forgot password?** links; Google-only accounts use Google recovery. Email delivery requires `RESEND_API_KEY`, `CHURP_EMAIL_FROM` and the correct app origin. See [account recovery and setup](docs/ACCOUNT-RECOVERY.md). The sidebar keeps Tree navigation and invitation actions; Nest search and discovery live on Tree home.
 
@@ -141,7 +145,7 @@ Copy `.env.example` to `.env` if needed. Existing process environment values tak
 | `VAPID_PRIVATE_KEY` | Private push signing key |
 | `VAPID_SUBJECT` | Public contact email (`mailto:`) or HTTPS URL |
 
-Back up the database and uploads together. For a simple consistent backup, stop the app, copy its entire data directory, and restart. Preserve deployment secrets separately. Managed history requires the original vault master; self-managed history requires the user's recovery key or an approved device. Older snapshots can retain plaintext; review retention as explained in the encryption guide. This version does not include password recovery, email delivery, malware scanning, or general backup automation.
+Back up the database and uploads together. For a simple consistent backup, stop the app, copy its entire data directory, and restart. Preserve deployment secrets separately. Managed history requires the original vault master; self-managed history requires the user's recovery key or an approved device. Older snapshots can retain plaintext; review retention as explained in the encryption guide. Password recovery uses optional verified email and configured Resend delivery. Malware scanning and general backup automation are not included.
 
 The Churp rebrand preserves existing data, session cookies, invitations, push subscriptions, and API identifiers. **Do not rename `gatherly.sqlite`, `gatherly_session`, or existing URLs to apply the branding.** The public name is Churp; internal identifiers remain stable to avoid resetting accounts or sessions.
 

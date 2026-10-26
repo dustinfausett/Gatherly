@@ -54,7 +54,7 @@ async function start() {
   }
   throw new Error(`Container did not become healthy: ${docker('logs', container)}`);
 }
-async function browserCheck(cid,gid,recovery,managedFixture){
+async function browserCheck(cid,gid,recovery,managedFixture,privateId){
   const temporary=mkdtempSync(join(tmpdir(),'churp-container-browser-'));let proxy,browser;
   try{
     execFileSync('openssl',['req','-x509','-newkey','rsa:2048','-nodes','-keyout',join(temporary,'key.pem'),'-out',join(temporary,'cert.pem'),'-days','1','-subj','/CN=localhost'],{stdio:'ignore'});
@@ -138,6 +138,12 @@ async function browserCheck(cid,gid,recovery,managedFixture){
     await page.getByRole('dialog').getByRole('button',{name:/^Assignments/}).click();
     await expect(page.getByRole('dialog').getByRole('button',{name:'Open assignments: Container party preparations',exact:true})).toBeVisible();
     await page.getByRole('button',{name:'Close dialog',exact:true}).click();
+    await page.goto(`${origin}/?conversation=${privateId}`);
+    await expect(page.locator('.private-bubble')).toContainText('A durable private hello.');
+    await page.getByRole('textbox',{name:'Write a private message',exact:true}).fill('Private browser reply under production CSP');
+    await page.getByRole('button',{name:'Send private message',exact:true}).click();
+    await expect(page.locator('.private-bubble').filter({hasText:'Private browser reply under production CSP'})).toBeVisible();
+    await page.goto(`${origin}/?community=${cid}&group=${gid}`);
     await page.getByRole('button',{name:'Invite someone to this Tree',exact:true}).click();
     await page.getByRole('button',{name:'Create invitation link',exact:true}).click();
     await expect.poll(()=>page.locator('.invitation-qr').evaluate(img=>img.naturalWidth)).toBe(300);
@@ -265,6 +271,11 @@ try {
   await request('/invitations/accept','POST',{token:shareInvitation.code});
   cookie=selfCookie;deviceId=selfDevice;
   await request(`/groups/${gid}/invitations`,'POST',{user_ids:[registeredManaged.data.user.id]});
+  const privateId=(await request('/private/conversations','POST',{user_id:registeredManaged.data.user.id})).data.conversation.id;
+  const privateRoster=(await request(`/private/conversations/${privateId}/roster`)).data,privateNonce=randomUUID();
+  const privateCipher=await enc.seal(keys.privateKey,privateRoster.readers.map(r=>r.public_key),{version:1,kind:'private-message',conversationId:privateId,clientId:privateNonce,senderId:registered.data.user.id,rosterHash:privateRoster.roster_hash,selfEncrypted:privateRoster.self_encrypted,body:'A durable private hello.',attachments:[]});
+  const privateProof={conversationId:privateId,clientId:privateNonce,rosterHash:privateRoster.roster_hash,cipherHash:await enc.digest(privateCipher),files:[],sourceNest:null};
+  await request(`/private/conversations/${privateId}/messages`,'POST',{clientId:privateNonce,ciphertext:privateCipher,rosterHash:privateRoster.roster_hash,files:[],signature:await enc.sign(keys.privateKey,'private-send',privateProof)});
   docker('stop', container);
   docker('rm', container);
   container=containers[1];
@@ -294,7 +305,8 @@ try {
   const restoredManaged=(await request('/e2ee/managed-device','POST',{deviceId,deviceName:'After replacement'})).data;
   assert.equal(restoredManaged.identity.fingerprint,managedFingerprint);assert.equal((await enc.readPrivate(restoredManaged.privateKey)).getFingerprint(),managedFingerprint);
   cookie=selfCookie;deviceId=selfDevice;
-  await browserCheck(cid,gid,recovery,{cookie:managedCookie});
+  await browserCheck(cid,gid,recovery,{cookie:managedCookie},privateId);
+  console.log('PASS: encrypted private conversations survive replacement and work in the production browser.');
   console.log('PASS: production container, HTTPS proxy headers, secure sessions, encrypted Nest messages/files, recovery backup and volume persistence across replacement.');
   console.log('PASS: push keys persist; local .env is excluded; Railway startup requires a Volume.');
   console.log('PASS: encrypted poll definitions, answers and closure survive replacement; ballot and basket artwork render under production CSP.');

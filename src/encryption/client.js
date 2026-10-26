@@ -250,3 +250,20 @@ export async function signAssignmentRequest(request,listId,metadata,operation){
   const self=getCurrent();
   return {...request,assignmentSignature:await enc.sign(self.privateKey,operation,assignmentProof({listId,clientId:request.clientId,cipherHash:await enc.digest(request.ciphertext),metadata}))};
 }
+
+// Private conversations use a separate signed context, never a synthetic Nest.
+export async function sealPrivate(conversationId,body,attachments=[],clientId=crypto.randomUUID(),sourceNest=null){
+ if(typeof body!=='string'||body.length>10000||(!body.trim()&&!attachments.length))throw new Error('Write a message or attach a file.');
+ const self=getCurrent(),rs=await api(`/private/conversations/${conversationId}/roster`),readers=await Promise.all(rs.readers.map(trustedReader));
+ const contents={version:1,kind:'private-message',conversationId,clientId,senderId:self.userId,rosterHash:rs.roster_hash,selfEncrypted:rs.self_encrypted,body,attachments};
+ const ciphertext=await enc.seal(self.privateKey,readers.map(r=>r.public_key),contents),files=attachments.map(f=>f.id),payload={conversationId,clientId,rosterHash:rs.roster_hash,cipherHash:await enc.digest(ciphertext),files,sourceNest};
+ return {ciphertext,clientId,rosterHash:rs.roster_hash,files,sourceNest,signature:await enc.sign(self.privateKey,'private-send',payload)};
+}
+export async function decryptPrivate(conversationId,messages){
+ const self=getCurrent();return Promise.all(messages.map(async m=>{try{
+  const signer=await trustedReader({id:m.user_id,public_key:m.signer_key,fingerprint:m.signer_fingerprint});let value;
+  for(const key of [self.privateKey,...self.previousPrivateKeys]){try{value=await enc.open(key,signer.public_key,m.ciphertext);break;}catch{}}
+  if(!value||value.version!==1||value.kind!=='private-message'||value.conversationId!==conversationId||value.clientId!==m.client_id||value.senderId!==m.user_id||value.rosterHash!==m.recipient_hash||value.selfEncrypted!==!!m.self_encrypted||typeof value.body!=='string'||value.body.length>10000||!Array.isArray(value.attachments)||enc.canonical(value.attachments.map(f=>f.id).sort())!==enc.canonical(m.files.map(f=>f.id).sort()))throw new Error('Private context changed.');
+  return {...m,body:value.body,files:value.attachments};
+ }catch{return {...m,body:'This private message could not be decrypted or verified.',files:[],decryptionError:true};}}));
+}
