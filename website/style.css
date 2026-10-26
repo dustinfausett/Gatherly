@@ -11,3 +11,4 @@
 .site-footer nav a{display:inline-flex;align-items:center;min-height:44px;gap:6px}
 @media(max-width:760px){.site-footer nav{font-size:11px;gap:8px}}
 @media(max-width:760px){.scene-orbit{transform:none}}
+.site-footer{flex-wrap:wrap}.site-footer nav{flex-wrap:wrap;row-gap:15px}.site-footer nav a{display:inline-flex;align-items:center;min-height:44px}

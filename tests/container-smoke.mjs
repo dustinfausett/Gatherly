@@ -150,7 +150,7 @@ async function browserCheck(cid,gid,recovery,managedFixture,privateId){
     await expect(page.getByRole('textbox',{name:'Invitation code',exact:true})).toHaveValue(/^[A-HJ-NP-Z2-9]{5}-[A-HJ-NP-Z2-9]{5}$/);
     await page.getByRole('button',{name:'Close dialog',exact:true}).click();
     await page.getByRole('button',{name:'Edit your profile',exact:true}).click();
-    await expect(page.locator('.settings-menu>button')).toHaveCount(6);
+    await expect(page.locator('.settings-menu>button')).toHaveCount(7);
     await page.getByRole('button',{name:'Profile & avatar',exact:true}).click();
     await expect(page.getByRole('radio')).toHaveCount(20);
     await page.getByRole('radio',{name:'Parrot',exact:true}).check();

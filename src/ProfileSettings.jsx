@@ -1,5 +1,5 @@
 import React,{useEffect,useRef,useState} from 'react';
-import { ArrowLeft,Bell,BellOff,Check,ChevronRight,LogOut,Settings2,ShieldCheck,UserRound,Users } from 'lucide-react';
+import { ArrowLeft,Bell,BellOff,Check,ChevronRight,LogOut,Settings2,ShieldCheck,UserRound,Users,FileText } from 'lucide-react';
 import { Avatar,AvatarEditor,Field,Form,Modal } from './components';
 import AvatarPortrait from './AvatarPortrait';
 import BirdPicker from './BirdPicker';
@@ -7,6 +7,7 @@ import { Bird } from './BirdJourney';
 import {FamilySettings} from './Family';
 import { AccountSecuritySettings } from './AccountSecurity';
 import { EncryptionSettings } from './encryption/EncryptionGate';
+import {legalLinks,policyStatus} from '../shared/legal';
 import { AVATARS } from '../shared/avatars';
 import { getBird } from '../shared/birds';
 import { api,post } from './api';
@@ -18,6 +19,7 @@ const sections=[
   {id:'family',title:'Family & youth protection',description:'Linked parents and adult message approvals',icon:Users},
   {id:'account',title:'Account settings',description:'Password and recovery email',icon:Settings2},
   {id:'security',title:'Security',description:'Message privacy, E2EE and recovery keys',icon:ShieldCheck},
+  {id:'legal',title:'About & policies',description:'Terms, privacy and SMS program status',icon:FileText},
   {id:'notifications',title:'Notifications',description:'Alerts on this device',icon:Bell},
 ];
 export default function ProfileSettings({user,config,onClose,onSave,onAccountUpdate,onLogout,notify}){
@@ -33,7 +35,8 @@ export default function ProfileSettings({user,config,onClose,onSave,onAccountUpd
         {section==='account' && <><div className="settings-account-id"><span>Signed in as</span><strong>@{user.username}</strong></div><AccountSecuritySettings user={user} config={config} onAccountUpdate={onAccountUpdate}/></>}
         {section==='family' && <FamilySettings user={user}/>}
         {section==='security' && <><p className="settings-intro">Choose who manages your message keys and how you recover encrypted conversations.</p>{config.encryptionRequired?<EncryptionSettings/>:<p className="info-banner">Encrypted messaging is not enabled in this environment.</p>}</>}
-        {section==='notifications' && <NotificationScreen config={config}/>}
+        {section==='legal' && <section className="settings-section"><p>Read Churp’s policies without signing in. Each document opens in a separate tab.</p><nav className="policy-links" aria-label="Churp policies">{legalLinks.map(link=><a key={link.path} href={link.path} target="_blank" rel="noopener noreferrer">{link.title}<ChevronRight size={17}/></a>)}</nav><p className="small-text muted">{policyStatus}</p></section>}
+        {section==='notifications'  && <NotificationScreen config={config}/>}
       </>:<>
         <div className="settings-person"><Avatar name={user.name} id={user.avatar_id} portrait={user.avatar_style!=='photo' ? user.avatar_choice || 'blue' : undefined} size={64}/><div><strong>{user.name}</strong><span>@{user.username}</span></div></div>
         <nav className="settings-menu" aria-label="Your settings">{sections.map(({id,title,description,icon:Icon})=><button key={id} type="button" aria-label={title} onClick={()=>setSection(id)}><span className={`settings-menu-icon ${id==='pet' ? 'pet-menu-icon' : ''}`}>{Icon?<Icon size={22}/>:<Bird birdId={user.bird_id}/>}</span><span><strong>{title}{id==='family'&&user.family?.pending_reviews>0?` (${user.family.pending_reviews})`:null}</strong><small>{description}</small></span><ChevronRight size={18}/></button>)}</nav>

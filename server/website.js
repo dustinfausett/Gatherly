@@ -1,7 +1,9 @@
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
+import {installLegal} from './legal.js';
 
 export function installWebsite(app,{production,appUrl,explicitAppUrl}){
+  installLegal(app,{appUrl});
   const publicHost=req=>['churptree.com','www.churptree.com'].includes(req.hostname.toLowerCase());
   // The existing Railway address stays an app origin. A domain change must not
   // strand local encryption keys or replace the established sign-in page.

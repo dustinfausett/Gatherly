@@ -51,7 +51,7 @@ export default function Auth({ onLogin, config }) {
       </Form>
       {!signup && <button type="button" className="text-button auth-forgot-password" onClick={()=>setForgot(true)}>Forgot password?</button>}
       <p className="auth-switch">{signup ? 'Already part of the nest?' : 'New around here?'} <button onClick={() => setSignup(!signup)}>{signup ? 'Sign in' : 'Create an account'} <ArrowRight size={14} /></button></p>
-      <p className="auth-fine">Your next great conversation starts here.</p>
+      <nav className="auth-policy-links" aria-label="Churp policies"><a href="/terms" target="_blank" rel="noopener noreferrer">Terms of Service</a><a href="/privacy" target="_blank" rel="noopener noreferrer">Privacy Policy</a><a href="/sms-terms" target="_blank" rel="noopener noreferrer">SMS Terms</a></nav><p className="auth-fine">Read our terms and privacy practices. External SMS is not enabled.</p>
     </div><div className="auth-bottom">Churp · A little closer, together.</div></main>
     {forgot && <ForgotPasswordDialog config={config} onClose={()=>setForgot(false)}/>}
   </div>;

@@ -1,0 +1,12 @@
+import {test,expect} from '@playwright/test';
+import {randomUUID} from 'node:crypto';
+test('policies are public and reachable from website, sign-in and compact settings',async({page},info)=>{
+ const errors=[];page.on('pageerror',e=>errors.push(e.message));
+ for(const [path,title] of [['/terms','Terms of Service'],['/privacy','Privacy Policy'],['/sms-terms','SMS Terms']]){
+  const response=await page.goto(path);expect(response.status()).toBe(200);await expect(page.getByRole('heading',{level:1,name:title,exact:true})).toBeVisible();await expect(page.getByText('Draft for review',{exact:true})).toHaveCount(path==='/sms-terms'?1:0);await expect(page.getByRole('navigation',{name:'Policy navigation'}).getByRole('link',{name:title,exact:true})).toHaveAttribute('aria-current','page');expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBeTruthy();
+ }
+ await page.goto('/privacy');await expect(page.getByText(/Parents receive separate encrypted access/)).toBeVisible();await page.screenshot({path:info.outputPath('privacy-policy.png'),fullPage:true});
+ await page.goto('/website/');const footer=page.getByRole('navigation',{name:'Footer navigation'});await expect(footer.getByRole('link',{name:'Privacy Policy',exact:true})).toHaveAttribute('href','/privacy');await expect(footer.getByRole('link',{name:'Terms of Service',exact:true})).toHaveAttribute('href','/terms');await expect(footer.getByRole('link',{name:'SMS Terms',exact:true})).toHaveAttribute('href','/sms-terms');
+ await page.goto('/?signup=1');const policies=page.getByRole('navigation',{name:'Churp policies'});await expect(policies.getByRole('link')).toHaveCount(3);const popupPromise=page.waitForEvent('popup');await policies.getByRole('link',{name:'Privacy Policy',exact:true}).click();const popup=await popupPromise;await expect(popup.getByRole('heading',{level:1,name:'Privacy Policy'})).toBeVisible();await popup.close();
+ const response=await page.request.post('/api/auth/register',{data:{birth_date:'1990-01-01',username:`legal_${randomUUID().slice(0,8)}`,name:'Policy reader',password:'Policy browser fixture!'}});expect(response.status()).toBe(201);await page.goto('/');await page.getByRole('button',{name:'Edit your profile',exact:true}).click();await page.getByRole('button',{name:'About & policies',exact:true}).click();await expect(page.getByRole('dialog').getByRole('navigation',{name:'Churp policies'}).getByRole('link')).toHaveCount(3);await expect(page.getByRole('dialog')).toContainText('External SMS is not enabled');expect(errors).toEqual([]);
+});

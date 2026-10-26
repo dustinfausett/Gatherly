@@ -176,3 +176,7 @@ Tests cover real accounts, invitations, live messaging, files, scoped administra
 ### Youth protection
 
 Signup requires a private date of birth. Accounts under 18 link one or two parents; either can approve adult direct-message contacts and read the child’s direct messages. Existing accounts complete age/parent setup and share earlier direct-message access before continuing. Nests retain their existing permissions. See [docs/YOUTH-PROTECTION.md](docs/YOUTH-PROTECTION.md) for the parent workflow, migration and verification limits.
+
+### Public policies
+
+Terms of Service (`/terms`), Privacy Policy (`/privacy`) and proposed SMS Terms (`/sms-terms`) are readable without signing in. Find them in Your corner → About & policies, at sign-in/signup, and in the website footer. The operator is Dustin Fausett, operating as Churp; the approved support/privacy contact is churptree@gmail.com. SMS remains disabled and its terms explicitly mark the proposed program. See [docs/LEGAL-PAGES.md](docs/LEGAL-PAGES.md).
