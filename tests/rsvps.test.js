@@ -32,7 +32,7 @@ test('encrypted RSVPs enforce permissions, history, quiet responses, deadlines, 
   }
   async function ok(...args) { const result = await req(...args); assert.ok(result.status < 300, JSON.stringify(result)); return result.data; }
   async function actor(name, self = false) {
-    const response = await fetch(base + '/auth/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: name, name, password: 'Poll fixture password!' }) });
+    const response = await fetch(base + '/auth/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({birth_date:'1990-01-01', username: name, name, password: 'Poll fixture password!' }) });
     const a = { ...(await response.json()).user, cookie: response.headers.get('set-cookie').split(';')[0], deviceId: randomUUID() };
     if (self) {
       const keys = await enc.generateIdentity(a.id), backup = await enc.protectPrivate(keys.privateKey, enc.randomSecret());

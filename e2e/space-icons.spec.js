@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 
 test('Tree, Branch and Nest artwork keeps privacy locks and hidden Nest access', async ({ page, browser }, info) => {
   const suffix = randomUUID().slice(0, 8);
-  await page.request.post('/api/auth/register', { data: { username: `icons_${suffix}`, name: 'Tree admin', password: 'test artwork password' } });
+  await page.request.post('/api/auth/register', { data: {birth_date:'1990-01-01', username: `icons_${suffix}`, name: 'Tree admin', password: 'test artwork password' } });
   const tree = (await (await page.request.post('/api/communities', { data: { name: 'Our family' } })).json()).community;
   const branch = (await (await page.request.post(`/api/communities/${tree.id}/subcommunities`, { data: { name: 'Family life' } })).json()).subcommunity;
   const create = async data => (await (await page.request.post(`/api/communities/${tree.id}/circles`, { data })).json()).group;
@@ -51,7 +51,7 @@ test('Tree, Branch and Nest artwork keeps privacy locks and hidden Nest access',
 
   const guest = await browser.newContext({ viewport: info.project.use.viewport, baseURL: 'http://127.0.0.1:3100' });
   try {
-    await guest.request.post('/api/auth/register', { data: { username: `icon_guest_${suffix}`, name: 'Member', password: 'test artwork password' } });
+    await guest.request.post('/api/auth/register', { data: {birth_date:'1990-01-01', username: `icon_guest_${suffix}`, name: 'Member', password: 'test artwork password' } });
     const invite = (await (await page.request.post('/api/invitations', { data: { community_id: tree.id } })).json()).path.split('invite=')[1];
     await guest.request.post('/api/invitations/accept', { data: { token: invite } });
     const member = await guest.newPage();

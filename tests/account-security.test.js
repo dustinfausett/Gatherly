@@ -14,7 +14,7 @@ async function fixture(t,email=true){
  t.after(async()=>{runtime.close();await new Promise(r=>server.close(r));rmSync(dir,{recursive:true,force:true});});
  async function req(path,cookie,method='GET',body,headers={}){const r=await fetch(base+path,{method,headers:{...(cookie?{cookie}:{}),...(body?{'Content-Type':'application/json'}:{}),...headers},body:body?JSON.stringify(body):undefined});return {status:r.status,data:await r.json(),cookie:r.headers.get('set-cookie')?.split(';')[0]};}
  async function ok(...args){const r=await req(...args);assert.ok(r.status<300,JSON.stringify(r));return r;}
- async function register(username,extra={}){return ok('/auth/register',null,'POST',{username,name:username,password:'Initial account password!',...extra});}
+ async function register(username,extra={}){return ok('/auth/register',null,'POST',{birth_date:'1990-01-01',username,name:username,password:'Initial account password!',...extra});}
  const link=kind=>new URL(mail.filter(m=>m.subject.includes(kind==='reset'?'Reset':'Verify')).at(-1).text.match(/https:\/\/\S+/)[0]);
  return {runtime,req,ok,register,mail,link};
 }

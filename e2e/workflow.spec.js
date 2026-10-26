@@ -9,6 +9,7 @@ test('create a Tree, invite a member, chat live, share files, and manage Nest po
   await expect(page.getByRole('heading', { name: 'Welcome home.' })).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath('sign-in.png'), fullPage: true });
   await page.getByRole('button', { name: 'Create an account', exact: true }).click();
+  await page.getByLabel('Date of birth',{exact:true}).fill('1990-01-01');
   await page.getByLabel('Your name', { exact: true }).fill('Alex Morgan');
   await page.getByLabel('Username', { exact: true }).fill(`alex_${suffix}`);
   await page.getByLabel('Password', { exact: true }).fill('gatherly test password');
@@ -54,6 +55,7 @@ test('create a Tree, invite a member, chat live, share files, and manage Nest po
   const bob = await other.newPage();
   await bob.goto(`http://127.0.0.1:3100${invite.path}`);
   await bob.getByRole('button', { name: 'Create an account', exact: true }).click();
+  await bob.getByLabel('Date of birth',{exact:true}).fill('1990-01-01');
   await bob.getByLabel('Your name', { exact: true }).fill('Jamie Lee');
   await bob.getByLabel('Username', { exact: true }).fill(`jamie_${suffix}`);
   await bob.getByLabel('Password', { exact: true }).fill('gatherly test password');

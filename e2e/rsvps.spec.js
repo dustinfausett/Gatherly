@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto';
 test('encrypted RSVP invitations hatch eggs, separate guest totals, update live and appear in the shared Nest library', async ({page,browser},info)=>{
   const errors=[],writes=[];
   const listen=p=>{p.on('pageerror',e=>errors.push(e.message));p.on('request',r=>{if(['POST','PUT'].includes(r.method()) && /\/api\/(groups\/.*\/messages|messages\/.*\/(rsvp\/respond|content))/.test(r.url()))writes.push(r.postData() || '');});};listen(page);
-  async function register(context,name){const r=await context.request.post('/api/auth/register',{data:{username:`rsvp_${randomUUID().slice(0,8)}`,name,password:'RSVP browser password!'}});expect(r.status()).toBe(201);return(await r.json()).user;}
+  async function register(context,name){const r=await context.request.post('/api/auth/register',{data:{birth_date:'1990-01-01',username:`rsvp_${randomUUID().slice(0,8)}`,name,password:'RSVP browser password!'}});expect(r.status()).toBe(201);return(await r.json()).user;}
   await register(page.context(),'Organizer');
   const tree=(await(await page.request.post('/api/communities',{data:{name:'Picnic Tree'}})).json()).community;
   const nest=(await(await page.request.post(`/api/communities/${tree.id}/circles`,{data:{name:'Picnic Nest',admin_only:true}})).json()).group;
@@ -70,7 +70,7 @@ test('encrypted RSVP invitations hatch eggs, separate guest totals, update live 
 
 test('admins can edit another member’s all-day invitation and reopen an expired deadline without clearing responses',async({page,browser},info)=>{
   const errors=[];page.on('pageerror',e=>errors.push(e.message));
-  const create=async(ctx,name)=>{const r=await ctx.request.post('/api/auth/register',{data:{username:`rsvp_edit_${randomUUID().slice(0,7)}`,name,password:'RSVP editor password!'}});expect(r.status()).toBe(201);};
+  const create=async(ctx,name)=>{const r=await ctx.request.post('/api/auth/register',{data:{birth_date:'1990-01-01',username:`rsvp_edit_${randomUUID().slice(0,7)}`,name,password:'RSVP editor password!'}});expect(r.status()).toBe(201);};
   await create(page.context(),'Tree admin');const tree=(await(await page.request.post('/api/communities',{data:{name:'Event Tree'}})).json()).community;
   const nest=(await(await page.request.post(`/api/communities/${tree.id}/circles`,{data:{name:'Member events'}})).json()).group;
   const invite=(await(await page.request.post('/api/invitations',{data:{community_id:tree.id}})).json()).path.split('invite=')[1];

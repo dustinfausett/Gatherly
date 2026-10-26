@@ -42,6 +42,7 @@ export default function Auth({ onLogin, config }) {
       <Form key={signup ? 'signup' : 'login'} submit={signup ? 'Create your account' : 'Sign in'} onSubmit={async form => {
         const result = await post(`/auth/${signup ? 'register' : 'login'}`, Object.fromEntries(form)); onLogin(result.user,result.emailNotice);
       }}>
+        {signup && <Field label="Date of birth" name="birth_date" type="date" autoComplete="bday" max={new Date().toISOString().slice(0,10)} hint="Private. Under 18? A linked parent is required before you can continue." required/>}
         {signup && <Field label="Your name" name="name" placeholder="What should we call you?" autoComplete="name" required maxLength={80} />}
         <Field label="Username" name="username" placeholder="e.g. alex_morgan" autoComplete="username" required minLength={3} maxLength={30} pattern="[A-Za-z0-9_]+" />
         {signup && config.recoveryEmailEnabled && <Field label="Recovery email (recommended)" name="email" type="email" autoComplete="email" maxLength={254} hint="Verify this address to reset a forgotten password."/>}

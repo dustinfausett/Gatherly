@@ -150,7 +150,7 @@ async function browserCheck(cid,gid,recovery,managedFixture,privateId){
     await expect(page.getByRole('textbox',{name:'Invitation code',exact:true})).toHaveValue(/^[A-HJ-NP-Z2-9]{5}-[A-HJ-NP-Z2-9]{5}$/);
     await page.getByRole('button',{name:'Close dialog',exact:true}).click();
     await page.getByRole('button',{name:'Edit your profile',exact:true}).click();
-    await expect(page.locator('.settings-menu>button')).toHaveCount(5);
+    await expect(page.locator('.settings-menu>button')).toHaveCount(6);
     await page.getByRole('button',{name:'Profile & avatar',exact:true}).click();
     await expect(page.getByRole('radio')).toHaveCount(20);
     await page.getByRole('radio',{name:'Parrot',exact:true}).check();
@@ -158,6 +158,29 @@ async function browserCheck(cid,gid,recovery,managedFixture,privateId){
     await expect(page.locator('.profile-button [data-avatar-choice]')).toHaveAttribute('data-avatar-choice','parrot');
     await expect(page.locator('.resident-bird')).toHaveAttribute('data-bird-id','blue');
     assert.equal(await page.evaluate(async()=>{const img=new Image();img.src='/brand/avatars/churp-portraits.png';await img.decode();return img.naturalWidth;}),1254);
+    // Production CSP/HTTPS coverage for family setup and read-only supervision.
+    await page.getByRole('button',{name:'Edit your profile',exact:true}).click();
+    await page.getByRole('button',{name:'Family & youth protection',exact:true}).click();
+    await page.getByRole('button',{name:'Create parent invitation code',exact:true}).click();
+    await expect(page.locator('.family-code')).toHaveText(/\S{12}/);
+    const familyCode=await page.locator('.family-code').innerText();
+    const youthContext=await browser.newContext({ignoreHTTPSErrors:true});
+    try{
+      const response=await youthContext.request.post(`${origin}/api/auth/register`,{data:{birth_date:'2011-01-01',username:`youth_${suffix}`,name:'Protected youth',password:'Temporary youth fixture!'}});
+      assert.equal(response.status(),201);const youth=(await response.json()).user,yp=await youthContext.newPage();yp.on('pageerror',error=>errors.push(error.message));
+      await yp.goto(origin);await yp.getByLabel('Parent invitation code',{exact:true}).fill(familyCode);await yp.getByRole('button',{name:'Link parent',exact:true}).click();
+      await page.getByRole('checkbox',{name:/I am this person’s parent/}).check();await page.getByRole('button',{name:'Confirm parent link',exact:true}).click();
+      await expect(yp.getByRole('navigation',{name:'Main navigation',exact:true})).toBeVisible();
+      const conversation=await page.request.post(`${origin}/api/private/conversations`,{data:{user_id:youth.id}});assert.equal(conversation.status(),200);const youthConversation=(await conversation.json()).conversation.id;
+      await page.goto(`${origin}/?conversation=${youthConversation}`);await expect(page.getByText(/parents linked to either youth account/)).toBeVisible();
+      await page.getByRole('textbox',{name:'Write a private message',exact:true}).fill('Protected conversation under production CSP');await page.getByRole('button',{name:'Send private message',exact:true}).click();
+      await expect(page.locator('.private-bubble')).toContainText('Protected conversation under production CSP');
+      await page.getByRole('button',{name:'Edit your profile',exact:true}).click();await page.getByRole('button',{name:'Family & youth protection',exact:true}).click();await page.getByRole('button',{name:'View Protected youth’s direct messages',exact:true}).click();await page.getByRole('button',{name:'Protected youth and Railway smoke test',exact:true}).click();
+      await expect(page.locator('.family-message-review .private-bubble')).toContainText('Protected conversation under production CSP');await expect(page.getByRole('dialog').getByRole('textbox',{name:'Write a private message',exact:true})).toHaveCount(0);
+      await page.getByRole('button',{name:'Close dialog',exact:true}).click();
+    }finally{await youthContext.close();}
+    await page.goto(`${origin}/?community=${cid}&group=${gid}`);await expect(page.getByRole('textbox',{name:'Write a message',exact:true})).toBeVisible();
+    console.log('PASS: protected youth setup, parent-linked encryption and read-only supervision work under production HTTPS/CSP.');
     const originalIdentity=(await (await page.request.get(`${origin}/api/e2ee/account`)).json()).identity.fingerprint;
     await page.getByRole('button',{name:'Edit your profile',exact:true}).click();await page.getByRole('button',{name:'Security',exact:true}).click();
     await page.getByRole('button',{name:'Use Churp-managed keys',exact:true}).click();
@@ -211,7 +234,7 @@ try {
   assert.match(await root.text(), /id="root"/);
   assert.ok(root.headers.get('content-security-policy'));
   docker('exec', container, 'test', '!', '-f', '/app/.env');
-  const registered = await request('/auth/register', 'POST', { username: 'railway_smoke', name: 'Railway smoke test', password: 'Temporary container password!' });
+  const registered = await request('/auth/register', 'POST', {birth_date:'1990-01-01', username: 'railway_smoke', name: 'Railway smoke test', password: 'Temporary container password!' });
   cookie = registered.response.headers.get('set-cookie').split(';')[0];
   assert.match(registered.response.headers.get('set-cookie'), /HttpOnly/);
   assert.match(registered.response.headers.get('set-cookie'), /Secure/);
@@ -264,7 +287,7 @@ try {
   const shareInvitation=(await request('/invitations','POST',{community_id:cid})).data;
   assert.match(shareInvitation.code,/^[A-HJ-NP-Z2-9]{5}-[A-HJ-NP-Z2-9]{5}$/);assert.match(shareInvitation.qr_data_url,/^data:image\/png;base64,/);
   const selfCookie=cookie,selfDevice=deviceId;
-  const registeredManaged=await request('/auth/register','POST',{username:'managed_smoke',name:'Managed smoke',password:'Temporary managed password!'});
+  const registeredManaged=await request('/auth/register','POST',{birth_date:'1990-01-01',username:'managed_smoke',name:'Managed smoke',password:'Temporary managed password!'});
   const managedCookie=registeredManaged.response.headers.get('set-cookie').split(';')[0];cookie=managedCookie;deviceId=randomUUID();
   const managedAccount=(await request('/e2ee/managed-device','POST',{deviceId,deviceName:'Managed container fixture'})).data;
   const managedFingerprint=managedAccount.identity.fingerprint;assert.equal((await enc.readPrivate(managedAccount.privateKey)).getFingerprint(),managedFingerprint);

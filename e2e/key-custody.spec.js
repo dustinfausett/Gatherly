@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 const password='Key custody browser password!';
 test('self-managed keys can return to Churp and rotate again without losing history or peer trust',async({page,browser},info)=>{
  const errors=[];page.on('pageerror',e=>errors.push(e.message));
- async function register(ctx,name){const username=`custody_${randomUUID().slice(0,8)}`;const r=await ctx.request.post('/api/auth/register',{data:{username,name,password}});expect(r.status()).toBe(201);return {...(await r.json()).user,username};}
+ async function register(ctx,name){const username=`custody_${randomUUID().slice(0,8)}`;const r=await ctx.request.post('/api/auth/register',{data:{birth_date:'1990-01-01',username,name,password}});expect(r.status()).toBe(201);return {...(await r.json()).user,username};}
  const alice=await register(page.context(),'Alice');const tree=(await(await page.request.post('/api/communities',{data:{name:'Custody Tree'}})).json()).community,nest=(await(await page.request.post(`/api/communities/${tree.id}/circles`,{data:{name:'History Nest'}})).json()).group,invite=(await(await page.request.post('/api/invitations',{data:{community_id:tree.id}})).json()).path.split('invite=')[1];
  const peerContext=await browser.newContext({...info.project.use,baseURL:'http://127.0.0.1:3101'}),freshContext=await browser.newContext({...info.project.use,baseURL:'http://127.0.0.1:3101'});
  const url=`/?community=${tree.id}&group=${nest.id}`;

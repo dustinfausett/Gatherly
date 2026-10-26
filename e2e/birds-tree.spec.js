@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { BIRDS } from '../shared/birds.js';
 
 const register = async (request,prefix) => {
-  const r=await request.post('/api/auth/register',{data:{username:`${prefix}_${randomUUID().slice(0,8)}`,name:'Bird watcher',password:'bird and tree browser password'}});
+  const r=await request.post('/api/auth/register',{data:{birth_date:'1990-01-01',username:`${prefix}_${randomUUID().slice(0,8)}`,name:'Bird watcher',password:'bird and tree browser password'}});
   expect(r.status()).toBe(201);return (await r.json()).user;
 };
 

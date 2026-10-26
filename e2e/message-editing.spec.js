@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto';
 test('authors edit encrypted messages and replies live, preserving attachments, dates and later-joiner boundaries',async({page,browser},info)=>{
   const errors=[],edits=[];page.on('pageerror',e=>errors.push(e.message));
   page.on('request',r=>{if(r.method()==='PUT' && /\/api\/messages\/\d+\/content$/.test(r.url()))edits.push(r.postData() || '');});
-  async function register(context,name){const r=await context.request.post('/api/auth/register',{data:{username:`editor_${randomUUID().slice(0,8)}`,name,password:'Editing browser fixture!'}});expect(r.status()).toBe(201);return (await r.json()).user;}
+  async function register(context,name){const r=await context.request.post('/api/auth/register',{data:{birth_date:'1990-01-01',username:`editor_${randomUUID().slice(0,8)}`,name,password:'Editing browser fixture!'}});expect(r.status()).toBe(201);return (await r.json()).user;}
   await register(page.context(),'Alice');
   const tree=(await(await page.request.post('/api/communities',{data:{name:'Editing Tree'}})).json()).community;
   const nest=(await(await page.request.post(`/api/communities/${tree.id}/circles`,{data:{name:'Family chat'}})).json()).group;

@@ -278,6 +278,34 @@ export function openDatabase(path) {
     status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','approved','declined')),
     created_at INTEGER NOT NULL,reviewed_by TEXT REFERENCES users(id),UNIQUE(community_id,user_id)
   );`);
+  addColumn('users', 'birth_date', 'TEXT');
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS family_links (
+      id TEXT PRIMARY KEY,parent_id TEXT NOT NULL REFERENCES users(id),child_id TEXT NOT NULL REFERENCES users(id),
+      status TEXT NOT NULL CHECK(status IN ('pending','active','removed')),created_at INTEGER NOT NULL,confirmed_at INTEGER,
+      UNIQUE(parent_id,child_id),CHECK(parent_id<>child_id)
+    );
+    CREATE INDEX IF NOT EXISTS family_links_child ON family_links(child_id,status);
+    CREATE TABLE IF NOT EXISTS family_codes (
+      token_hash TEXT PRIMARY KEY,parent_id TEXT NOT NULL REFERENCES users(id),expires_at INTEGER NOT NULL,claimed_at INTEGER
+    );
+    CREATE TABLE IF NOT EXISTS private_approvals (
+      child_id TEXT NOT NULL REFERENCES users(id),adult_id TEXT NOT NULL REFERENCES users(id),
+      status TEXT NOT NULL CHECK(status IN ('pending','approved','declined')),requested_by TEXT NOT NULL REFERENCES users(id),
+      reviewed_by TEXT REFERENCES users(id),created_at INTEGER NOT NULL,PRIMARY KEY(child_id,adult_id),CHECK(child_id<>adult_id)
+    );
+    CREATE TABLE IF NOT EXISTS private_message_readers (
+      message_id INTEGER NOT NULL REFERENCES private_messages(id) ON DELETE CASCADE,user_id TEXT NOT NULL REFERENCES users(id),
+      PRIMARY KEY(message_id,user_id)
+    );
+    CREATE TABLE IF NOT EXISTS private_guardian_copies (
+      message_id INTEGER NOT NULL REFERENCES private_messages(id) ON DELETE CASCADE,parent_id TEXT NOT NULL REFERENCES users(id),
+      ciphertext TEXT NOT NULL,shared_by TEXT NOT NULL REFERENCES users(id),signature TEXT NOT NULL,created_at INTEGER NOT NULL,
+      PRIMARY KEY(message_id,parent_id)
+    );
+    INSERT OR IGNORE INTO private_message_readers SELECT pm.id,c.user_low FROM private_messages pm JOIN private_conversations c ON c.id=pm.conversation_id;
+    INSERT OR IGNORE INTO private_message_readers SELECT pm.id,c.user_high FROM private_messages pm JOIN private_conversations c ON c.id=pm.conversation_id;
+  `);
   addColumn('invitations','requires_approval','INTEGER NOT NULL DEFAULT 0');
   db.exec("CREATE TRIGGER IF NOT EXISTS tree_request_joined AFTER INSERT ON community_members BEGIN UPDATE tree_join_requests SET status='approved' WHERE community_id=NEW.community_id AND user_id=NEW.user_id AND status='pending'; END;");
   // Existing Trees stay moderated when member creation is introduced.

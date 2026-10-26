@@ -1,6 +1,6 @@
 import {test,expect} from '@playwright/test';
 import {randomUUID} from 'node:crypto';
-async function register(context,name){const r=await context.request.post('/api/auth/register',{data:{username:`personal_${randomUUID().slice(0,8)}`,name,password:'Personal browser password!'}});expect(r.status()).toBe(201);return (await r.json()).user;}
+async function register(context,name){const r=await context.request.post('/api/auth/register',{data:{birth_date:'1990-01-01',username:`personal_${randomUUID().slice(0,8)}`,name,password:'Personal browser password!'}});expect(r.status()).toBe(201);return (await r.json()).user;}
 const tab=(page,name)=>page.getByRole('navigation',{name:'Main navigation',exact:true}).getByRole('button',{name,exact:true}).click();
 async function setup(page){const owner=await register(page.context(),'Tree owner');const tree=(await(await page.request.post('/api/communities',{data:{name:'Our congregation'}})).json()).community;const share=await(await page.request.post('/api/invitations',{data:{community_id:tree.id}})).json();await page.goto('/');return {owner,tree,share};}
 async function invitationBox(page,info){if(info.project.name!=='desktop')await page.getByRole('button',{name:'Open navigation',exact:true}).click();await page.locator('.sidebar').getByRole('button',{name:'Invitations',exact:true}).click();}

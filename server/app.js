@@ -23,6 +23,8 @@ import { getAvatar } from '../shared/avatars.js';
 import { installInvitations } from './invitations.js';
 import { installContacts } from './contacts.js';
 import { installPrivateMessages } from './private-messages.js';
+import { installFamily } from './family.js';
+import { birthDate } from '../shared/family.js';
 
 if (existsSync('.env')) process.loadEnvFile('.env');
 const SESSION_AGE = 30 * 86400 * 1000;
@@ -70,7 +72,8 @@ export function createApp(options = {}) {
     const earned = new Set(all('SELECT bird_id FROM bird_unlocks WHERE user_id=?', userId).map(b => b.bird_id));
     return BIRDS.filter(b => b.free || earned.has(b.id)).map(b => b.id);
   };
-  const publicUser = u => ({ has_password:!!u.password,has_google:!!u.google_id,recovery_email:u.email || null,recovery_email_verified:!!u.email_verified_at,pending_recovery_email:u.pending_email || null,id: u.id, username: u.username, name: u.name, avatar_id: u.avatar_id,
+  let family;
+  const publicUser = u => ({ family:family?.summary(u.id), has_password:!!u.password,has_google:!!u.google_id,recovery_email:u.email || null,recovery_email_verified:!!u.email_verified_at,pending_recovery_email:u.pending_email || null,id: u.id, username: u.username, name: u.name, avatar_id: u.avatar_id,
     bird_id: u.bird_id, avatar_choice:u.avatar_choice, avatar_style: u.avatar_style, unlocked_birds: unlockedBirds(u.id), last_community_id: u.last_community_id });
   const transaction = fn => {
     db.exec('BEGIN');
@@ -163,10 +166,11 @@ export function createApp(options = {}) {
     if(requestedEmail && !accountSecurity.enabled)fail(503,'Email delivery is awaiting setup. Create your account without an email, then add one in your profile later.');
     const password = req.body.password;
     if (typeof password !== 'string' || password.length < 8 || password.length > 128) fail(400, 'Use a password between 8 and 128 characters.');
+    let dob;try{dob=birthDate(req.body.birth_date);}catch(e){fail(400,e.message);}
     const hashed = await passwordHash(password);
     if (one('SELECT 1 FROM users WHERE username=?', username)) fail(409, 'That username is already taken.');
     const id = randomUUID();
-    run("INSERT INTO users(id,username,name,password,avatar_style) VALUES (?,?,?,?,'portrait')", id, username, name, hashed);
+    run("INSERT INTO users(id,username,name,password,avatar_style,birth_date) VALUES (?,?,?,?,'portrait',?)", id, username, name, hashed,dob);
     let emailNotice=null;if(requestedEmail){try{await accountSecurity.stage(one('SELECT * FROM users WHERE id=?',id),requestedEmail);emailNotice='Check your inbox to verify your recovery email.';}catch{emailNotice='Your account is ready, but the recovery email could not be sent. Try again in your profile.';}}
     res.status(201).json({ user: session(res, one('SELECT * FROM users WHERE id=?', id)),emailNotice });
   });
@@ -202,13 +206,19 @@ export function createApp(options = {}) {
     res.json({ ok: true });
   });
   app.use('/api', auth);
+  app.use('/api',(req,res,next)=>{
+    const setup=req.path==='/me'||req.path==='/events'||/^\/family(?:\/|$)/.test(req.path)||(/^\/e2ee\//.test(req.path)&&!/^\/e2ee\/(?:uploads|legacy)(?:\/|$)/.test(req.path));
+    if(setup)return next();
+    try{family.requireReady(req.user.id);next();}catch(e){next(e);}
+  });
   const encryption = installEncryption({app,db,uploadDir,enabled:encryptionRequired,transaction,refresh,refreshUser,group,membership,visibleCircle,testing:options.testing});
-  installContacts({app,db,transaction,refreshUser,testing:options.testing});
-  const privateMessages=installPrivateMessages({app,db,encryption,transaction,refreshUser,group,groupAdmin,testing:options.testing,notifyPrivate:(uid,id)=>{if(pushEnabled)for(const s of all('SELECT * FROM push_subscriptions WHERE user_id=?',uid))webPush.sendNotification(JSON.parse(s.subscription),JSON.stringify({title:'New private message on Churp',body:'You have a private message.',url:`/?conversation=${id}`}),{TTL:3600,timeout:10000,proxy:process.env.HTTPS_PROXY || process.env.https_proxy}).catch(()=>{});}});
+  family=installFamily({app,db,encryption,transaction,refreshUser,publicUser,testing:options.testing});
+  app.get('/api/me', (req,res)=>res.json({user:publicUser(req.user)}));
+  installContacts({app,db,transaction,refreshUser,family,testing:options.testing});
+  const privateMessages=installPrivateMessages({app,db,encryption,family,transaction,refreshUser,group,groupAdmin,testing:options.testing,notifyPrivate:(uid,id)=>{if(pushEnabled)for(const s of all('SELECT * FROM push_subscriptions WHERE user_id=?',uid))webPush.sendNotification(JSON.parse(s.subscription),JSON.stringify({title:'New private message on Churp',body:'You have a private message.',url:`/?conversation=${id}`}),{TTL:3600,timeout:10000,proxy:process.env.HTTPS_PROXY || process.env.https_proxy}).catch(()=>{});}});
   installPolls({app,db,encryption,encryptionRequired,visibleCircle,joined,groupAdmin,transaction,refresh,testing:options.testing});
   installRsvps({app,db,encryption,encryptionRequired,visibleCircle,joined,groupAdmin,transaction,refresh,testing:options.testing});
   const assignments=installAssignments({app,db,encryption,encryptionRequired,visibleCircle,joined,groupAdmin,transaction,refresh,testing:options.testing});
-  app.get('/api/me', (req, res) => res.json({ user: publicUser(req.user) }));
   app.post('/api/me/birds/unlock', rateLimit({ windowMs: 15 * 60 * 1000, limit: options.testing ? 1000 : 10,
     keyGenerator: req => req.user.id, message: { error: 'Too many code attempts. Please try again in 15 minutes.' } }), (req, res) => {
     if (typeof req.body.code !== 'string' || req.body.code.trim() !== (process.env.BIRD_UNLOCK_CODE || 'Churp')) fail(400, 'That code was not recognized. Please try again.');

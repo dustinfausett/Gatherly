@@ -6,7 +6,7 @@ const picture=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQ
 test('compact Tree home, Branch navigation, photos, and menu details', async ({ page, browser }, testInfo) => {
   const errors=[];page.on('pageerror',e=>errors.push(e.message));
   const suffix=randomUUID().slice(0,8);
-  expect((await page.request.post('/api/auth/register',{data:{username:`layout_${suffix}`,name:'Dustin',password:'test layout password'}})).ok()).toBeTruthy();
+  expect((await page.request.post('/api/auth/register',{data:{birth_date:'1990-01-01',username:`layout_${suffix}`,name:'Dustin',password:'test layout password'}})).ok()).toBeTruthy();
   const community=(await (await page.request.post('/api/communities',{data:{name:'Fausett Family',description:'The whole of the Fausett clan'}})).json()).community;
   const collection=(await (await page.request.post(`/api/communities/${community.id}/subcommunities`,{data:{name:'Family life'}})).json()).subcommunity;
   const nested=(await (await page.request.post(`/api/communities/${community.id}/circles`,{data:{name:'Family plans',subcommunity_id:collection.id,description:'This description should never appear in a chat row.'}})).json()).group;
@@ -78,7 +78,7 @@ test('compact Tree home, Branch navigation, photos, and menu details', async ({ 
 
   const guest=await browser.newContext({viewport:testInfo.project.use.viewport});
   try {
-    await guest.request.post('http://127.0.0.1:3100/api/auth/register',{data:{username:`member_${suffix}`,name:'Member',password:'test layout password'}});
+    await guest.request.post('http://127.0.0.1:3100/api/auth/register',{data:{birth_date:'1990-01-01',username:`member_${suffix}`,name:'Member',password:'test layout password'}});
     const invite=(await (await page.request.post('/api/invitations',{data:{community_id:community.id}})).json()).path.split('invite=')[1];
     await guest.request.post('http://127.0.0.1:3100/api/invitations/accept',{data:{token:invite}});
     const gp=await guest.newPage();await gp.goto('http://127.0.0.1:3100/');

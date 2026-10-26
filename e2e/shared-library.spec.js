@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 
 test('header Nest opens the encrypted shared library with newest-first pictures, downloads and polls', async ({ page }, info) => {
   const errors=[]; page.on('pageerror',e=>errors.push(e.message));
-  await page.request.post('/api/auth/register',{data:{username:`library_${randomUUID().slice(0,8)}`,name:'Library owner',password:'Shared library fixture!'}});
+  await page.request.post('/api/auth/register',{data:{birth_date:'1990-01-01',username:`library_${randomUUID().slice(0,8)}`,name:'Library owner',password:'Shared library fixture!'}});
   const tree=(await (await page.request.post('/api/communities',{data:{name:'Our library Tree'}})).json()).community;
   const nest=(await (await page.request.post(`/api/communities/${tree.id}/circles`,{data:{name:'Family memories'}})).json()).group;
   await page.goto(`/?community=${tree.id}&group=${nest.id}`);

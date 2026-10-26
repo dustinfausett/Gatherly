@@ -3,6 +3,7 @@ import { Asterisk, ArrowRight, BellOff, Check, ChevronDown, ChevronRight, Info, 
 import { api, patch, post } from './api';
 import { Avatar, Logo, Toast } from './components';
 import Auth from './Auth';
+import {FamilyGate} from './Family';
 import { AccountLink } from './AccountSecurity';
 import { InvitationIcon } from './Invitations';
 import Contacts,{NavigationArt} from './Contacts';
@@ -54,7 +55,10 @@ export default function App() {
     let active = true;
     (async () => {
       try {
-        const [list, account, inbox, privateList] = await Promise.all([api('/communities'),api('/me'),api('/invitations'),api('/private/conversations')]);
+        const account=await api('/me');
+        if(!active)return;setUser(account.user);
+        if(account.user.family?.needs_setup)return;
+        const [list, inbox, privateList] = await Promise.all([api('/communities'),api('/invitations'),api('/private/conversations')]);
         if (!active) return;
         setCommunities(list.communities); setUser(account.user); setInvitationCount(inbox.invitations.length+(inbox.join_request_count||0));setPrivateUnread(privateList.conversations.reduce((n,c)=>n+c.unread,0));
         let cid = view.cid;
@@ -69,7 +73,7 @@ export default function App() {
       } catch (err) { if (active) { if (err.status === 401) setUser(null); else setError(err.message); } }
     })();
     return () => { active = false; };
-  }, [user?.id, view.cid, version]);
+  }, [user?.id, user?.family?.needs_setup, view.cid, version]);
   useEffect(() => {
     if (!user) return;
     const events = new EventSource('/api/events');
@@ -147,7 +151,7 @@ export default function App() {
   if (!user && error) return <div className="boot-screen"><Logo /><p className="error-banner">{error}</p><button className="button primary" onClick={boot}>Try again</button></div>;
   if(accountAction)return <AccountLink action={accountAction} onDone={async reset=>{setAccountAction(null);if(reset)setUser(null);await boot();}}/>;
   if (!user) return <Auth config={config} onLogin={(u,notice) => { if(notice)notify(notice);setUser(u); setView({ cid: u.last_community_id, gid: null }); }} />;
-  return <EncryptionGate key={user.id} user={user} required={!!config.encryptionRequired} onLogout={logout}><div className={`app phase-one ${tab==='tree'&&group ? 'showing-chat' : ''} ${journey ? 'bird-in-transit' : ''}`} style={{'--nest-entry-duration':`${NEST_MOTION.slide}ms`}}>
+  return <EncryptionGate key={user.id} user={user} required={!!config.encryptionRequired} onLogout={logout}><FamilyGate user={user} onUser={setUser} onLogout={logout}><div className={`app phase-one ${tab==='tree'&&group ? 'showing-chat' : ''} ${journey ? 'bird-in-transit' : ''}`} style={{'--nest-entry-duration':`${NEST_MOTION.slide}ms`}}>
     <header className="topbar"><div className="brand-zone"><button className="icon-button mobile-only" aria-label="Open navigation" onClick={() => setMobileNav(true)}><Menu size={22} /></button><span className={community&&tab==='tree' ? 'desktop-logo' : ''}><Logo /></span>{community&&tab==='tree' && <div className="mobile-community-switcher" ref={mobileSwitcherRef}>
         <button className="mobile-community-button" aria-label="My Orchard" aria-expanded={mobileSwitcher} onClick={() => setMobileSwitcher(!mobileSwitcher)}><Avatar name={community.name} id={community.avatar_id} size={30} square /><span><strong>{community.name}</strong><small>YOUR TREE</small></span><ChevronDown size={13} /></button>
         {mobileSwitcher && <div className="switcher-menu"><div className="menu-label">My Orchard</div>{communities.map(c => <button className="switcher-item" key={c.id} onClick={() => chooseCommunity(c.id)}><Avatar name={c.name} id={c.avatar_id} size={30} square /><span>{c.name}</span>{view.cid === c.id && <Check size={15} />}</button>)}<div className="menu-divider" /><button onClick={() => { setMobileSwitcher(false); setModal({ kind: 'space', type: 'community' }); }}><Plus size={16} />Create a Tree</button><button onClick={() => { setMobileSwitcher(false); setModal({ kind: 'join' }); }}><InvitationIcon/>Invitations</button></div>}
@@ -170,7 +174,7 @@ export default function App() {
     {modal?.kind === 'profile' && <ProfileDialog user={user} config={config} onClose={() => setModal(null)} onSave={async body => { setUser((await patch('/me',body)).user); await reload(); }} onAccountUpdate={setUser} onLogout={logout} notify={notify} />}
     {modal?.kind === 'members' && community && <MembersDialog community={community} user={user} onClose={() => setModal(null)} onRefresh={reload} notify={notify} />}
     {modal?.kind === 'creation-requests' && community && <CreationRequests community={community} version={version} onClose={()=>setModal(null)} onRefresh={reload} notify={notify}/> }
-  </div></EncryptionGate>;
+  </div></FamilyGate></EncryptionGate>;
 }
 
 function Welcome({ user, onModal }) {

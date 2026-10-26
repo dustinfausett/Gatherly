@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import * as enc from '../shared/encryption.js';
 
 const password='encrypted browser fixture password';
-async function register(context,name){const username=`secure_${randomUUID().slice(0,8)}`;const r=await context.request.post('/api/auth/register',{data:{username,name,password}});expect(r.status()).toBe(201);return {...(await r.json()).user,username};}
+async function register(context,name){const username=`secure_${randomUUID().slice(0,8)}`;const r=await context.request.post('/api/auth/register',{data:{birth_date:'1990-01-01',username,name,password}});expect(r.status()).toBe(201);return {...(await r.json()).user,username};}
 async function setup(page){
   await page.goto('/');await page.getByRole('button',{name:'Edit your profile',exact:true}).click();await page.getByRole('button',{name:'Security',exact:true}).click();
   await page.getByRole('button',{name:'Use self-managed keys',exact:true}).click();

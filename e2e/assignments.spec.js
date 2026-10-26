@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 
 test('shared assignments support optional member additions, live claiming and completion, editing and the Nest library',async({page,browser},info)=>{
   const errors=[],writes=[];const listen=p=>{p.on('pageerror',e=>errors.push(e.message));p.on('request',r=>{if(r.method()==='POST' && /\/api\/(groups\/.*\/messages|messages\/.*\/assignments\/operations)/.test(r.url()))writes.push(r.postData() || '');});};listen(page);
-  const register=async(ctx,name)=>{const r=await ctx.request.post('/api/auth/register',{data:{username:`assign_${randomUUID().slice(0,8)}`,name,password:'Shared assignments browser!'}});expect(r.status()).toBe(201);return(await r.json()).user;};
+  const register=async(ctx,name)=>{const r=await ctx.request.post('/api/auth/register',{data:{birth_date:'1990-01-01',username:`assign_${randomUUID().slice(0,8)}`,name,password:'Shared assignments browser!'}});expect(r.status()).toBe(201);return(await r.json()).user;};
   await register(page.context(),'Organizer');const tree=(await(await page.request.post('/api/communities',{data:{name:'Birthday Tree'}})).json()).community;
   const nest=(await(await page.request.post(`/api/communities/${tree.id}/circles`,{data:{name:'Party preparations',admin_only:true}})).json()).group;
   const invite=(await(await page.request.post('/api/invitations',{data:{community_id:tree.id}})).json()).path.split('invite=')[1];

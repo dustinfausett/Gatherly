@@ -1,7 +1,7 @@
 import {test,expect} from '@playwright/test';
 import {randomUUID} from 'node:crypto';
 
-async function register(context,name){const r=await context.request.post('/api/auth/register',{data:{username:`invite_${randomUUID().slice(0,8)}`,name,password:'Invitation browser password!'}});expect(r.status()).toBe(201);return (await r.json()).user;}
+async function register(context,name){const r=await context.request.post('/api/auth/register',{data:{birth_date:'1990-01-01',username:`invite_${randomUUID().slice(0,8)}`,name,password:'Invitation browser password!'}});expect(r.status()).toBe(201);return (await r.json()).user;}
 async function navigation(page,info){if(info.project.name!=='desktop')await page.getByRole('button',{name:'Open navigation',exact:true}).click();}
 
 test('Nest member invitations arrive live, require acceptance and preserve private history',async({page,browser},info)=>{

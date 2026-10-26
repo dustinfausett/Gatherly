@@ -7,7 +7,7 @@ test('encrypted multi-question poll opens a ballot and saves eggs in choice bask
   const listen = p => p.on('request', r => { if (r.method() === 'POST' && /\/api\/(groups\/.*\/messages|messages\/.*\/poll\/vote)/.test(r.url())) writes.push(r.postData() || ''); });
   listen(page);
   async function register(context, name) {
-    const response = await context.request.post('/api/auth/register', { data: { username: `poll_${randomUUID().slice(0, 8)}`, name, password: 'Poll browser password!' } });
+    const response = await context.request.post('/api/auth/register', { data: {birth_date:'1990-01-01', username: `poll_${randomUUID().slice(0, 8)}`, name, password: 'Poll browser password!' } });
     expect(response.status()).toBe(201); return (await response.json()).user;
   }
   await register(page.context(), 'Organizer');

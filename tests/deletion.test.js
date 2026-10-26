@@ -19,7 +19,7 @@ test('admin deletion respects scope, preserves Branch chats, and removes deleted
     return {status:r.status,data,cookie:r.headers.get('set-cookie')?.split(';')[0]};
   }
   async function ok(...args){const r=await req(...args);assert.ok(r.status<300,JSON.stringify(r.data));return r.data;}
-  async function register(username){const r=await req('/auth/register',null,'POST',{username,name:username,password:'deletion test password'});assert.equal(r.status,201);return {...r.data.user,cookie:r.cookie};}
+  async function register(username){const r=await req('/auth/register',null,'POST',{birth_date:'1990-01-01',username,name:username,password:'deletion test password'});assert.equal(r.status,201);return {...r.data.user,cookie:r.cookie};}
   const owner=await register('owner'),branchAdmin=await register('branchadmin'),nestAdmin=await register('nestadmin'),member=await register('member'),outsider=await register('outsider');
   const cid=(await ok('/communities',owner,'POST',{name:'Home'})).community.id;
   const invite=(await ok('/invitations',owner,'POST',{community_id:cid})).path.split('invite=')[1];

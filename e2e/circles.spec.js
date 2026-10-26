@@ -22,7 +22,7 @@ async function swipe(page, locator, direction, mobile) {
 test('Nest inbox supports personal pins, unread swipes, urgency, and one-tap muting', async ({ page, browser }, testInfo) => {
   const errors=[];page.on('pageerror',e=>errors.push(e.message));
   const suffix=randomUUID().slice(0,8);
-  const registered=await page.request.post('/api/auth/register',{data:{username:`inbox_${suffix}`,name:'Sam Taylor',password:'test nest password'}});
+  const registered=await page.request.post('/api/auth/register',{data:{birth_date:'1990-01-01',username:`inbox_${suffix}`,name:'Sam Taylor',password:'test nest password'}});
   expect(registered.ok()).toBeTruthy();
   const community=(await (await page.request.post('/api/communities',{data:{name:'Our Tree'}})).json()).community;
   const create=async name => (await (await page.request.post(`/api/communities/${community.id}/circles`,{data:{name}})).json()).group;
@@ -63,7 +63,7 @@ test('Nest inbox supports personal pins, unread swipes, urgency, and one-tap mut
 
   const other=await browser.newContext();
   try {
-    await other.request.post('http://127.0.0.1:3100/api/auth/register',{data:{username:`guest_${suffix}`,name:'Jamie',password:'test nest password'}});
+    await other.request.post('http://127.0.0.1:3100/api/auth/register',{data:{birth_date:'1990-01-01',username:`guest_${suffix}`,name:'Jamie',password:'test nest password'}});
     const invite=(await (await page.request.post('/api/invitations',{data:{community_id:community.id}})).json()).path.split('invite=')[1];
     await other.request.post('http://127.0.0.1:3100/api/invitations/accept',{data:{token:invite}});
     await other.request.post(`http://127.0.0.1:3100/api/groups/${delta.id}/join`);

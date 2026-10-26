@@ -54,3 +54,7 @@ Old Railway snapshots, exported files, downloaded copies, and `gatherly.sqlite.b
 `npm run check` runs the production build and server tests. `npm run test:e2e:encryption` exercises managed sign-in, opt-in, recovery, transfers, changed identities, real ciphertext and files, history conversion, join boundaries, and live shield changes on desktop, iPhone-sized, and Android-sized Chromium. These are emulations, not actual Safari or system-push tests. `tests/container-smoke.mjs` checks HTTPS/proxy handling, the production CSP, encrypted files, and persistent data across container replacement.
 
 Older layout/administration regression tests explicitly use a legacy plaintext test fixture. It requires `testing: true` and is rejected in production; it is not a deployment downgrade flag. OpenPGP source and licenses are listed in [the public notice](../public/legal/openpgp/NOTICE.txt).
+
+## Parent-supervised direct messages
+
+Protected accounts under 18 require linked parents. New direct messages include active parents as encryption readers; Nest audiences do not change. Earlier direct messages are shared by wrapping the original signed message session key on the child’s unlocked device, without exporting the child’s private identity keys. Parents receive read-only access while linked and while the child is under 18. See [YOUTH-PROTECTION.md](YOUTH-PROTECTION.md) for setup, approval rules, migration, disclosure and limits.

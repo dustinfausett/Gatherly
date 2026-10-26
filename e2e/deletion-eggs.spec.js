@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto';
 test('admin deletion, themed icons and live unread egg arrivals',async({page,browser},info)=>{
   const errors=[];page.on('pageerror',e=>errors.push(e.message));
   const suffix=randomUUID().slice(0,8);
-  expect((await page.request.post('/api/auth/register',{data:{username:`eggs_${suffix}`,name:'Tree admin',password:'deletion browser password'}})).status()).toBe(201);
+  expect((await page.request.post('/api/auth/register',{data:{birth_date:'1990-01-01',username:`eggs_${suffix}`,name:'Tree admin',password:'deletion browser password'}})).status()).toBe(201);
   const tree=(await (await page.request.post('/api/communities',{data:{name:'Our family'}})).json()).community;
   const branch=(await (await page.request.post(`/api/communities/${tree.id}/subcommunities`,{data:{name:'Family life'}})).json()).subcommunity;
   const nest=(await (await page.request.post(`/api/communities/${tree.id}/circles`,{data:{name:'Daily news',subcommunity_id:branch.id}})).json()).group;
@@ -12,7 +12,7 @@ test('admin deletion, themed icons and live unread egg arrivals',async({page,bro
   const invite=(await (await page.request.post('/api/invitations',{data:{community_id:tree.id}})).json()).path.split('invite=')[1];
   const guest=await browser.newContext({viewport:info.project.use.viewport,baseURL:'http://127.0.0.1:3100'});
   try{
-    expect((await guest.request.post('/api/auth/register',{data:{username:`egg_guest_${suffix}`,name:'A member',password:'deletion browser password'}})).status()).toBe(201);
+    expect((await guest.request.post('/api/auth/register',{data:{birth_date:'1990-01-01',username:`egg_guest_${suffix}`,name:'A member',password:'deletion browser password'}})).status()).toBe(201);
     await guest.request.post('/api/invitations/accept',{data:{token:invite}});
     await guest.request.post(`/api/groups/${nest.id}/join`);
     const gp=await guest.newPage();gp.on('pageerror',e=>errors.push(e.message));

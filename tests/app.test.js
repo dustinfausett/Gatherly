@@ -19,7 +19,7 @@ test('real accounts, scoped permissions, messaging, and durable storage', async 
     return { status: response.status, data, response };
   }
   async function ok(path, actor, method, body) { const r = await request(path,actor,method,body); assert.ok(r.status < 300, `${method || 'GET'} ${path}: ${JSON.stringify(r.data)}`); return r.data; }
-  async function register(username) { const r = await request('/auth/register',null,'POST',{ username, name: username, password: 'correct horse battery' }); assert.equal(r.status,201); return { ...r.data.user, cookie: r.response.headers.get('set-cookie').split(';')[0] }; }
+  async function register(username) { const r = await request('/auth/register',null,'POST',{birth_date:'1990-01-01', username, name: username, password: 'correct horse battery' }); assert.equal(r.status,201); return { ...r.data.user, cookie: r.response.headers.get('set-cookie').split(';')[0] }; }
   let owner, alice, bob, stranger, cid, sid, gid, privateId, secondSub, communityInvite, groupInvite, messageId, fileId;
   t.after(async () => { runtime.close(); await new Promise(r => server.close(r)); rmSync(dir, { recursive: true, force: true }); });
 
@@ -27,7 +27,7 @@ test('real accounts, scoped permissions, messaging, and durable storage', async 
     owner = await register('owner'); alice = await register('alice'); bob = await register('bob'); stranger = await register('stranger');
     assert.equal((await request('/me')).status,401);
     assert.equal((await request('/auth/login',null,'POST',{ username: 'owner', password: 'wrong' })).status,401);
-    assert.equal((await request('/auth/register',null,'POST',{ username: 'owner', name: 'duplicate', password: 'long enough' })).status,409);
+    assert.equal((await request('/auth/register',null,'POST',{birth_date:'1990-01-01', username: 'owner', name: 'duplicate', password: 'long enough' })).status,409);
     const login = await request('/auth/login',null,'POST',{ username: 'OWNER', password: 'correct horse battery' });
     assert.equal(login.status,200); assert.match(login.response.headers.get('set-cookie'), /HttpOnly/);
     assert.equal((await ok('/me',owner)).user.id,owner.id);

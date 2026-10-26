@@ -63,7 +63,7 @@ test('standalone Circles, personal preferences, urgency, and scoped administrati
     return { status:res.status, data:await res.json(), cookie:res.headers.get('set-cookie')?.split(';')[0] };
   }
   async function ok(...args) { const r=await req(...args); assert.ok(r.status<300,JSON.stringify(r.data)); return r.data; }
-  async function register(username) { const r=await req('/auth/register',null,'POST',{username,name:username,password:'a secure test password'}); assert.equal(r.status,201); return {...r.data.user,cookie:r.cookie}; }
+  async function register(username) { const r=await req('/auth/register',null,'POST',{birth_date:'1990-01-01',username,name:username,password:'a secure test password'}); assert.equal(r.status,201); return {...r.data.user,cookie:r.cookie}; }
   const owner=await register('owner'), member=await register('member'), scoped=await register('scoped');
   const cid=(await ok('/communities',owner,'POST',{name:'Home'})).community.id;
   const otherCid=(await ok('/communities',owner,'POST',{name:'Elsewhere'})).community.id;

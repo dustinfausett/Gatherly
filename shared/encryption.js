@@ -102,3 +102,38 @@ export async function validateEncryptedFile(data) {
 export const enrollmentPayload = ({userId,publicKey,backupHash,deviceId,deviceName}) => ({userId,publicKey,backupHash,deviceId,deviceName});
 export const sendPayload = ({groupId,clientId,rosterHash,cipherHash,files,replyTo}) => ({groupId,clientId,rosterHash,cipherHash,files,replyTo:replyTo ?? null});
 export const editPayload = ({messageId,expectedVersion,...message}) => ({messageId,expectedVersion,...sendPayload(message)});
+
+// Share access to a signed historical message without changing its encrypted
+// contents or disclosing an account private key (which would expose Nest chats).
+export async function rewrap(privateKeys, publicKey, ciphertext) {
+  let sessions;
+  for (const key of privateKeys) {
+    // OpenPGP may consume packet streams even when a key attempt fails.
+    // Each archived identity must get a fresh message, as in open().
+    try {const candidate=await pgp.readMessage({binaryMessage:fromBase64(ciphertext),config});sessions=await pgp.decryptSessionKeys({message:candidate,decryptionKeys:key,config});if(sessions.length)break;} catch { /* Try archived identity. */ }
+  }
+  const message=await pgp.readMessage({binaryMessage:fromBase64(ciphertext),config});
+  if(!sessions?.length)throw new Error('An earlier message needs its original encryption key. Restore that key to continue.');
+  const session = sessions[0];
+  // SEIPDv2 stores its symmetric algorithm in the authenticated data packet.
+  const encrypted = message.packets.find(p=>[18,20].includes(p.constructor.tag));
+  const keyMessage = await pgp.encryptSessionKey({data:session.data,algorithm:session.algorithm || pgp.enums.read(pgp.enums.symmetric,encrypted.cipherAlgorithm),encryptionKeys:await readPublic(publicKey),format:'object',config});
+  const packets = new pgp.PacketList();
+  packets.push(...keyMessage.packets,...message.packets.filter(p=>[18,20].includes(p.constructor.tag)));
+  return toBase64(await binaryBytes(new pgp.Message(packets).write()));
+}
+export async function encryptedContentsHash(ciphertext) {
+  const message = await pgp.readMessage({binaryMessage:fromBase64(ciphertext),config});
+  const packets = new pgp.PacketList();
+  packets.push(...message.packets.filter(p=>[18,20].includes(p.constructor.tag)));
+  if(packets.length!==1)throw new Error('One authenticated encrypted payload is required.');
+  return digest(await binaryBytes(packets.write()));
+}
+
+async function binaryBytes(value) {
+  const data=await value;
+  if(data instanceof Uint8Array)return data;
+  const reader=data.getReader(),chunks=[];let size=0;
+  while(true){const {done,value}=await reader.read();if(done)break;size+=value.length;if(size>MESSAGE_LIMIT)throw new Error('Encrypted payload is too large.');chunks.push(value);}
+  const bytes=new Uint8Array(size);let offset=0;for(const chunk of chunks){bytes.set(chunk,offset);offset+=chunk.length;}return bytes;
+}

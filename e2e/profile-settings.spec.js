@@ -3,14 +3,14 @@ import {randomUUID} from 'node:crypto';
 
 test('compact settings separates avatars, pets, account security and notifications',async({page},info)=>{
  const errors=[];page.on('pageerror',e=>errors.push(e.message));
- await page.request.post('/api/auth/register',{data:{username:`profile_${randomUUID().slice(0,8)}`,name:'Bird friend',password:'Separate avatars and pets!'}});
+ await page.request.post('/api/auth/register',{data:{birth_date:'1990-01-01',username:`profile_${randomUUID().slice(0,8)}`,name:'Bird friend',password:'Separate avatars and pets!'}});
  const tree=(await(await page.request.post('/api/communities',{data:{name:'Our Tree'}})).json()).community;
  const nest=(await(await page.request.post(`/api/communities/${tree.id}/circles`,{data:{name:'Hello birds'}})).json()).group;
  await page.goto('/');
  const settings=async()=>{await page.getByRole('button',{name:'Edit your profile',exact:true}).click();};
  const back=()=>page.getByRole('button',{name:'Back to your settings',exact:true}).click();
  await settings();
- const dialog=page.getByRole('dialog');await expect(dialog.locator('.settings-menu>button')).toHaveCount(5);await expect(dialog.getByRole('radio')).toHaveCount(0);await expect(dialog.getByRole('textbox')).toHaveCount(0);await expect(dialog.locator('.encryption-settings')).toHaveCount(0);
+ const dialog=page.getByRole('dialog');await expect(dialog.locator('.settings-menu>button')).toHaveCount(6);await expect(dialog.getByRole('radio')).toHaveCount(0);await expect(dialog.getByRole('textbox')).toHaveCount(0);await expect(dialog.locator('.encryption-settings')).toHaveCount(0);
  await page.screenshot({path:info.outputPath('settings-menu.png'),fullPage:true});
  await dialog.getByRole('button',{name:'Profile & avatar',exact:true}).click();
  await expect(dialog.getByRole('radio')).toHaveCount(20);await expect(dialog.getByRole('radio',{name:'Parrot',exact:true})).toBeEnabled();await expect(dialog.getByRole('radio',{name:'Bluebird',exact:true})).toBeChecked();

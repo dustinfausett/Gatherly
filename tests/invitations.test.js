@@ -15,7 +15,7 @@ async function fixture(t){
  await start();t.after(async()=>{await stop();rmSync(dir,{recursive:true,force:true});});
  async function req(path,actor,method='GET',body){const r=await fetch(base+path,{method,headers:{...(actor?{cookie:actor.cookie}:{}),...(body?{'content-type':'application/json'}:{})},body:body?JSON.stringify(body):undefined});return {status:r.status,data:await r.json(),cookie:r.headers.get('set-cookie')?.split(';')[0]};}
  async function ok(...args){const r=await req(...args);assert.ok(r.status<300,JSON.stringify(r.data));return r.data;}
- async function actor(name){const r=await req('/auth/register',null,'POST',{username:name,name,password:'Invitation fixture password!'});return {...r.data.user,cookie:r.cookie};}
+ async function actor(name){const r=await req('/auth/register',null,'POST',{birth_date:'1990-01-01',username:name,name,password:'Invitation fixture password!'});return {...r.data.user,cookie:r.cookie};}
  const owner=await actor('owner'),member=await actor('member'),second=await actor('second'),outsider=await actor('outsider');
  const tree=(await ok('/communities',owner,'POST',{name:'Family Tree'})).community;
  const shared=await ok('/invitations',owner,'POST',{community_id:tree.id});for(const a of [member,second])await ok('/invitations/accept',a,'POST',{token:shared.code});

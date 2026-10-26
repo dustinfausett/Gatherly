@@ -267,3 +267,22 @@ export async function decryptPrivate(conversationId,messages){
   return {...m,body:value.body,files:value.attachments};
  }catch{return {...m,body:'This private message could not be decrypted or verified.',files:[],decryptionError:true};}}));
 }
+
+export async function shareGuardianHistory(onProgress=()=>{}) {
+  const self=getCurrent();
+  while(true){
+    const batch=await api('/family/history');onProgress(batch.remaining);
+    if(!batch.messages.length){if(batch.remaining)throw new Error('Family links changed. Reload setup and try again.');return;}
+    for(const message of batch.messages){
+      const [verified]=await decryptPrivate(message.conversation_id,[message]);
+      if(verified.decryptionError)throw new Error('An earlier direct message could not be unlocked. Restore the original key on this device before continuing.');
+      for(const parentId of message.missing){
+        const parent=batch.parents.find(p=>p.id===parentId);if(!parent)throw new Error('Parent link changed. Try again.');
+        await trustedReader(parent);
+        const ciphertext=await enc.rewrap([self.privateKey,...self.previousPrivateKeys],parent.public_key,message.ciphertext);
+        const proof={messageId:message.id,parentId,linkId:parent.link_id,originalHash:await enc.digest(message.ciphertext),copyHash:await enc.digest(ciphertext)};
+        await post(`/family/history/${message.id}`,{parent_id:parentId,link_id:parent.link_id,ciphertext,signature:await enc.sign(self.privateKey,'guardian-history',proof)});
+      }
+    }
+  }
+}

@@ -10,13 +10,13 @@ async function openRequests(page,project){
 test('members request Branches and Nests; admins review and configure immediate creation',async({page,browser},info)=>{
   const errors=[];page.on('pageerror',e=>errors.push(e.message));
   const suffix=randomUUID().slice(0,8);
-  await page.request.post('/api/auth/register',{data:{username:`reviewer_${suffix}`,name:'Tree admin',password:'approval browser password'}});
+  await page.request.post('/api/auth/register',{data:{birth_date:'1990-01-01',username:`reviewer_${suffix}`,name:'Tree admin',password:'approval browser password'}});
   const tree=(await (await page.request.post('/api/communities',{data:{name:'The test Tree'}})).json()).community;
   const branch=(await (await page.request.post(`/api/communities/${tree.id}/subcommunities`,{data:{name:'Family branch'}})).json()).subcommunity;
   const invite=(await (await page.request.post('/api/invitations',{data:{community_id:tree.id}})).json()).path.split('invite=')[1];
   const guest=await browser.newContext({...info.project.use,baseURL:'http://127.0.0.1:3100'});
   try{
-    await guest.request.post('/api/auth/register',{data:{username:`requester_${suffix}`,name:'A member',password:'approval browser password'}});
+    await guest.request.post('/api/auth/register',{data:{birth_date:'1990-01-01',username:`requester_${suffix}`,name:'A member',password:'approval browser password'}});
     await guest.request.post('/api/invitations/accept',{data:{token:invite}});
     const gp=await guest.newPage();gp.on('pageerror',e=>errors.push(e.message));await gp.goto('/');await page.goto('/');
     await expect(gp.locator('.topbar').getByRole('button',{name:/^Notifications/})).toHaveCount(0);
@@ -76,7 +76,7 @@ test('members request Branches and Nests; admins review and configure immediate 
 test('Nest feedback, bird flight, keyboard return and reduced motion',async({page},info)=>{
   const errors=[];page.on('pageerror',e=>errors.push(e.message));
   const suffix=randomUUID().slice(0,8);
-  await page.request.post('/api/auth/register',{data:{username:`motion_${suffix}`,name:'Bird watcher',password:'bird journey password'}});
+  await page.request.post('/api/auth/register',{data:{birth_date:'1990-01-01',username:`motion_${suffix}`,name:'Bird watcher',password:'bird journey password'}});
   const tree=(await (await page.request.post('/api/communities',{data:{name:'The Birdwatchers'}})).json()).community;
   await page.request.post(`/api/communities/${tree.id}/subcommunities`,{data:{name:'Planning'}});
   const nest=(await (await page.request.post(`/api/communities/${tree.id}/circles`,{data:{name:'Morning songs'}})).json()).group;

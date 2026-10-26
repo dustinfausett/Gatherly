@@ -10,7 +10,7 @@ if(process.env.CHURP_DEMO_SEED!=='1'||!dir||!resolve(dir).startsWith('/tmp/churp
 if(existsSync(join(dir,'gatherly.sqlite')))throw new Error('Choose a new demo directory. Existing databases are never modified.');
 mkdirSync(join(dir,'uploads'),{recursive:true});const db=openDatabase(join(dir,'gatherly.sqlite')),hashed=await passwordHash('Churp demo only!'),owner=randomUUID(),tree=randomUUID(),people=[owner,...Array.from({length:299},()=>randomUUID())];
 db.exec('BEGIN');try{
- people.forEach((id,index)=>db.prepare("INSERT INTO users(id,username,name,password,avatar_style,avatar_choice) VALUES (?,?,?,?,'portrait',?)").run(id,index?'demo_member_'+String(index).padStart(3,'0'):'demo_owner',index?'Fictional Member '+String(index).padStart(3,'0'):'Fictional Demo Owner',hashed,['blue','gold','pink','owl'][index%4]));
+ people.forEach((id,index)=>db.prepare("INSERT INTO users(id,username,name,password,avatar_style,avatar_choice,birth_date) VALUES (?,?,?,?,'portrait',?,'1990-01-01')").run(id,index?'demo_member_'+String(index).padStart(3,'0'):'demo_owner',index?'Fictional Member '+String(index).padStart(3,'0'):'Fictional Demo Owner',hashed,['blue','gold','pink','owl'][index%4]));
  db.prepare('INSERT INTO communities(id,name,description,owner_id) VALUES (?,?,?,?)').run(tree,'Fictional Meadow Congregation','Fictional 300-person pilot. No real personal data or SMS.',owner);
  people.forEach((id,i)=>{db.prepare('INSERT INTO community_members VALUES (?,?,?)').run(tree,id,i===0?'owner':i<4?'admin':'member');db.prepare('UPDATE users SET last_community_id=? WHERE id=?').run(tree,id);});
  for(const [index,name] of ['Youth','Families','Service','Music'].entries()){

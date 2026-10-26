@@ -1,9 +1,10 @@
 import React,{useEffect,useRef,useState} from 'react';
-import { ArrowLeft,Bell,BellOff,Check,ChevronRight,LogOut,Settings2,ShieldCheck,UserRound } from 'lucide-react';
+import { ArrowLeft,Bell,BellOff,Check,ChevronRight,LogOut,Settings2,ShieldCheck,UserRound,Users } from 'lucide-react';
 import { Avatar,AvatarEditor,Field,Form,Modal } from './components';
 import AvatarPortrait from './AvatarPortrait';
 import BirdPicker from './BirdPicker';
 import { Bird } from './BirdJourney';
+import {FamilySettings} from './Family';
 import { AccountSecuritySettings } from './AccountSecurity';
 import { EncryptionSettings } from './encryption/EncryptionGate';
 import { AVATARS } from '../shared/avatars';
@@ -14,6 +15,7 @@ import './profile-settings.css';
 const sections=[
   {id:'profile',title:'Profile & avatar',description:'Your name and profile picture',icon:UserRound},
   {id:'pet',title:'My pet',description:'Your companion in every Tree',icon:null},
+  {id:'family',title:'Family & youth protection',description:'Linked parents and adult message approvals',icon:Users},
   {id:'account',title:'Account settings',description:'Password and recovery email',icon:Settings2},
   {id:'security',title:'Security',description:'Message privacy, E2EE and recovery keys',icon:ShieldCheck},
   {id:'notifications',title:'Notifications',description:'Alerts on this device',icon:Bell},
@@ -29,11 +31,12 @@ export default function ProfileSettings({user,config,onClose,onSave,onAccountUpd
         {section==='profile' && <ProfileScreen user={user} onSave={onSave} onDone={onClose} notify={notify}/>}
         {section==='pet' && <PetScreen user={user} onSave={onSave} onAccountUpdate={onAccountUpdate} onDone={onClose} notify={notify}/>}
         {section==='account' && <><div className="settings-account-id"><span>Signed in as</span><strong>@{user.username}</strong></div><AccountSecuritySettings user={user} config={config} onAccountUpdate={onAccountUpdate}/></>}
+        {section==='family' && <FamilySettings user={user}/>}
         {section==='security' && <><p className="settings-intro">Choose who manages your message keys and how you recover encrypted conversations.</p>{config.encryptionRequired?<EncryptionSettings/>:<p className="info-banner">Encrypted messaging is not enabled in this environment.</p>}</>}
         {section==='notifications' && <NotificationScreen config={config}/>}
       </>:<>
         <div className="settings-person"><Avatar name={user.name} id={user.avatar_id} portrait={user.avatar_style!=='photo' ? user.avatar_choice || 'blue' : undefined} size={64}/><div><strong>{user.name}</strong><span>@{user.username}</span></div></div>
-        <nav className="settings-menu" aria-label="Your settings">{sections.map(({id,title,description,icon:Icon})=><button key={id} type="button" aria-label={title} onClick={()=>setSection(id)}><span className={`settings-menu-icon ${id==='pet' ? 'pet-menu-icon' : ''}`}>{Icon?<Icon size={22}/>:<Bird birdId={user.bird_id}/>}</span><span><strong>{title}</strong><small>{description}</small></span><ChevronRight size={18}/></button>)}</nav>
+        <nav className="settings-menu" aria-label="Your settings">{sections.map(({id,title,description,icon:Icon})=><button key={id} type="button" aria-label={title} onClick={()=>setSection(id)}><span className={`settings-menu-icon ${id==='pet' ? 'pet-menu-icon' : ''}`}>{Icon?<Icon size={22}/>:<Bird birdId={user.bird_id}/>}</span><span><strong>{title}{id==='family'&&user.family?.pending_reviews>0?` (${user.family.pending_reviews})`:null}</strong><small>{description}</small></span><ChevronRight size={18}/></button>)}</nav>
         <button className="text-button danger settings-sign-out" onClick={onLogout}><LogOut size={17}/>Sign out of Churp</button>
       </>}
     </div>
