@@ -80,6 +80,8 @@ The Tree banner places your selected bird and branch immediately after the Tree 
 
 ## Profile avatars and pets
 
+Tap the pet beside the Tree name to feed it: all 12 pets have a smooth eating animation with generated Churp food artwork, matching bites and a happy finish. Keyboard access and reduced motion are supported. See [pet feeding and artwork](docs/PET-FEEDING.md).
+
 Click your name to open a compact settings menu: **Profile & avatar**, **My pet**, **Account settings**, **Security**, and **Notifications**. Each option opens its own screen with a back button. **Profile & avatar** offers 20 free Churp bird portraits or an uploaded image; changing a portrait or pet never changes the other. Message and member avatars use the selected portrait/photo. [View the portrait collection](public/brand/avatars/README.md).
 
 Under **My pet**, choose a companion for the Tree banner and Nest flight. Bluebird and Goldfinch are included; Pink Blossom, Lavender, Mint, Coral, Parrot, Cockatiel, Owl, Robin, Cardinal and Hummingbird start locked. Redeem **Churp** under **Grow your pet collection** to unlock the other ten for that account. `BIRD_UNLOCK_CODE` optionally overrides this server-side code. Purchases remain coming soon. Unlocks and selections persist across sign-ins and devices, with server-side entitlement checks. Existing photos and pet selections are preserved; legacy bird profile pictures become matching independent portraits. New accounts start with a Bluebird portrait and Bluebird pet.
