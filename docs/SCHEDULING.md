@@ -4,11 +4,12 @@
 
 - **Nest messages, thread replies and private chats:** use the clock beside Send, choose a local date and time, then select **Schedule message**.
 - **Polls, RSVPs, Assignments, Send Many Individually and Phone texts:** turn on **Schedule send** in the existing creation/review screen. Attachments in supported in-app messages are included.
-- **Your corner → Scheduled messages:** view upcoming sends, edit their contents, reschedule or cancel. Messages and Phone texts also have a Scheduled messages shortcut. **All sends** includes history.
+- **In the conversation:** scheduled messages appear as faded, sender-only previews in their Nest, private chat or phone text conversation. They show the send time and **Not sent yet**, with Edit, Reschedule and Cancel send controls. Scheduled replies also appear in their thread. Polls, RSVPs and Assignments keep their branded artwork but cannot receive responses before posting.
+- **Your corner → Scheduled messages:** the central list remains available to view upcoming sends, edit their contents, reschedule or cancel. Messages and Phone texts also have a Scheduled messages shortcut. **All sends** includes history.
 
 Scheduling is a one-time send, up to a year ahead. The picker uses the device's time zone; Churp stores an absolute UTC instant and displays its saved zone in the outbox. A batch can contain up to 50 private recipients, and each account can have up to 100 active scheduled sends. Send now continues to use the existing message flow.
 
-Recipients cannot see queued drafts or their attachments. Attachments are uploaded and encrypted when scheduled and become accessible through the message only when it posts. Editing a scheduled Poll, RSVP or Assignment reopens its original builder. RSVP deadlines must fall after the send time. Once delivery starts, completed messages cannot be edited or cancelled through the scheduler; remaining parts of a partially completed batch can be cancelled.
+Recipients cannot see queued drafts or their attachments. Attachments are uploaded and encrypted when scheduled; their filenames appear in the sender's preview, and recipients gain access only when the message posts. Editing a scheduled Poll, RSVP or Assignment reopens its original builder. RSVP deadlines must fall after the send time. Once delivery starts, completed messages cannot be edited or cancelled through the scheduler; remaining parts of a partially completed batch can be cancelled. The faded preview disappears when its message posts or is cancelled. For Send Many Individually and phone text batches, the preview appears in each selected conversation; its controls clearly state that changes affect the whole batch.
 
 ## Encryption and permission checks
 
@@ -26,4 +27,4 @@ For on-time sends, the service must stay running. In **Railway → Churp's app s
 
 ## Verification
 
-`tests/scheduling.test.js` covers encrypted files, self-managed keys, no early recipient access, restart recovery, duplicate prevention, owner isolation, versioned edits, cancellation, membership/device/block holds, structured posts and mock SMS with fresh invitations. Browser checks in `e2e/scheduling.spec.js` cover desktop and phone layouts, all creation controls and draft management, and retrying a scheduling request after the response is lost. Mock tests do not contact Twilio. Browser emulation does not replace checking the date/time picker on a physical iPhone.
+`tests/scheduling.test.js` covers encrypted files, self-managed keys, no early recipient access, restart recovery, duplicate prevention, owner and conversation isolation, versioned edits, cancellation, membership/device/block holds, structured posts and mock SMS with fresh invitations. Browser checks in `e2e/scheduling.spec.js` cover desktop and phone layouts, all creation controls and draft management, retrying after a lost response, sender-only conversation previews, inline editing, thread placement and replacement with one active message at delivery. Mock tests do not contact Twilio. Browser emulation does not replace checking the date/time picker on a physical iPhone.

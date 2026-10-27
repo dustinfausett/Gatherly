@@ -1,7 +1,7 @@
 import {randomUUID} from 'node:crypto';
 import {rateLimit} from 'express-rate-limit';
 import * as enc from '../shared/encryption.js';
-import {scheduleTime,scheduleProof} from '../shared/scheduling.js';
+import {scheduleTime,scheduleProof,conversationParts} from '../shared/scheduling.js';
 import {keyVault} from './key-vault.js';
 import {hash} from './security.js';
 export function installScheduling({app,db,dataDir,encryption,family,transaction,refreshUser,sendNest,sendPrivate,sms,invitations,notifyHold,testing,autoProcess=true,now=()=>Date.now()}){
@@ -32,7 +32,13 @@ export function installScheduling({app,db,dataDir,encryption,family,transaction,
   }
   return {sendAt,deviceId:req.get('x-churp-device'),signerKey:identity.public_key};
  }
- app.get('/api/scheduled',(req,res)=>{encryption.device(req);res.set('Cache-Control','no-store');res.json({sends:all(`SELECT * FROM scheduled_sends WHERE owner_id=? ORDER BY CASE WHEN EXISTS(SELECT 1 FROM scheduled_parts p WHERE p.send_id=scheduled_sends.id AND p.state IN ('pending','held','sending')) THEN 0 ELSE 1 END,send_at DESC,created_at DESC LIMIT 200`,req.user.id).map(view)});});
+ app.get('/api/scheduled',(req,res)=>{
+  encryption.device(req);res.set('Cache-Control','no-store');const {channel,target_id:targetId}=req.query;
+  if(channel!==undefined&&(!['nest','private','sms'].includes(channel)||typeof targetId!=='string'||!targetId||targetId.length>100))fail(400,'Choose a supported scheduled-message conversation.');
+  const active="EXISTS(SELECT 1 FROM scheduled_parts p WHERE p.send_id=scheduled_sends.id AND p.state IN ('pending','held','sending'))";
+  const rows=all(`SELECT * FROM scheduled_sends WHERE owner_id=? ${channel?`AND ${active}`:''} ORDER BY CASE WHEN ${active} THEN 0 ELSE 1 END,send_at DESC,created_at DESC LIMIT 200`,req.user.id).map(view);
+  res.json({sends:channel?rows.filter(row=>conversationParts(row,channel,targetId).length):rows});
+ });
  app.post('/api/scheduled',limited,async(req,res)=>{
   encryption.device(req);
   const prior=typeof req.body.client_id==='string'&&one('SELECT * FROM scheduled_sends WHERE owner_id=? AND client_id=?',req.user.id,req.body.client_id),digest=hash(JSON.stringify(req.body));

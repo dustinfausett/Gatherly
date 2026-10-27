@@ -9,6 +9,8 @@ export const scheduleLabel=(time,zone)=>new Date(time).toLocaleString([],{month:
 const intent=entries=>entries.map(e=>({channel:e.channel,target_id:e.target_id,sourceNest:e.request.sourceNest??null,source_nest:e.request.source_nest??null,filter_nest:e.request.filter_nest??null,thread_ids:e.request.thread_ids??null,urgent:e.request.urgent??false,reply_to:e.request.reply_to??null,message_kind:e.request.message_kind??'chat',files:e.request.files??[]}));
 const requests=new Map();
 export const clearScheduleRequests=()=>requests.clear();
+const changed=()=>window.dispatchEvent(new Event('churp-scheduled-changed'));
+export async function cancelScheduled(row){const result=await post(`/scheduled/${row.id}/cancel`,{expected_version:row.version});changed();return result;}
 export async function queueScheduled(entries,draft,when,existing=null){
  const self=getCurrent(),client_id=existing?.client_id||when.requestId||crypto.randomUUID(),send_at=scheduleTime(new Date(when.sendAt).getTime()),time_zone=scheduleZone();
  if(localDate(send_at)!==when.sendAt.slice(0,16))throw new Error('That local time does not exist because the clocks change. Choose another time.');
@@ -21,9 +23,9 @@ export async function queueScheduled(entries,draft,when,existing=null){
   packet.signature=await enc.sign(self.privateKey,'scheduled-send',scheduleProof(packet));
   cached={logical,packet};requests.set(cacheId,cached);
  }
- try{const result=existing?await api(`/scheduled/${existing.id}`,{method:'PUT',body:{...cached.packet,expected_version:existing.version}}):await post('/scheduled',cached.packet);requests.delete(cacheId);return result;}
+ try{const result=existing?await api(`/scheduled/${existing.id}`,{method:'PUT',body:{...cached.packet,expected_version:existing.version}}):await post('/scheduled',cached.packet);requests.delete(cacheId);changed();return result;}
  catch(e){
-  if(existing&&e.status===409){const list=await api('/scheduled'),saved=list.sends.find(r=>r.id===existing.id&&r.draft_ciphertext===cached.packet.draft_ciphertext);if(saved){requests.delete(cacheId);return saved;}}
+  if(existing&&e.status===409){const list=await api('/scheduled'),saved=list.sends.find(r=>r.id===existing.id&&r.draft_ciphertext===cached.packet.draft_ciphertext);if(saved){requests.delete(cacheId);changed();return saved;}}
   if(e.status&&e.status<500)requests.delete(cacheId);throw e;
  }
 }
