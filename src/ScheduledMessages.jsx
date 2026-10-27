@@ -1,3 +1,4 @@
+import MessageFocus from './MessageFocus';
 import React,{useEffect,useRef,useState} from 'react';
 import {createPortal} from 'react-dom';
 import {AlertCircle,Clock,Paperclip,Reply} from 'lucide-react';
@@ -27,7 +28,7 @@ export function ScheduledPreviews({state,channel,targetId,threadId=null,search='
    const parts=conversationParts(row,channel,targetId).filter(p=>threadId===null||row.entries[p.position].request.reply_to===threadId),entry=row.entries[parts[0].position],kind=entry.request.message_kind||'chat',replyTo=entry.request.reply_to;
    const held=parts.some(p=>p.state==='held'),sending=parts.some(p=>p.state==='sending'),batch=row.entries.length>1||row.entries.some(e=>e.channel==='sms'&&e.request.thread_ids?.length>1);
    let title='';if(['poll','rsvp','assignments'].includes(kind)&&row.draft)try{title=JSON.parse(row.draft.body).title;}catch{}
-   return <article className="message own scheduled-inline" key={row.id} data-schedule-id={row.id} aria-label="Your scheduled message">
+   return <MessageFocus key={row.id} copyText={row.draftError?undefined:title||row.draft?.body} actions={close=><ScheduledActions row={row} onEdit={()=>{close();setEditor({row,action:'edit'});}} onReschedule={()=>{close();setEditor({row,action:'reschedule'});}} onChanged={()=>{close();refresh();}}/>}><article className="message own scheduled-inline" data-schedule-id={row.id} aria-label="Your scheduled message">
     <div className="message-content">
      <div className="scheduled-inline-meta"><Clock size={14}/><strong>{held?'Needs review':sending?'Sending…':'Scheduled'}</strong><span>· Only you</span><time dateTime={new Date(row.send_at).toISOString()}>{scheduleLabel(row.send_at,row.time_zone)}</time></div>
      {!!replyTo&&<div className="scheduled-thread-label"><Reply size={13}/>{onThread?<button type="button" className="text-button" onClick={()=>onThread(replyTo)}>Reply in thread</button>:'Reply in thread'}</div>}
@@ -39,9 +40,8 @@ export function ScheduledPreviews({state,channel,targetId,threadId=null,search='
      <small className="scheduled-not-sent">Not sent yet{channel==='sms'?' · Phone text':''}</small>
      {parts.filter(p=>p.error).map(p=><p key={p.id} className="error-banner">{p.error}</p>)}
      {batch&&<p className="scheduled-batch-note">Part of a scheduled batch. Editing, rescheduling or cancelling here applies to the whole batch.</p>}
-     <ScheduledActions row={row} onEdit={()=>setEditor({row,action:'edit'})} onReschedule={()=>setEditor({row,action:'reschedule'})} onChanged={refresh}/>
     </div>
-   </article>;
+   </article></MessageFocus>;
   })}<div ref={anchor}/>
   {editor&&createPortal(<ScheduledEditor row={editor.row} action={editor.action} onClose={()=>setEditor(null)} onSaved={done}/>,document.body)}
  </>;

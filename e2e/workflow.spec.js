@@ -1,3 +1,4 @@
+import {chooseMessageAction} from './message-options';
 import { test, expect } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
 
@@ -72,7 +73,7 @@ test('create a Tree, invite a member, chat live, share files, and manage Nest po
   await expect(page.getByText('Hey everyone! Love this little corner of the internet.', { exact: true })).toBeVisible();
   await expect(page.locator('.message.own .message-bubble').first()).toHaveCSS('background-color','rgb(247, 216, 132)');
   await expect(page.locator('.message:not(.own) .message-bubble').first()).toHaveCSS('background-color','rgb(191, 227, 237)');
-  await page.getByRole('button', { name: 'Reply to Jamie Lee', exact: true }).click();
+  await chooseMessageAction(page,page.locator('.conversation .message:not(.own)').first(),'Reply to Jamie Lee');
   await page.getByRole('textbox', { name: 'Write a message', exact: true }).fill('Glad you are here, Jamie!');
   await page.getByRole('button', { name: 'Send message', exact: true }).click();
   await expect(bob.getByText('Glad you are here, Jamie!', { exact: true })).toBeVisible();

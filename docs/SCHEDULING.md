@@ -4,7 +4,7 @@
 
 - **Nest messages, thread replies and private chats:** use the clock beside Send, choose a local date and time, then select **Schedule message**.
 - **Polls, RSVPs, Assignments, Send Many Individually and Phone texts:** turn on **Schedule send** in the existing creation/review screen. Attachments in supported in-app messages are included.
-- **In the conversation:** scheduled messages appear as faded, sender-only previews in their Nest, private chat or phone text conversation. They show the send time and **Not sent yet**, with Edit, Reschedule and Cancel send controls. Scheduled replies also appear in their thread. Polls, RSVPs and Assignments keep their branded artwork but cannot receive responses before posting.
+- **In the conversation:** scheduled messages appear as faded, sender-only previews in their Nest, private chat or phone text conversation. They show the send time and **Not sent yet**, with Edit, Reschedule and Cancel send controls available by holding the preview for ¾ of a second. Scheduled replies also appear in their thread. Polls, RSVPs and Assignments keep their branded artwork but cannot receive responses before posting.
 - **Your corner → Scheduled messages:** the central list remains available to view upcoming sends, edit their contents, reschedule or cancel. Messages and Phone texts also have a Scheduled messages shortcut. **All sends** includes history.
 
 Scheduling is a one-time send, up to a year ahead. The picker uses the device's time zone; Churp stores an absolute UTC instant and displays its saved zone in the outbox. A batch can contain up to 50 private recipients, and each account can have up to 100 active scheduled sends. Send now continues to use the existing message flow.

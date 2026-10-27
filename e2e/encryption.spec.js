@@ -1,3 +1,4 @@
+import {chooseMessageAction} from './message-options';
 import { test,expect } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
 import { readFileSync,writeFileSync,existsSync } from 'node:fs';
@@ -50,9 +51,9 @@ function database(){const dir=process.env.GATHERLY_E2E_DATA_DIR;if(!dir?.include
     await expect(bp.locator('.message-bubble')).toHaveCount(0);
     expect((await second.request.get(`/api/files/${messages[0].files[0].id}`)).status()).toBe(404);
     const later=`Both members can read ${randomUUID()}`;await send(page,later);await expect(bp.locator('.message-bubble').filter({hasText:later})).toBeVisible();
-    const target=bp.locator('.message').filter({has:bp.locator('.message-bubble>p').filter({hasText:later})});await target.getByRole('button',{name:'Reply to Alice',exact:true}).click();await send(bp,'An encrypted reply');
+    const target=bp.locator('.message').filter({has:bp.locator('.message-bubble>p').filter({hasText:later})});await chooseMessageAction(bp,target,'Reply to Alice');await send(bp,'An encrypted reply');
     await expect(page.locator('.message-bubble').filter({hasText:'An encrypted reply'})).toBeVisible();
-    await target.getByRole('button',{name:'Thread',exact:true}).click();await expect(bp.locator('.thread-messages')).toContainText('An encrypted reply');
+    await chooseMessageAction(bp,target,'Thread');await expect(bp.locator('.thread-messages')).toContainText('An encrypted reply');
     await page.request.delete(`/api/communities/${tree.id}/members/${bob.id}`);await expect(bp.locator('.chat-heading')).toHaveCount(0);
     await send(page,'Sent after removal');expect((await second.request.get(`/api/groups/${nest.id}/messages`)).status()).toBe(403);
     await page.screenshot({path:info.outputPath('encrypted-chat.png'),fullPage:true});

@@ -198,4 +198,8 @@ Use the **clock beside Send**, or **Schedule send** in Poll, RSVP, Assignment an
 
 ## Message reactions
 
-Messages in Nests, threads and Churp private chats offer 👍, ❤️, 😂 and a searchable emoji picker. Each user can select five different emojis per message; adding a sixth replaces their oldest, and tapping a selected emoji removes it. Reactions appear beneath messages with live counts, persist across devices, and retain message encryption and youth protections. [Behavior and verification](docs/MESSAGE-REACTIONS.md).
+Messages in Nests, threads and Churp private chats offer 👍, ❤️, 😂 and a searchable emoji picker after holding a message for ¾ of a second. Each user can select five different emojis per message; adding a sixth replaces their oldest, and tapping a selected emoji removes it. Reactions appear beneath messages with live counts, persist across devices, and retain message encryption and youth protections. [Behavior and verification](docs/MESSAGE-REACTIONS.md).
+
+## Hold for message options
+
+Chat messages show their existing sender, time, content and chosen reactions. Hold a message for **750 milliseconds** to isolate it over a dimmed background, with quick reactions above and available actions below. Desktop users can also right-click or focus a message and press Enter, Space, Shift+F10 or the context-menu key. Escape, the close button or tapping outside dismisses the view. Movement, scrolling, pointer cancellation and releasing early cancel the hold. This applies to Nest messages, threads, private chats, read-only parent review, scheduled previews and phone texts; each keeps its existing permissions and supported actions. Scheduled/phone messages do not gain emoji reactions. See [message options](docs/MESSAGE-OPTIONS.md).

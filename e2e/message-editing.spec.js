@@ -1,3 +1,4 @@
+import {chooseMessageAction} from './message-options';
 import { test,expect } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
 
@@ -23,12 +24,12 @@ test('authors edit encrypted messages and replies live, preserving attachments, 
     await expect(bp.getByRole('button',{name:'Edit message',exact:true})).toHaveCount(0);
     const original=(await(await page.request.get(`/api/groups/${nest.id}/messages`)).json()).messages[0];
     const own=page.locator('.message').filter({hasText:'Bring the picinc blanket'});
-    await own.getByRole('button',{name:'Edit message',exact:true}).click();
+    await chooseMessageAction(page,own,'Edit message');
     await page.getByRole('textbox',{name:'Message text',exact:true}).fill('Discard this change');
     await page.getByRole('button',{name:'Cancel',exact:true}).click();
     await expect(page.locator('.message-bubble>p')).toHaveText('Bring the picinc blanket');
     await register(later,'Later joiner');await later.request.post('/api/invitations/accept',{data:{token:invite}});await later.request.post(`/api/groups/${nest.id}/join`);
-    await own.getByRole('button',{name:'Edit message',exact:true}).click();
+    await chooseMessageAction(page,own,'Edit message');
     const dialog=page.getByRole('dialog');await expect(dialog).toContainText('Attachments stay with this message.');
     await dialog.getByRole('textbox',{name:'Message text',exact:true}).fill('Bring the picnic blanket');
     await dialog.getByRole('button',{name:'Save changes',exact:true}).click();await expect(dialog).toHaveCount(0);
@@ -39,12 +40,12 @@ test('authors edit encrypted messages and replies live, preserving attachments, 
     const edited=(await(await page.request.get(`/api/groups/${nest.id}/messages`)).json()).messages[0];
     expect(edited.id).toBe(original.id);expect(edited.created_at).toBe(original.created_at);expect(edited.user_id).toBe(original.user_id);expect(edited.client_id).toBe(original.client_id);expect(edited.edit_version).toBe(1);expect(edited.body).toBe('');
     expect((await(await later.request.get(`/api/groups/${nest.id}/messages`)).json()).messages).toEqual([]);
-    await bp.locator('.message').getByRole('button',{name:'Reply to Alice',exact:true}).click();
+    await chooseMessageAction(bp,bp.locator('.message'),'Reply to Alice');
     await bp.getByRole('textbox',{name:'Write a message',exact:true}).fill('I will bring it');await bp.getByRole('button',{name:'Send message',exact:true}).click();
     await expect(page.locator('.message-bubble>p').filter({hasText:'I will bring it'})).toBeVisible();
-    await page.locator('.message.own').filter({hasText:'Bring the picnic blanket'}).getByRole('button',{name:'Thread',exact:true}).click();
+    await chooseMessageAction(page,page.locator('.conversation .message.own').filter({hasText:'Bring the picnic blanket'}),'Thread');
     await expect(page.locator('.thread-messages')).toContainText('I will bring it');
-    const bobOwn=bp.locator('.message.own');await bobOwn.getByRole('button',{name:'Edit message',exact:true}).click();
+    const bobOwn=bp.locator('.message.own');await chooseMessageAction(bp,bobOwn,'Edit message');
     await bp.getByRole('textbox',{name:'Message text',exact:true}).fill('I will bring two blankets');await bp.getByRole('button',{name:'Save changes',exact:true}).click();
     await expect(page.locator('.thread-messages')).toContainText('I will bring two blankets');
     await page.getByRole('button',{name:'Close thread',exact:true}).click();

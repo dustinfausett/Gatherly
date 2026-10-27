@@ -1,6 +1,6 @@
 # Message reactions
 
-Nest messages (including Polls, RSVPs, Assignments and attachments), thread replies and Churp private messages have four quick controls: 👍, ❤️, 😂 and a button opening a searchable collection of 80 emojis. Selected reactions appear as pills beneath the message, grouped by emoji with a count. Your own choices are highlighted; labels and hover text identify who reacted.
+Nest messages (including Polls, RSVPs, Assignments and attachments), thread replies and Churp private messages open a focused view after a 750 ms hold. Its top row has four quick controls: 👍, ❤️, 😂 and a button opening a searchable collection of 80 emojis. Message actions appear below the selected message. The normal chat shows only message details and chosen reaction pills. Selected reactions appear as pills beneath the message, grouped by emoji with a count. Your own choices are highlighted; labels and hover text identify who reacted.
 
 Each person can have up to **five different emojis per message**. Adding a sixth removes that person's oldest selected emoji. Choosing an already-selected emoji removes it; choosing it again adds it at the end of that person's selection order. Other people's reactions are unaffected. Equivalent heart variation forms are normalized so they cannot create duplicates.
 
