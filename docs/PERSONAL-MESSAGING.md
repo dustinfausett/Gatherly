@@ -34,7 +34,7 @@ Existing pre-migration admin links retain their immediate-join behavior. All sha
 
 ## Deferred and externally dependent
 
-No cloud SMS, billable texts, provider callbacks, native SMS composers, automatic phone matching, subscription billing or paid invitation-footer exemption is enabled. There are no SMS provider credentials to configure for this phase. Later work includes provider choice/registration, genuine consent/STOP/HELP, inbound ownership, costs/budgets, durable per-recipient broadcast jobs, subscription entitlements, native app shells and actual iOS/Android testing. Resend remains email account recovery only. No real SMS is sent by development or tests.
+A separate Phone texts mock pilot, durable SMS jobs, consent forms, reply-code routing and a gated Twilio adapter/webhooks are now implemented; see [SMS.md](SMS.md). No billable texts, native SMS composers, automatic phone matching, subscription billing or paid invitation-footer exemption is enabled. The owner has configured Twilio credentials in Railway with SMS_MODE=mock; mock mode never calls the provider. Later work includes provider choice/registration, genuine consent/STOP/HELP, inbound ownership, costs/budgets, durable per-recipient broadcast jobs, subscription entitlements, native app shells and actual iOS/Android testing. Resend remains email account recovery only. No real SMS is sent by development or tests.
 
 The review draft remains in NAVIGATION-MESSAGING-REVIEW.md as historical planning context; these delivered choices supersede its open recommendations.
 

@@ -180,3 +180,7 @@ Signup requires a private date of birth. Accounts under 18 link one or two paren
 ### Public policies
 
 Terms of Service (`/terms`), Privacy Policy (`/privacy`) and proposed SMS Terms (`/sms-terms`) are readable without signing in. Find them in Your corner → About & policies, at sign-in/signup, and in the website footer. The operator is Dustin Fausett, operating as Churp; the approved support/privacy contact is churptree@gmail.com. SMS remains disabled and its terms explicitly mark the proposed program. See [docs/LEGAL-PAGES.md](docs/LEGAL-PAGES.md).
+
+### External phone texting (mock pilot)
+
+Messages → Phone texts now supports owner-scoped phone conversations, public enrollment links, simulated adult consent, reviewed SMS batches, reply codes, global STOP handling, delivery simulations and durable results. Railway can retain `SMS_MODE=mock` with its existing Twilio variables: mock mode never calls Twilio. The signed webhook handlers and REST adapter are implemented, but real carrier delivery remains unverified and live mode needs additional approved-pilot settings. See [docs/SMS.md](docs/SMS.md) before changing modes or configuring webhooks. Native personal-phone texting and MMS are not included.

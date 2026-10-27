@@ -43,7 +43,7 @@ async function request(path, method = 'GET', body) {
 }
 async function start() {
   docker('run', '-d', '--name', container,
-    '-e', 'RAILWAY_ENVIRONMENT_ID=smoke-test',
+    '-e', 'RAILWAY_ENVIRONMENT_ID=smoke-test', '-e', 'SMS_MODE=mock',
     '-e', 'RAILWAY_VOLUME_MOUNT_PATH=/data',
     '-e', 'RAILWAY_PUBLIC_DOMAIN=gatherly-test.up.railway.app',
     '-p', '127.0.0.1::3000', '-v', `${volume}:/data`, image);
@@ -158,6 +158,11 @@ async function browserCheck(cid,gid,recovery,managedFixture,privateId){
     await expect(page.locator('.profile-button [data-avatar-choice]')).toHaveAttribute('data-avatar-choice','parrot');
     await expect(page.locator('.resident-bird')).toHaveAttribute('data-bird-id','blue');
     assert.equal(await page.evaluate(async()=>{const img=new Image();img.src='/brand/avatars/churp-portraits.png';await img.decode();return img.naturalWidth;}),1254);
+    const smsContact=await page.request.post(`${origin}/api/contacts`,{data:{name:'Fictional SMS contact',phone:'+12025550123'}});assert.equal(smsContact.status(),201);
+    await page.goto(origin);await page.getByRole('navigation',{name:'Main navigation',exact:true}).getByRole('button',{name:'Messages',exact:true}).click();await page.getByRole('button',{name:'Phone texts',exact:true}).click();await expect(page.getByText(/MOCK MODE — simulations only/)).toBeVisible();await page.getByRole('button',{name:'New phone conversation',exact:true}).click();await page.getByRole('dialog').getByRole('combobox',{name:'Tree',exact:true}).selectOption(cid);await page.getByRole('dialog').getByRole('button',{name:'Open text conversation',exact:true}).click();await expect(page.getByRole('dialog')).toHaveCount(0);
+    await page.getByRole('button',{name:'Recipient simulations',exact:true}).click();await page.getByRole('checkbox',{name:'This is a fictional adult recipient for testing.',exact:true}).check();await page.getByRole('button',{name:'Simulate adult consent',exact:true}).click();await page.getByRole('textbox',{name:'Write an external text',exact:true}).fill('A simulated production SMS.');await page.getByRole('button',{name:'Review text',exact:true}).click();await page.getByRole('button',{name:'Review recipients & text',exact:true}).click();await expect(page.getByRole('dialog')).toContainText('Join this Tree:');await page.getByRole('button',{name:'Confirm simulated batch',exact:true}).click();await expect(page.getByRole('dialog')).toContainText('mock sent');await page.getByRole('button',{name:'Close dialog',exact:true}).click();await expect(page.locator('.sms-thread-messages')).toContainText('A simulated production SMS.');
+    console.log('PASS: mock SMS consent, invitation preview and durable simulated sending work under production HTTPS/CSP without Twilio credentials.');
+    await page.goto(`${origin}/?community=${cid}&group=${gid}`);await expect(page.getByRole('textbox',{name:'Write a message',exact:true})).toBeVisible();
     // Production CSP/HTTPS coverage for family setup and read-only supervision.
     await page.getByRole('button',{name:'Edit your profile',exact:true}).click();
     await page.getByRole('button',{name:'Family & youth protection',exact:true}).click();
@@ -224,7 +229,7 @@ async function browserCheck(cid,gid,recovery,managedFixture,privateId){
   }finally{if(browser)await browser.close();if(proxy){proxy.closeAllConnections();await new Promise(resolve=>proxy.close(resolve));}rmSync(temporary,{recursive:true,force:true});}
 }
 try {
-  const missingVolume = spawnSync('docker', ['run', '--rm', '-e', 'RAILWAY_ENVIRONMENT_ID=smoke-test', image], { encoding: 'utf8' });
+  const missingVolume = spawnSync('docker', ['run', '--rm', '-e', 'RAILWAY_ENVIRONMENT_ID=smoke-test', '-e', 'SMS_MODE=mock', image], { encoding: 'utf8' });
   assert.notEqual(missingVolume.status, 0);
   assert.match(missingVolume.stderr + missingVolume.stdout, /Attach a Railway Volume/);
   docker('volume', 'create', volume);

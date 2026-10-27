@@ -86,4 +86,13 @@ export function installInvitations({app,db,appUrl,testing,transaction,membership
   app.post('/api/invitations/:id/decline',accepting,(req,res)=>{
     const inv=owned(req);if(inv.status!=='pending')fail(410,'This invitation has already been answered.');run("UPDATE nest_invitations SET status='declined' WHERE id=?",inv.id);refreshUser(req.user.id);res.json({ok:true});
   });
+  return {validateTextInvite:(uid,cid,value)=>{
+    if(typeof value!=='string'||value.length>2048)fail(400,'Create a valid Tree invitation for this text.');
+    let url;try{url=new URL(value);}catch{fail(400,'Use a valid Tree invitation URL.');}
+    if(url.origin!==new URL(appUrl).origin||url.pathname!=='/'||!url.searchParams.get('invite'))fail(400,'Use a Churp Tree invitation.');
+    const inv=fresh(one('SELECT * FROM invitations WHERE token_hash=?',hash(url.searchParams.get('invite'))));
+    if(inv.created_by!==uid||inv.community_id!==cid||inv.group_id)fail(403,'Use your own invitation for the selected Tree.');
+    return url.href;
+  }};
+
 }

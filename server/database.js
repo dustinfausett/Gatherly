@@ -278,6 +278,44 @@ export function openDatabase(path) {
     status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','approved','declined')),
     created_at INTEGER NOT NULL,reviewed_by TEXT REFERENCES users(id),UNIQUE(community_id,user_id)
   );`);
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS sms_threads (
+      id TEXT PRIMARY KEY,owner_id TEXT NOT NULL REFERENCES users(id),community_id TEXT NOT NULL REFERENCES communities(id) ON DELETE CASCADE,
+      phone TEXT NOT NULL,name TEXT NOT NULL,reply_code TEXT NOT NULL UNIQUE,created_at INTEGER NOT NULL,UNIQUE(owner_id,community_id,phone)
+    );
+    CREATE TABLE IF NOT EXISTS sms_consent (
+      thread_id TEXT NOT NULL REFERENCES sms_threads(id) ON DELETE CASCADE,mode TEXT NOT NULL,status TEXT NOT NULL,
+      evidence TEXT NOT NULL,updated_at INTEGER NOT NULL,PRIMARY KEY(thread_id,mode)
+    );
+    CREATE TABLE IF NOT EXISTS sms_enrollment (
+      token_hash TEXT PRIMARY KEY,thread_id TEXT NOT NULL REFERENCES sms_threads(id) ON DELETE CASCADE,mode TEXT NOT NULL,
+      expires_at INTEGER NOT NULL,join_hash TEXT NOT NULL,join_code_cipher TEXT NOT NULL,submitted_at INTEGER,confirmed_at INTEGER,
+      evidence TEXT,created_at INTEGER NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS sms_suppression (
+      mode TEXT NOT NULL,phone TEXT NOT NULL,created_at INTEGER NOT NULL,PRIMARY KEY(mode,phone)
+    );
+    CREATE TABLE IF NOT EXISTS sms_jobs (
+      id TEXT PRIMARY KEY,owner_id TEXT NOT NULL REFERENCES users(id),client_id TEXT NOT NULL,request_hash TEXT NOT NULL,
+      mode TEXT NOT NULL,created_at INTEGER NOT NULL,UNIQUE(owner_id,client_id)
+    );
+    CREATE TABLE IF NOT EXISTS sms_messages (
+      id TEXT PRIMARY KEY,thread_id TEXT NOT NULL REFERENCES sms_threads(id) ON DELETE CASCADE,job_id TEXT REFERENCES sms_jobs(id) ON DELETE SET NULL,
+      mode TEXT NOT NULL,direction TEXT NOT NULL,state TEXT NOT NULL,body_cipher TEXT NOT NULL,segments INTEGER NOT NULL DEFAULT 0,
+      estimated_cents INTEGER NOT NULL DEFAULT 0,provider_sid TEXT UNIQUE,error TEXT,created_at INTEGER NOT NULL,
+      UNIQUE(job_id,thread_id)
+    );
+    CREATE INDEX IF NOT EXISTS sms_messages_queue ON sms_messages(state,created_at);
+    CREATE TABLE IF NOT EXISTS sms_job_context (job_id TEXT PRIMARY KEY REFERENCES sms_jobs(id) ON DELETE CASCADE,invitation_cipher TEXT NOT NULL,source_nest TEXT);
+    CREATE TABLE IF NOT EXISTS sms_usage (
+      id TEXT PRIMARY KEY,owner_id TEXT NOT NULL REFERENCES users(id),mode TEXT NOT NULL,
+      segments INTEGER NOT NULL,estimated_cents INTEGER NOT NULL,created_at INTEGER NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS sms_events (sid TEXT PRIMARY KEY,kind TEXT NOT NULL,created_at INTEGER NOT NULL);
+    CREATE TABLE IF NOT EXISTS sms_status_events (sid TEXT PRIMARY KEY,status TEXT NOT NULL,created_at INTEGER NOT NULL);
+  `);
+  addColumn('sms_status_events','error_code','TEXT');
+  addColumn('sms_threads','read_through','INTEGER NOT NULL DEFAULT 0');
   addColumn('users', 'birth_date', 'TEXT');
   db.exec(`
     CREATE TABLE IF NOT EXISTS family_links (

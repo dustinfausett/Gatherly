@@ -23,6 +23,7 @@ import { getAvatar } from '../shared/avatars.js';
 import { installInvitations } from './invitations.js';
 import { installContacts } from './contacts.js';
 import { installPrivateMessages } from './private-messages.js';
+import {installSms} from './sms.js';
 import { installFamily } from './family.js';
 import { birthDate } from '../shared/family.js';
 
@@ -205,6 +206,7 @@ export function createApp(options = {}) {
     res.clearCookie('gatherly_session', { path: '/' });
     res.json({ ok: true });
   });
+  const sms=installSms({app,db,dataDir,appUrl,transaction,refreshUser,testing:options.testing,config:options.smsConfig,transport:options.smsTransport,autoProcess:!(options.testing&&options.smsAutoProcess===false)});
   app.use('/api', auth);
   app.use('/api',(req,res,next)=>{
     const setup=req.path==='/me'||req.path==='/events'||/^\/family(?:\/|$)/.test(req.path)||(/^\/e2ee\//.test(req.path)&&!/^\/e2ee\/(?:uploads|legacy)(?:\/|$)/.test(req.path));
@@ -527,7 +529,8 @@ export function createApp(options = {}) {
     } else run('DELETE FROM scoped_admins WHERE scope_type=? AND scope_id=? AND user_id=?', type, id, userId);
     refresh(entity.community_id); res.json({ ok: true });
   });
-  installInvitations({app,db,appUrl,testing:options.testing,transaction,membership,communityAdmin,groupAdmin,group,joinParent,refresh,refreshUser});
+  const invitations=installInvitations({app,db,appUrl,testing:options.testing,transaction,membership,communityAdmin,groupAdmin,group,joinParent,refresh,refreshUser});
+  sms.installAuthenticated({family,membership,group,groupAdmin,invitations});
   app.post('/api/groups/:id/join', (req, res) => {
     const g = visibleCircle(req.user.id, req.params.id);
     if (g.private && !groupAdmin(req.user.id, g) && !joined(req.user.id, g.id)) fail(403, 'A Nest admin must invite you.');
@@ -809,5 +812,5 @@ export function createApp(options = {}) {
     app.use(express.static(resolve('dist'), { setHeaders: (res, path) => { if (path.endsWith('/index.html') || path.endsWith('/sw.js')) res.setHeader('Cache-Control','no-store'); } }));
     app.get('/{*path}', (req, res) => { res.setHeader('Cache-Control','no-store'); res.sendFile(resolve('dist/index.html')); });
   }
-  return { app, db, close: () => { for (const set of streams.values()) for (const res of set) res.end(); db.close(); } };
+  return { app, db, sms, close: () => { sms.close(); for (const set of streams.values()) for (const res of set) res.end(); db.close(); } };
 }
