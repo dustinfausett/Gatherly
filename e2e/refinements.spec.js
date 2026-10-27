@@ -18,7 +18,7 @@ test('short invitations, Tree directory, Birdhouse import, recipient filters and
  const guest=await bobCtx.newPage();await bobCtx.clearCookies();await guest.goto(a.short_url);await expect(guest).toHaveURL(new RegExp(`invite=${a.code.replace('-','')}`));await expect(guest.getByRole('heading',{name:'Welcome home.',exact:true})).toBeVisible();await guest.close();
  if(info.project.name!=='desktop'){
   await page.locator('.app').evaluate(el=>el.style.setProperty('--footer-safe-area','34px'));
-  const bounds=await page.locator('.bottom-navigation').evaluate(el=>({bottom:el.getBoundingClientRect().bottom,height:el.getBoundingClientRect().height,button:el.querySelector('button').getBoundingClientRect().bottom,viewport:innerHeight}));expect(Math.abs(bounds.bottom-bounds.viewport)).toBeLessThanOrEqual(1);expect(bounds.height).toBe(98);expect(bounds.bottom-bounds.button).toBeLessThanOrEqual(39);
+  const bounds=await page.locator('.bottom-navigation').evaluate(el=>({bottom:el.getBoundingClientRect().bottom,height:el.getBoundingClientRect().height,button:el.querySelector('button').getBoundingClientRect().bottom,buttonHeight:el.querySelector('button').getBoundingClientRect().height,viewport:innerHeight}));expect(Math.abs(bounds.bottom-bounds.viewport)).toBeLessThanOrEqual(1);expect(bounds.height).toBe(80);expect(bounds.bottom-bounds.button).toBe(20);expect(bounds.buttonHeight).toBeGreaterThanOrEqual(54);
   await page.locator('.app').evaluate(el=>el.style.removeProperty('--footer-safe-area'));
  }
  await page.screenshot({path:info.outputPath('refined-compose-and-footer.png'),fullPage:true});expect(errors).toEqual([]);
