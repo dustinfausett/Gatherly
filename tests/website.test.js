@@ -14,6 +14,7 @@ test('public website and app share a service without moving the existing app ori
   const get=(path,host)=>new Promise((resolve,reject)=>{httpRequest(base+path,{headers:{host}},res=>{let body='';res.on('data',chunk=>body+=chunk);res.on('end',()=>resolve({status:res.statusCode,headers:new Headers(res.headers),text:async()=>body,json:async()=>JSON.parse(body)}));}).on('error',reject).end();});
   try{
     for(const host of ['churptree.com','www.churptree.com']){
+      const redirect=await get('/i/ABCDE23456',host);assert.equal(redirect.status,302);assert.equal(redirect.headers.get('location'),'https://app.churptree.com/?invite=ABCDE23456');assert.equal(redirect.headers.get('cache-control'),'no-store');assert.equal((await get('/i/invalid',host)).status,404);
       const home=await get('/',host),html=await home.text();assert.equal(home.status,200);assert.match(html,/id="hero-heading"/);assert.match(html,/rel="canonical" href="https:\/\/churptree.com\//);assert.match(home.headers.get('content-security-policy'),/script-src/);
       const settings=await get('/api/site-config',host);assert.equal(settings.status,200);assert.deepEqual(await settings.json(),{appUrl:'https://app.churptree.com/',signupUrl:'https://app.churptree.com/?signup=1'});
       assert.equal((await get('/api/me',host)).status,401);

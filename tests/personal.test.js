@@ -63,3 +63,27 @@ test('member invitation links request approval; Branch admins approve Tree membe
  await f.restart();await f.ok(`/tree-join-requests/${pending.id}/review`,carol,'POST',{decision:'approve'});assert.equal((await f.ok('/communities',outsider)).communities[0].id,tree.id);assert.equal((await f.ok(`/communities/${tree.id}`,outsider)).community.circles.length,0);assert.equal((await f.req(`/tree-join-requests/${pending.id}/review`,owner,'POST',{decision:'approve'})).status,409);
  const branchInvite=await f.ok('/invitations',carol,'POST',{community_id:tree.id});assert.equal(branchInvite.requires_approval,false);
 });
+
+test('Tree member directory exposes only shared Trees; Nest recipient scopes require membership or administration',async t=>{
+ const f=await fixture(t),{owner,bob,carol,outsider,tree}=f;
+ const other=(await f.ok('/communities',bob,'POST',{name:'Bob private Tree'})).community;
+ const directory=await f.ok('/private/people',owner);assert.deepEqual(directory.trees.map(t=>t.id),[tree.id]);assert.deepEqual(directory.people.find(p=>p.id===bob.id).tree_ids,[tree.id]);assert.ok(!JSON.stringify(directory).includes(other.id));assert.ok(!directory.people.some(p=>p.id===outsider.id));
+ const nest=(await f.ok(`/communities/${tree.id}/circles`,owner,'POST',{name:'Hidden roster',private:true})).group;
+ assert.equal((await f.req(`/contacts/recipient-scopes?tree_id=${tree.id}`,outsider)).status,403);
+ assert.deepEqual((await f.ok(`/contacts/recipient-scopes?tree_id=${tree.id}`,bob)).nests,[]);
+ const inv=await f.ok('/invitations',owner,'POST',{community_id:tree.id,group_id:nest.id});await f.ok('/invitations/accept',bob,'POST',{token:inv.code});
+ const scopes=await f.ok(`/contacts/recipient-scopes?tree_id=${tree.id}`,bob);assert.equal(scopes.nests[0].id,nest.id);assert.ok(scopes.nests[0].member_ids.includes(owner.id));assert.ok(!scopes.nests[0].member_ids.includes(carol.id));
+});
+test('contact import atomically creates or uses an owned Birdhouse and includes existing duplicates',async t=>{
+ const f=await fixture(t),{owner,bob}=f;
+ const rows=[{name:'One',phone:'+12025550123'},{name:'Two',phone:'+12025550124'}];
+ await f.ok('/contacts',owner,'POST',rows[0]);
+ assert.deepEqual(await f.ok('/contacts/import',owner,'POST',{contacts:rows,new_birdhouse_name:'Party helpers'}),{added:1,duplicates:1});
+ let data=await f.ok('/contacts',owner);assert.equal(data.birdhouses[0].name,'Party helpers');assert.equal(data.birdhouses[0].contact_count,2);const house=data.birdhouses[0].id;
+ await f.ok('/contacts/import',owner,'POST',{contacts:rows,birdhouse_id:house});assert.equal((await f.ok('/contacts',owner)).memberships.length,2);
+ const foreign=(await f.ok('/birdhouses',bob,'POST',{name:'Private house'})).birdhouse;
+ assert.equal((await f.req('/contacts/import',owner,'POST',{contacts:[{name:'Three',phone:'+12025550125'}],birdhouse_id:foreign.id})).status,404);
+ assert.equal((await f.req('/contacts/import',owner,'POST',{contacts:[{name:'Bad',phone:'invalid'}],new_birdhouse_name:'No orphan'})).status,400);
+ assert.equal((await f.ok('/contacts',owner)).birdhouses.length,1);assert.equal((await f.ok('/contacts',owner)).contacts.length,2);
+ const linked=await f.ok('/contacts',owner,'POST',{name:'Bob',linked_user_id:bob.id,new_birdhouse_name:'Friends'});assert.equal((await f.ok('/contacts',owner)).memberships.length,3);assert.ok(linked.contact.linked_user_id===bob.id);
+});

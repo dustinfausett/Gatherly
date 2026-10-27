@@ -25,14 +25,14 @@ async function fixture(t){
 }
 test('Tree QR and short code resolve to the same expiring, authorized full invitation',async t=>{
  const f=await fixture(t),{owner,member,outsider,tree,shared}=f;
- assert.match(shared.code,/^[A-HJ-NP-Z2-9]{5}-[A-HJ-NP-Z2-9]{5}$/);assert.ok(shared.url.startsWith('https://app.churptree.com/?invite='));
+ assert.match(shared.code,/^[A-HJ-NP-Z2-9]{5}-[A-HJ-NP-Z2-9]{5}$/);assert.ok(shared.url.startsWith('https://app.churptree.com/?invite='));assert.equal(shared.short_url,'https://churptree.com/i/'+shared.code.replace('-',''));assert.ok(shared.short_url.length<shared.url.length);
  const png=PNG.sync.read(Buffer.from(shared.qr_data_url.split(',')[1],'base64'));assert.equal(jsQR(new Uint8ClampedArray(png.data),png.width,png.height).data,shared.url);
  const stored=f.db.prepare('SELECT * FROM invitation_codes').get();assert.notEqual(stored.code_hash,shared.code.replace('-',''));assert.equal(stored.code_hash.length,64);
  const short=shared.code.toLowerCase().replace('-',' ');assert.equal((await f.ok('/invitations/accept',outsider,'POST',{token:short})).community_id,tree.id);
  assert.equal((await f.ok('/invitations',member,'POST',{community_id:tree.id})).requires_approval,true);
  assert.equal((await f.req('/invitations/accept',null,'POST',{token:shared.code})).status,401);
  assert.equal((await f.req('/invitations/accept',outsider,'POST',{token:'AAAAA-AAAAA'})).status,410);
- await f.restart();assert.equal((await f.ok('/invitations/accept',member,'POST',{token:shared.url})).community_id,tree.id);
+ await f.restart();assert.equal((await f.ok('/invitations/accept',member,'POST',{token:shared.short_url})).community_id,tree.id);
  f.db.prepare('UPDATE invitations SET expires_at=0 WHERE token_hash=?').run(stored.token_hash);assert.equal((await f.req('/invitations/accept',outsider,'POST',{token:shared.code})).status,410);
  assert.equal((await f.req('/invitations/accept',outsider,'POST',{token:shared.path.split('invite=')[1]})).status,410);
 });

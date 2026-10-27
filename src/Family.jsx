@@ -1,6 +1,8 @@
+import MessageText from './MessageText';
 import React,{useEffect,useState} from 'react';
 import {ArrowLeft,ShieldCheck,Users} from 'lucide-react';
 import {api,post} from './api';
+import {FamilyAlertAvatar} from './FamilyAlert';
 import {Field,Form,Logo,formatTime} from './components';
 import {decryptPrivate,shareGuardianHistory} from './encryption/client';
 import {PrivateAttachment} from './PrivateMessages';
@@ -18,7 +20,7 @@ export function FamilyGate({user,onUser,onLogout,children}) {
   useEffect(()=>{if(required&&data&&!data.status.needs_setup)api('/me').then(r=>onUser(r.user)).catch(()=>{});},[required,data?.status.needs_setup]);
   if(!required)return children;
   const status=data?.status||user.family;
-  return <main className="encryption-gate family-gate"><section className="encryption-panel"><Logo/><span className="eyebrow">ACCOUNT PROTECTION</span>
+  return <main className="encryption-gate family-gate"><section className="encryption-panel"><Logo/><FamilyAlertAvatar user={{...user,family:status}} size={64}/><span className="eyebrow">ACCOUNT PROTECTION</span>
     <h1>{!status.age_recorded?'A little about you':'Link your parent account'}</h1>
     {!status.age_recorded?<Form submit="Save date of birth" onSubmit={async form=>{const r=await post('/family/birth-date',{birth_date:form.get('birth_date')});onUser(r.user);await refresh();}}><p>Your date of birth stays private. People under 18 need at least one linked parent before continuing.</p><Field label="Date of birth" name="birth_date" type="date" autoComplete="bday" max={new Date().toISOString().slice(0,10)} required/><p className="small-text muted">Enter your correct date. It cannot be changed from account settings.</p></Form>:<>
       <p>A linked parent can read your direct messages and attachments with anyone, including earlier messages. They approve new adult contacts. This does not give them access to your Nest conversations.</p>
@@ -62,6 +64,6 @@ function ParentMessages({child,onBack}){
   useEffect(()=>{setMessages([]);setCursor(null);},[cid]);
   useEffect(()=>{if(!cid)return;let active=true;const load=async()=>{try{const r=await api(`/private/conversations/${cid}/messages?child_id=${child.id}${cursor?`&before=${cursor}`:''}`),plain=await decryptPrivate(cid,r.messages);if(active){setMessages(old=>cursor?[...plain,...old]:plain);setMore(r.more);setError('');}}catch(e){if(active){setMessages([]);setError(e.message);}}};load();const timer=cursor?null:setInterval(load,4000);return()=>{active=false;clearInterval(timer);};},[cid,child.id,cursor,list.length]);
   return <div className="family-message-review"><button className="text-button" onClick={cid?()=>setCid(null):onBack}><ArrowLeft size={17}/>{cid?'Back to conversations':'Back to family settings'}</button><h3>{child.name}’s direct messages</h3><p className="info-banner"><ShieldCheck size={17}/>Parent-supervised · read-only. Viewing does not mark messages as read for your child.</p>{error&&<p className="error-banner" role="alert">{error}</p>}
-    {!cid?<>{!list.length&&<p>No direct conversations.</p>}{list.map(c=><button className="family-conversation" key={c.id} onClick={()=>setCid(c.id)}>{child.name} and {c.name}</button>)}</>:<>{more&&messages.length>0&&<button className="text-button" onClick={()=>setCursor(messages[0].id)}>Load earlier messages</button>}{!messages.length&&<p>No shared messages yet. Earlier messages become available when your child completes setup.</p>}{messages.map(m=><article className={`private-bubble ${m.user_id===child.id?'own':''}`} key={m.id}><strong>{m.user_id===child.id?child.name:list.find(c=>c.id===cid)?.name}</strong><p>{m.body}</p>{m.files.map(f=><PrivateAttachment key={f.id} file={f}/>)}<small>{formatTime(m.created_at)}</small></article>)}</>}
+    {!cid?<>{!list.length&&<p>No direct conversations.</p>}{list.map(c=><button className="family-conversation" key={c.id} onClick={()=>setCid(c.id)}>{child.name} and {c.name}</button>)}</>:<>{more&&messages.length>0&&<button className="text-button" onClick={()=>setCursor(messages[0].id)}>Load earlier messages</button>}{!messages.length&&<p>No shared messages yet. Earlier messages become available when your child completes setup.</p>}{messages.map(m=><article className={`private-bubble ${m.user_id===child.id?'own':''}`} key={m.id}><strong>{m.user_id===child.id?child.name:list.find(c=>c.id===cid)?.name}</strong><p><MessageText text={m.body}/></p>{m.files.map(f=><PrivateAttachment key={f.id} file={f}/>)}<small>{formatTime(m.created_at)}</small></article>)}</>}
   </div>;
 }

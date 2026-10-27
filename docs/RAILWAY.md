@@ -25,7 +25,7 @@ The smoke check uses a temporary Docker Volume and removes its own containers an
 
 - **Custom domain:** set `APP_URL` to the full HTTPS origin, such as `https://chat.example.com`. For push, set `VAPID_SUBJECT` to a public HTTPS contact URL or a `mailto:` address. This setting can also be used with Railway's generated domain.
 - **Google:** create a Google OAuth Web client, add the exact HTTPS app origin to authorized JavaScript origins, and set `GOOGLE_CLIENT_ID` in Railway's Variables. Restart/redeploy the service. No Google client secret is required.
-- **Push:** users opt in through their profile. Keys are retained in `/data/push-keys.json`; do not delete or replace them on redeploy. If supplying existing keys instead, set both `VAPID_PUBLIC_KEY` and `VAPID_PRIVATE_KEY` securely in Railway Variables and set `VAPID_SUBJECT`. Never paste private keys into chat or commit them.
+- **Push:** already-approved browsers reconnect automatically. New devices need one browser permission tap from the enable prompt or Profile → Notifications. Device preferences default on; explicit opt-outs and individual Nest mutes are respected. Keys are retained in `/data/push-keys.json`; do not delete or replace them on redeploy. If supplying existing keys instead, set both `VAPID_PUBLIC_KEY` and `VAPID_PRIVATE_KEY` securely in Railway Variables and set `VAPID_SUBJECT`. Never paste private keys into chat or commit them.
 
 ## Keep data safe
 

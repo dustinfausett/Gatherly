@@ -4,6 +4,13 @@ import {installLegal} from './legal.js';
 
 export function installWebsite(app,{production,appUrl,explicitAppUrl}){
   installLegal(app,{appUrl});
+  // Public on both domains; membership and expiry are checked after sign-in.
+  // No DB lookup here: the website and app can be deployed as separate services.
+  app.get('/i/:code',(req,res)=>{
+    if(!/^[A-HJ-NP-Z2-9]{10}$/i.test(req.params.code))return res.status(404).send('Invitation not found.');
+    res.set({'Cache-Control':'no-store','X-Robots-Tag':'noindex','Referrer-Policy':'no-referrer'});
+    res.redirect(302,new URL(`/?invite=${req.params.code.toUpperCase()}`,appUrl).href);
+  });
   const publicHost=req=>['churptree.com','www.churptree.com'].includes(req.hostname.toLowerCase());
   // The existing Railway address stays an app origin. A domain change must not
   // strand local encryption keys or replace the established sign-in page.

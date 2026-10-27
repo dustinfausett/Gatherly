@@ -19,7 +19,8 @@ export function installFamily({app,db,encryption,transaction,refreshUser,publicU
   function summary(id) {
     const a=age(id),ps=parents(id),remaining=a!==null&&a<18?missing(id):0;
     const pending=all("SELECT child_id FROM family_links WHERE parent_id=? AND status='pending'",id).filter(l=>youth(l.child_id)).length+all("SELECT DISTINCT a.child_id,a.adult_id FROM private_approvals a JOIN family_links l ON l.child_id=a.child_id WHERE l.parent_id=? AND l.status='active' AND a.status='pending'",id).filter(l=>youth(l.child_id)).length;
-    return {pending_reviews:pending,age_recorded:a!==null,protected:a!==null&&a<18,parent_count:ps.length,history_remaining:remaining,needs_setup:a===null||(a<18&&(!ps.length||remaining>0))};
+    const pendingLinks=a!==null&&a<18?one("SELECT COUNT(*) AS n FROM family_links WHERE child_id=? AND status='pending'",id).n:0;
+    return {action_required:pending>0||pendingLinks>0||remaining>0,pending_links:pendingLinks,pending_reviews:pending,age_recorded:a!==null,protected:a!==null&&a<18,parent_count:ps.length,history_remaining:remaining,needs_setup:a===null||(a<18&&(!ps.length||remaining>0))};
   }
   const ready=id=>!summary(id).needs_setup;
   function requireReady(id) {if(!ready(id))fail(403,'Complete age, parent linking and supervised-message setup before continuing.');}

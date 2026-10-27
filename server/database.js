@@ -315,6 +315,7 @@ export function openDatabase(path) {
     CREATE TABLE IF NOT EXISTS sms_status_events (sid TEXT PRIMARY KEY,status TEXT NOT NULL,created_at INTEGER NOT NULL);
   `);
   addColumn('sms_status_events','error_code','TEXT');
+  addColumn('sms_job_context','filter_nest','TEXT');
   addColumn('sms_threads','read_through','INTEGER NOT NULL DEFAULT 0');
   addColumn('users', 'birth_date', 'TEXT');
   db.exec(`

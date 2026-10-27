@@ -85,3 +85,16 @@ test('an internal block on an explicitly linked phone contact also stops queued 
 test('Twilio opt-out rejection synchronizes global local suppression and cannot be retried',async t=>{
  const f=await fixture(t,'live',async()=>({ok:false,status:400,json:async()=>({code:21610})}));f.config.liveApproved=true;f.config.treeId=f.tree.id;f.config.senders=[f.owner.id];const a=await f.thread(f.owner);f.db.prepare("INSERT INTO sms_consent VALUES (?, 'live','active','fixture evidence',?)").run(a.id,Date.now());const j=await f.ok('/api/sms/jobs',f.owner,'POST',await f.draft(f.owner,[a]));await f.tick();const m=(await f.ok(`/api/sms/jobs/${j.id}`,f.owner)).messages[0];assert.equal(m.state,'suppressed');assert.equal((await f.ok('/api/sms/threads',f.owner)).threads[0].suppressed,true);assert.equal((await f.req(`/api/sms/messages/${m.id}/retry`,f.owner,'POST')).status,409);
 });
+
+test('Nest filtering validates linked contacts at preview, queue and dispatch without leaking hidden rosters',async t=>{
+ const f=await fixture(t),{owner,other,tree}=f;
+ const nest=(await f.ok(`/api/communities/${tree.id}/circles`,owner,'POST',{name:'Event helpers'})).group;
+ await f.ok(`/api/groups/${nest.id}/join`,other,'POST');
+ const contact=(await f.ok('/api/contacts',owner,'POST',{name:'Linked adult',phone:'+12025550126',linked_user_id:other.id})).contact;
+ const th=(await f.ok('/api/sms/threads',owner,'POST',{contact_id:contact.id,tree_id:tree.id,filter_nest:nest.id})).thread;await f.consent(owner,th);
+ const share=await f.ok('/api/invitations',owner,'POST',{community_id:tree.id}),draft={...await f.draft(owner,[th]),filter_nest:nest.id,invitation_url:share.short_url};
+ const p=await f.ok('/api/sms/preview',owner,'POST',draft);assert.equal(p.rows[0].eligible,true);assert.ok(p.rows[0].text.includes(share.short_url));
+ const unlinked=await f.thread(owner,'+12025550127');await f.consent(owner,unlinked);const otherDraft={...await f.draft(owner,[unlinked]),filter_nest:nest.id};assert.equal((await f.ok('/api/sms/preview',owner,'POST',otherDraft)).rows[0].eligible,false);
+ const j=await f.ok('/api/sms/jobs',owner,'POST',draft);await f.restart();f.db.prepare('DELETE FROM group_members WHERE group_id=? AND user_id=?').run(nest.id,other.id);await f.tick();assert.equal((await f.ok(`/api/sms/jobs/${j.id}`,owner)).messages[0].state,'suppressed');assert.equal(f.sends,0);
+ const hidden=(await f.ok(`/api/communities/${tree.id}/circles`,owner,'POST',{name:'Secret',private:true})).group;assert.equal((await f.req('/api/sms/preview',other,'POST',{...await f.draft(other,[]),filter_nest:hidden.id})).status,403);
+});

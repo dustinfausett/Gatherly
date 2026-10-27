@@ -22,6 +22,7 @@ import { BIRDS, getBird } from '../shared/birds.js';
 import { getAvatar } from '../shared/avatars.js';
 import { installInvitations } from './invitations.js';
 import { installContacts } from './contacts.js';
+import {installRecipientScopes} from './recipient-scopes.js';
 import { installPrivateMessages } from './private-messages.js';
 import {installSms} from './sms.js';
 import { installFamily } from './family.js';
@@ -217,6 +218,7 @@ export function createApp(options = {}) {
   family=installFamily({app,db,encryption,transaction,refreshUser,publicUser,testing:options.testing});
   app.get('/api/me', (req,res)=>res.json({user:publicUser(req.user)}));
   installContacts({app,db,transaction,refreshUser,family,testing:options.testing});
+  installRecipientScopes({app,db,groupAdmin,membership});
   const privateMessages=installPrivateMessages({app,db,encryption,family,transaction,refreshUser,group,groupAdmin,testing:options.testing,notifyPrivate:(uid,id)=>{if(pushEnabled)for(const s of all('SELECT * FROM push_subscriptions WHERE user_id=?',uid))webPush.sendNotification(JSON.parse(s.subscription),JSON.stringify({title:'New private message on Churp',body:'You have a private message.',url:`/?conversation=${id}`}),{TTL:3600,timeout:10000,proxy:process.env.HTTPS_PROXY || process.env.https_proxy}).catch(()=>{});}});
   installPolls({app,db,encryption,encryptionRequired,visibleCircle,joined,groupAdmin,transaction,refresh,testing:options.testing});
   installRsvps({app,db,encryption,encryptionRequired,visibleCircle,joined,groupAdmin,transaction,refresh,testing:options.testing});

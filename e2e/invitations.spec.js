@@ -29,11 +29,11 @@ test('Nest member invitations arrive live, require acceptance and preserve priva
  }finally{await context.close();await other.close();}
 });
 
-test('Tree sharing provides a scannable QR, short code and full link on phones and desktop',async({page,browser},info)=>{
+test('Tree sharing provides a scannable QR, short code and compact link on phones and desktop',async({page,browser},info)=>{
  await register(page.context(),'Tree owner');const tree=(await(await page.request.post('/api/communities',{data:{name:'Scan and join'}})).json()).community;await page.goto('/');await navigation(page,info);
  await page.getByRole('button',{name:'Invite someone to this Tree',exact:true}).click();await page.getByRole('button',{name:'Create invitation link',exact:true}).click();
  const d=page.getByRole('dialog');await expect(d.getByRole('img',{name:'Scan to join Scan and join',exact:true})).toBeVisible();await expect.poll(()=>d.locator('.invitation-qr').evaluate(img=>img.naturalWidth)).toBe(300);
- const code=await d.getByRole('textbox',{name:'Invitation code',exact:true}).inputValue(),link=await d.getByRole('textbox',{name:'Invitation link',exact:true}).inputValue();expect(code).toMatch(/^[A-HJ-NP-Z2-9]{5}-[A-HJ-NP-Z2-9]{5}$/);expect(new URL(link).searchParams.get('invite')).toHaveLength(43);
+ const code=await d.getByRole('textbox',{name:'Invitation code',exact:true}).inputValue(),link=await d.getByRole('textbox',{name:'Invitation link',exact:true}).inputValue();expect(code).toMatch(/^[A-HJ-NP-Z2-9]{5}-[A-HJ-NP-Z2-9]{5}$/);expect(new URL(link).pathname).toBe('/i/'+code.replace('-',''));await expect(d.getByRole('link',{name:'Open invitation & sign in',exact:true})).toHaveAttribute('href',link);
  await page.screenshot({path:info.outputPath('share-tree-qr-and-code.png'),fullPage:true});
  const context=await browser.newContext({...info.project.use,baseURL:new URL(page.url()).origin});try{
   await register(context,'New friend');const peer=await context.newPage();await peer.goto('/');await navigation(peer,info);await peer.getByRole('button',{name:'Invitations',exact:true}).click();await peer.getByRole('textbox',{name:'Invitation link or code',exact:true}).fill(code.toLowerCase().replace('-',' '));await peer.getByRole('button',{name:'Accept invitation',exact:true}).click();await expect(peer.getByRole('dialog')).toHaveCount(0);await expect(peer.locator('.community-banner h1')).toHaveText('Scan and join');expect((await(await context.request.get('/api/communities')).json()).communities[0].id).toBe(tree.id);

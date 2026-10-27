@@ -5,6 +5,9 @@ import AvatarPortrait from './AvatarPortrait';
 import BirdPicker from './BirdPicker';
 import { Bird } from './BirdJourney';
 import {FamilySettings} from './Family';
+import {FamilyAlertAvatar,familyNeedsAction} from './FamilyAlert';
+import UnreadEgg from './UnreadEgg';
+import {NotificationScreen} from './notifications';
 import { AccountSecuritySettings } from './AccountSecurity';
 import { EncryptionSettings } from './encryption/EncryptionGate';
 import {legalLinks,policyStatus} from '../shared/legal';
@@ -36,10 +39,10 @@ export default function ProfileSettings({user,config,onClose,onSave,onAccountUpd
         {section==='family' && <FamilySettings user={user}/>}
         {section==='security' && <><p className="settings-intro">Choose who manages your message keys and how you recover encrypted conversations.</p>{config.encryptionRequired?<EncryptionSettings/>:<p className="info-banner">Encrypted messaging is not enabled in this environment.</p>}</>}
         {section==='legal' && <section className="settings-section"><p>Read Churp’s policies without signing in. Each document opens in a separate tab.</p><nav className="policy-links" aria-label="Churp policies">{legalLinks.map(link=><a key={link.path} href={link.path} target="_blank" rel="noopener noreferrer">{link.title}<ChevronRight size={17}/></a>)}</nav><p className="small-text muted">{policyStatus}</p></section>}
-        {section==='notifications'  && <NotificationScreen config={config}/>}
+        {section==='notifications'  && <NotificationScreen config={config} user={user}/>}
       </>:<>
-        <div className="settings-person"><Avatar name={user.name} id={user.avatar_id} portrait={user.avatar_style!=='photo' ? user.avatar_choice || 'blue' : undefined} size={64}/><div><strong>{user.name}</strong><span>@{user.username}</span></div></div>
-        <nav className="settings-menu" aria-label="Your settings">{sections.map(({id,title,description,icon:Icon})=><button key={id} type="button" aria-label={title} onClick={()=>setSection(id)}><span className={`settings-menu-icon ${id==='pet' ? 'pet-menu-icon' : ''}`}>{Icon?<Icon size={22}/>:<Bird birdId={user.bird_id}/>}</span><span><strong>{title}{id==='family'&&user.family?.pending_reviews>0?` (${user.family.pending_reviews})`:null}</strong><small>{description}</small></span><ChevronRight size={18}/></button>)}</nav>
+        <div className="settings-person"><FamilyAlertAvatar user={user} size={64}/><div><strong>{user.name}</strong><span>@{user.username}</span></div></div>
+        <nav className="settings-menu" aria-label="Your settings">{sections.map(({id,title,description,icon:Icon})=><button key={id} className={id==='family'&&familyNeedsAction(user)?'family-menu-alert':undefined} type="button" aria-label={title} onClick={()=>setSection(id)}><span className={`settings-menu-icon ${id==='pet' ? 'pet-menu-icon' : ''} ${id==='family'&&familyNeedsAction(user)?'family-action-glow':''}`}>{Icon?<Icon size={22}/>:<Bird birdId={user.bird_id}/>}<UnreadEgg active={id==='family'&&familyNeedsAction(user)}/></span><span><strong>{title}{id==='family'&&user.family?.pending_reviews>0?` (${user.family.pending_reviews})`:null}</strong><small>{description}</small></span><ChevronRight size={18}/></button>)}</nav>
         <button className="text-button danger settings-sign-out" onClick={onLogout}><LogOut size={17}/>Sign out of Churp</button>
       </>}
     </div>
@@ -64,25 +67,4 @@ function PetScreen({user,onSave,onAccountUpdate,onDone,notify}){
     </Form>
     <div className="settings-section bird-unlock"><h4>Grow your pet collection</h4>{unlocked.length<12?<Form submit="Redeem code" onSubmit={async form=>{const result=await post('/me/birds/unlock',{code:form.get('code')});setUnlocked(result.user.unlocked_birds);onAccountUpdate(result.user);notify('All 12 pets are unlocked. Choose your favorite and save your pet.');}}><p className="muted small-text">Bluebird and Goldfinch are included. Have an unlock code?</p><Field label="Unlock code" name="code" autoComplete="off" required maxLength={64}/></Form>:<p className="bird-unlocked-message" role="status"><Check size={16}/>All 12 pets are unlocked for your account.</p>}<button className="button secondary small" disabled>Purchases coming soon</button></div>
   </>;
-}
-function NotificationScreen({config}){
-  const [subscribed,setSubscribed]=useState(false),[pushState,setPushState]=useState(''),[busy,setBusy]=useState(false),[loaded,setLoaded]=useState(false);
-  useEffect(()=>{let active=true;if(!('serviceWorker' in navigator) || !('PushManager' in window)){setLoaded(true);return;}navigator.serviceWorker.getRegistration().then(async registration=>{const subscription=await registration?.pushManager?.getSubscription();if(active){setSubscribed(!!subscription);setLoaded(true);}}).catch(()=>{if(active)setLoaded(true);});return()=>{active=false;};},[]);
-  async function toggle(){
-    setBusy(true);setPushState('');
-    try{
-      if(!('PushManager' in window) || !('Notification' in window) || !window.isSecureContext)throw new Error('Device notifications need a supported browser and HTTPS. On iPhone, add Churp to your Home Screen first.');
-      if(!subscribed){
-        if(!config.vapidPublicKey)throw new Error('Device notifications are awaiting server setup. Your Nest unread indicators still work.');
-        const permission=await Notification.requestPermission();if(permission!=='granted')throw new Error('Notifications are blocked. Allow them in your browser’s site settings.');
-      }
-      const registration=await navigator.serviceWorker.getRegistration();if(!registration)throw new Error('Refresh Churp to finish setting up device notifications.');
-      if(subscribed){const subscription=await registration.pushManager.getSubscription();if(subscription){await api('/push/subscribe',{method:'DELETE',body:{endpoint:subscription.endpoint}});await subscription.unsubscribe();}setSubscribed(false);setPushState('Device notifications are off for this browser.');}
-      else{
-        const raw=atob(config.vapidPublicKey.replaceAll('-','+').replaceAll('_','/')),applicationServerKey=Uint8Array.from(raw,c=>c.charCodeAt(0));
-        const subscription=await registration.pushManager.getSubscription() || await registration.pushManager.subscribe({userVisibleOnly:true,applicationServerKey});await post('/push/subscribe',{subscription:subscription.toJSON()});setSubscribed(true);setPushState('Device notifications are on for this browser.');
-      }
-    }catch(error){setPushState(error.message);}finally{setBusy(false);}
-  }
-  return <div className="settings-section notification-settings"><h4>Stay in the loop</h4><p className="muted small-text">Joined Nests show unread eggs. Enable notifications for device alerts, or mute an individual Nest to take a breather.</p><button type="button" className="button secondary" disabled={!loaded || busy} onClick={toggle}>{subscribed?<BellOff size={17}/>:<Bell size={17}/>}{busy?'Updating…':subscribed?'Turn off device notifications':'Enable device notifications'}</button>{!config.vapidPublicKey && <p className="small-text muted">Device push is awaiting server configuration.</p>}{pushState && <p className="info-banner" role="status">{pushState}</p>}</div>;
 }

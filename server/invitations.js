@@ -1,6 +1,7 @@
 import { randomBytes,randomUUID } from 'node:crypto';
 import { rateLimit } from 'express-rate-limit';
 import QRCode from 'qrcode';
+import {shortInvitationUrl,invitationOrigin,invitationValue} from '../shared/invitation-links.js';
 import { hash,token } from './security.js';
 
 export function installInvitations({app,db,appUrl,testing,transaction,membership,communityAdmin,groupAdmin,group,joinParent,refresh,refreshUser}){
@@ -37,11 +38,11 @@ export function installInvitations({app,db,appUrl,testing,transaction,membership
     // Re-check authorization after the asynchronous QR generation.
     if(!validSender({group_id:gid,community_id:cid,created_by:req.user.id,requires_approval:requiresApproval}))fail(403,'Your invitation permissions changed. Reload and try again.');
     transaction(()=>{run('INSERT INTO invitations(token_hash,community_id,group_id,created_by,expires_at,requires_approval) VALUES (?,?,?,?,?,?)',hash(value),cid,gid || null,req.user.id,expires,Number(requiresApproval));run('INSERT INTO invitation_codes VALUES (?,?)',hash(code),hash(value));});
-    res.status(201).json({path,url,code:`${code.slice(0,5)}-${code.slice(5)}`,qr_data_url:qr,expires_at:expires,requires_approval:requiresApproval});
+    res.status(201).json({path,url,short_url:shortInvitationUrl(appUrl,code),code:`${code.slice(0,5)}-${code.slice(5)}`,qr_data_url:qr,expires_at:expires,requires_approval:requiresApproval});
   });
   app.post('/api/invitations/accept',accepting,(req,res)=>{
     if(typeof req.body.token!=='string' || req.body.token.length>2048)fail(400,'Enter an invitation link or code.');
-    let value=req.body.token.trim();try{value=new URL(value).searchParams.get('invite') || value;}catch{}
+    let value=invitationValue(req.body.token.trim(),appUrl);
     const normalized=value.replace(/[\s-]/g,'').toUpperCase();
     const inv=/^[A-HJ-NP-Z2-9]{10}$/.test(normalized)?one('SELECT i.* FROM invitations i JOIN invitation_codes c ON c.token_hash=i.token_hash WHERE c.code_hash=?',hash(normalized)):one('SELECT * FROM invitations WHERE token_hash=?',hash(value));
     res.json(join(req.user.id,fresh(inv)));
@@ -89,8 +90,9 @@ export function installInvitations({app,db,appUrl,testing,transaction,membership
   return {validateTextInvite:(uid,cid,value)=>{
     if(typeof value!=='string'||value.length>2048)fail(400,'Create a valid Tree invitation for this text.');
     let url;try{url=new URL(value);}catch{fail(400,'Use a valid Tree invitation URL.');}
-    if(url.origin!==new URL(appUrl).origin||url.pathname!=='/'||!url.searchParams.get('invite'))fail(400,'Use a Churp Tree invitation.');
-    const inv=fresh(one('SELECT * FROM invitations WHERE token_hash=?',hash(url.searchParams.get('invite'))));
+    const short=/^\/i\/[A-HJ-NP-Z2-9]{10}\/?$/i.test(url.pathname);
+    if(![new URL(appUrl).origin,invitationOrigin(appUrl)].includes(url.origin)||(!short&&(url.origin!==new URL(appUrl).origin||url.pathname!=='/'||!url.searchParams.get('invite'))))fail(400,'Use a Churp Tree invitation.');
+    const parsed=invitationValue(url.href,appUrl),inv=fresh(short?one('SELECT i.* FROM invitations i JOIN invitation_codes c ON c.token_hash=i.token_hash WHERE c.code_hash=?',hash(parsed)):one('SELECT * FROM invitations WHERE token_hash=?',hash(parsed)));
     if(inv.created_by!==uid||inv.community_id!==cid||inv.group_id)fail(403,'Use your own invitation for the selected Tree.');
     return url.href;
   }};

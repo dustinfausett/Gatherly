@@ -23,7 +23,7 @@ NODE_ENV=production APP_URL=https://your-domain.example npm start
 
 For Railway, follow [the deployment guide](docs/RAILWAY.md). The Dockerfile and `railway.json` build the frontend and backend together. Railway requires a persistent Volume mounted at `/data`. Use one replica: this version uses SQLite, local uploads, and in-process event streams. The server binds `0.0.0.0` and respects Railway's injected `PORT`. Set the public domain's target port to the actual listening port in Deploy Logs.
 
-The public website is available at `/website/` for review. The same service serves it at `churptree.com` and serves messaging at `app.churptree.com`, while preserving the existing Railway app origin. See [website hosting and GoDaddy DNS instructions](docs/WEBSITE.md). Payments remain coming soon; there is no email signup form or public support email.
+The public website is available at `/website/` for review. The same service serves it at `churptree.com` and serves messaging at `app.churptree.com`, while preserving the existing Railway app origin. See [website hosting and GoDaddy DNS instructions](docs/WEBSITE.md). Payments remain coming soon; support is available at churptree@gmail.com.
 
 Production requires HTTPS because cookies use `Secure`. A reverse proxy must forward the app port and disable buffering on `/api/events` for live updates. `TRUST_PROXY` is a proxy hop count; the Railway image uses `1`.
 
@@ -119,7 +119,7 @@ Generate a VAPID key pair once; the helper writes it privately to ignored `.env`
 npm run setup:push -- --subject=mailto:you@example.com
 ```
 
-Restart, then open **your profile → Notifications → Enable device notifications**. Use an HTTPS production origin. Railway generates persistent keys when its domain and data Volume are available. Keep `/data/push-keys.json` or your deployment's existing key pair across releases.
+Device alerts prefer on by default. Already-approved browsers reconnect automatically; new devices get an **Enable notifications** prompt that requires a browser permission tap. Manage this under **your profile → Notifications**; an explicit opt-out is saved for this account/browser. Use an HTTPS production origin. Railway generates persistent keys when its domain and data Volume are available. Keep `/data/push-keys.json` or your deployment's existing key pair across releases.
 
 - **iPhone:** Safari → Share → Add to Home Screen. Turn on Open as Web App if offered. Launch the icon and sign in there. Push requires iOS 16.4 or newer and the installed Home Screen app.
 - **Android:** Chrome → three-dot menu → Install app or Add to home screen.
@@ -184,3 +184,5 @@ Terms of Service (`/terms`), Privacy Policy (`/privacy`) and proposed SMS Terms 
 ### External phone texting (mock pilot)
 
 Messages → Phone texts now supports owner-scoped phone conversations, public enrollment links, simulated adult consent, reviewed SMS batches, reply codes, global STOP handling, delivery simulations and durable results. Railway can retain `SMS_MODE=mock` with its existing Twilio variables: mock mode never calls Twilio. The signed webhook handlers and REST adapter are implemented, but real carrier delivery remains unverified and live mode needs additional approved-pilot settings. See [docs/SMS.md](docs/SMS.md) before changing modes or configuring webhooks. Native personal-phone texting and MMS are not included.
+
+See [communication refinements](docs/communication-refinements.md) for short invitation links, Tree/Nest recipient filters, Birdhouse import destinations, mobile navigation and family action alerts.

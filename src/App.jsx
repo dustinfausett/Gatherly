@@ -4,6 +4,8 @@ import { api, patch, post } from './api';
 import { Avatar, Logo, Toast } from './components';
 import Auth from './Auth';
 import {FamilyGate} from './Family';
+import {FamilyAlertAvatar} from './FamilyAlert';
+import {DeviceNotifications,disconnectDeviceNotifications} from './notifications';
 import { AccountLink } from './AccountSecurity';
 import { InvitationIcon } from './Invitations';
 import Contacts,{NavigationArt} from './Contacts';
@@ -138,11 +140,7 @@ export default function App() {
   async function logout() {
     cancelEntry();
     try {
-      if ('serviceWorker' in navigator) {
-        const reg = await navigator.serviceWorker.getRegistration();
-        const subscription = await reg?.pushManager?.getSubscription();
-        if (subscription) { await api('/push/subscribe', { method: 'DELETE', body: { endpoint: subscription.endpoint } }); await subscription.unsubscribe(); }
-      }
+      await disconnectDeviceNotifications(user,false);
       await post('/auth/logout'); await forgetEncryption(user.id); setUser(null); setCommunity(null); setCommunities([]); setModal(null); setView({ cid: null, gid: null });
     } catch (err) { notify(err.message, true); }
   }
@@ -152,15 +150,16 @@ export default function App() {
   if(accountAction)return <AccountLink action={accountAction} onDone={async reset=>{setAccountAction(null);if(reset)setUser(null);await boot();}}/>;
   if (!user) return <Auth config={config} onLogin={(u,notice) => { if(notice)notify(notice);setUser(u); setView({ cid: u.last_community_id, gid: null }); }} />;
   return <EncryptionGate key={user.id} user={user} required={!!config.encryptionRequired} onLogout={logout}><FamilyGate user={user} onUser={setUser} onLogout={logout}><div className={`app phase-one ${tab==='tree'&&group ? 'showing-chat' : ''} ${journey ? 'bird-in-transit' : ''}`} style={{'--nest-entry-duration':`${NEST_MOTION.slide}ms`}}>
+    <DeviceNotifications user={user} config={config}/>
     <header className="topbar"><div className="brand-zone"><button className="icon-button mobile-only" aria-label="Open navigation" onClick={() => setMobileNav(true)}><Menu size={22} /></button><span className={community&&tab==='tree' ? 'desktop-logo' : ''}><Logo /></span>{community&&tab==='tree' && <div className="mobile-community-switcher" ref={mobileSwitcherRef}>
         <button className="mobile-community-button" aria-label="My Orchard" aria-expanded={mobileSwitcher} onClick={() => setMobileSwitcher(!mobileSwitcher)}><Avatar name={community.name} id={community.avatar_id} size={30} square /><span><strong>{community.name}</strong><small>YOUR TREE</small></span><ChevronDown size={13} /></button>
         {mobileSwitcher && <div className="switcher-menu"><div className="menu-label">My Orchard</div>{communities.map(c => <button className="switcher-item" key={c.id} onClick={() => chooseCommunity(c.id)}><Avatar name={c.name} id={c.avatar_id} size={30} square /><span>{c.name}</span>{view.cid === c.id && <Check size={15} />}</button>)}<div className="menu-divider" /><button onClick={() => { setMobileSwitcher(false); setModal({ kind: 'space', type: 'community' }); }}><Plus size={16} />Create a Tree</button><button onClick={() => { setMobileSwitcher(false); setModal({ kind: 'join' }); }}><InvitationIcon/>Invitations</button></div>}
-      </div>}</div><span className="topbar-message">A little closer, together.<Sprout size={15} /></span><div className="topbar-actions"><button className="profile-button" onClick={() => setModal({ kind: 'profile' })} aria-label="Edit your profile"><Avatar name={user.name} id={user.avatar_id} portrait={user.avatar_style !== 'photo' ? user.avatar_choice || 'blue' : undefined} size={33} /><span>{user.name.split(' ')[0]}</span><ChevronDown size={14} /></button></div></header>
+      </div>}</div><span className="topbar-message">A little closer, together.<Sprout size={15} /></span><div className="topbar-actions"><button className="profile-button" onClick={() => setModal({ kind: 'profile' })} aria-label="Edit your profile"><FamilyAlertAvatar user={user} size={33}/><span>{user.name.split(' ')[0]}</span><ChevronDown size={14} /></button></div></header>
     {mobileNav && <div className="mobile-scrim" onClick={() => setMobileNav(false)} />}
     <aside className={`sidebar ${mobileNav ? 'open' : ''}`}><div className="sidebar-brand"><Logo /></div><div className="community-switcher" ref={switcherRef}><button className="community-switch" aria-label="My Orchard" aria-expanded={switcher} onClick={() => setSwitcher(!switcher)}><Avatar name={community?.name || 'My Orchard'} id={community?.avatar_id} size={43} square /><span><strong>{community?.name || 'My Orchard'}</strong><small>{community ? 'My Orchard' : 'Find a place to belong'}</small></span><ChevronDown size={17} /></button>
       {switcher && <div className="switcher-menu"><div className="menu-label">My Orchard</div>{communities.map(c => <button className="switcher-item" key={c.id} onClick={() => chooseCommunity(c.id)}><Avatar name={c.name} id={c.avatar_id} size={32} square /><span>{c.name}</span>{view.cid === c.id && <Check size={16} />}</button>)}<div className="menu-divider" /><button onClick={() => { setSwitcher(false); setModal({ kind: 'space', type: 'community' }); }}><Plus size={16} /> Create a Tree</button><button onClick={() => { setSwitcher(false); setModal({ kind: 'join' }); }}><InvitationIcon/> Invitations</button></div>}
     </div>
-      <nav className="sidebar-nav"><button className={!view.gid && !view.page ? 'selected' : ''} onClick={communityHome}><SpaceIcon kind="tree" size={21} />Tree home</button>{community && <><button className={view.page === 'details' ? 'selected' : ''} onClick={openDetails}><Info size={19} />Tree details</button><button onClick={() => { setModal({ kind: 'members' }); setMobileNav(false); }}><Users size={19} />Members</button><button onClick={()=>{setModal({kind:"creation-requests"});setMobileNav(false);}}><ClipboardCheck size={19}/>Creation requests{community.pending_creation_count > 0 && <span className="request-count">{community.pending_creation_count}</span>}</button></>}</nav>
+      <nav className="sidebar-nav"><button className={!view.gid && !view.page ? 'selected' : ''} onClick={communityHome}><SpaceIcon kind="tree" size={21} />Tree home</button>{community && <><button className={view.page === 'details' ? 'selected' : ''} onClick={openDetails}><NavigationArt kind="leaf"/>Tree details</button><button onClick={() => { setModal({ kind: 'members' }); setMobileNav(false); }}><NavigationArt kind="members"/>Members</button><button onClick={()=>{setModal({kind:"creation-requests"});setMobileNav(false);}}><NavigationArt kind="requests"/>Creation requests{community.pending_creation_count > 0 && <span className="request-count">{community.pending_creation_count}</span>}</button></>}</nav>
       <section className="sidebar-invitations" aria-label="Invitations">{community && <button className="sidebar-invite" aria-label="Invite someone to this Tree" onClick={()=>{setMobileNav(false);setModal({kind:'invite'});}}><span className="invite-mini-icon"><InvitationIcon/></span><span><strong>Invite your people</strong><small>Share a QR code, code or link</small></span><Plus size={18}/></button>}<button className="sidebar-join" aria-label="Invitations" aria-description={`${invitationCount} pending invitations`} onClick={()=>{setMobileNav(false);setModal({kind:'join'});}}><InvitationIcon/>Invitations{invitationCount>0 && <span className="invitation-count" aria-label={`${invitationCount} pending invitations`}>{invitationCount}</span>}</button></section>
       <div className="sidebar-bottom"><div className="sidebar-footer"><span><span className="online-dot" /> Your space to connect</span>{community?.is_admin && <button className="icon-button" aria-label="Tree settings" onClick={() => setModal({ kind: 'space', type: 'community', entity: community })}><Settings2 size={17} /></button>}</div></div>
     </aside>
