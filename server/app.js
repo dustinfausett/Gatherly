@@ -1,3 +1,4 @@
+import {installReactions} from './reactions.js';
 import express from 'express';
 import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
@@ -236,6 +237,7 @@ export function createApp(options = {}) {
   installContacts({app,db,transaction,refreshUser,family,testing:options.testing});
   installRecipientScopes({app,db,groupAdmin,membership});
   const privateMessages=installPrivateMessages({app,db,encryption,family,transaction,refreshUser,group,groupAdmin,testing:options.testing,notifyPrivate:(uid,id)=>notifyDevice(uid,{title:'New private message on Churp',body:'You have a private message.',url:`/?conversation=${id}`})});
+  installReactions({app,db,encryption,encryptionRequired,family,visibleCircle,joined,transaction,refresh,refreshUser,testing:options.testing});
   installPolls({app,db,encryption,encryptionRequired,visibleCircle,joined,groupAdmin,transaction,refresh,testing:options.testing});
   installRsvps({app,db,encryption,encryptionRequired,visibleCircle,joined,groupAdmin,transaction,refresh,testing:options.testing});
   const assignments=installAssignments({app,db,encryption,encryptionRequired,visibleCircle,joined,groupAdmin,transaction,refresh,testing:options.testing});
@@ -747,6 +749,7 @@ export function createApp(options = {}) {
     if (m.user_id !== req.user.id && !groupAdmin(req.user.id, g)) fail(403, 'You can only delete your own messages.');
     transaction(() => {
       run("UPDATE messages SET deleted=1,body='',ciphertext=NULL WHERE id=?", m.id);
+      run('DELETE FROM message_reactions WHERE nest_message_id=?',m.id);
       if(m.message_kind==='poll'){
         run("UPDATE messages SET deleted=1,body='',ciphertext=NULL WHERE reply_to=? AND message_kind='poll_vote'",m.id);
         run('DELETE FROM poll_votes WHERE poll_id=?',m.id);

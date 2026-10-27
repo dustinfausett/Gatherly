@@ -396,5 +396,19 @@ export function openDatabase(path) {
       db.exec('COMMIT');
     } catch (error) { db.exec('ROLLBACK'); throw error; }
   }
+  db.exec(`CREATE TABLE IF NOT EXISTS message_reactions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    nest_message_id INTEGER REFERENCES messages(id) ON DELETE CASCADE,
+    private_message_id INTEGER REFERENCES private_messages(id) ON DELETE CASCADE,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    version INTEGER NOT NULL CHECK(version>0),reaction_count INTEGER NOT NULL CHECK(reaction_count BETWEEN 0 AND 5),
+    client_id TEXT NOT NULL UNIQUE,ciphertext TEXT,body TEXT,recipient_hash TEXT,signer_fingerprint TEXT,
+    CHECK((nest_message_id IS NOT NULL AND private_message_id IS NULL) OR (nest_message_id IS NULL AND private_message_id IS NOT NULL)),
+    UNIQUE(nest_message_id,user_id),UNIQUE(private_message_id,user_id)
+  );
+  CREATE TABLE IF NOT EXISTS reaction_readers (
+    reaction_id INTEGER NOT NULL REFERENCES message_reactions(id) ON DELETE CASCADE,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,PRIMARY KEY(reaction_id,user_id)
+  );`);
   return db;
 }

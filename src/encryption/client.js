@@ -1,3 +1,4 @@
+import {validateReactions,reactionProof} from '../../shared/reactions.js';
 import { assignmentProof } from '../../shared/assignments';
 import { api,post } from '../api';
 import * as enc from '../../shared/encryption.js';
@@ -285,4 +286,31 @@ export async function shareGuardianHistory(onProgress=()=>{}) {
       }
     }
   }
+}
+
+// Reactions are signed, encrypted snapshots separate from chat/unread messages.
+export async function sealReactions(channel,messageId,emojis,expectedVersion,roster){
+ const self=getCurrent(),readers=await Promise.all(roster.readers.map(trustedReader)),clientId=crypto.randomUUID();
+ const values=validateReactions(emojis),reactionCount=values.length,rosterHash=roster.roster_hash;
+ const value={protocol:1,kind:'message-reactions',channel,messageId,userId:self.userId,revision:expectedVersion+1,clientId,rosterHash,emojis:values};
+ const ciphertext=await enc.seal(self.privateKey,readers.map(r=>r.public_key),value);
+ return {expectedVersion,clientId,rosterHash,reactionCount,ciphertext,signature:await enc.sign(self.privateKey,'message-reactions',reactionProof({channel,messageId,userId:self.userId,expectedVersion,clientId,rosterHash,reactionCount,cipherHash:await enc.digest(ciphertext)}))};
+}
+const reactionCache=new Map();
+export async function decryptReactions(states,encrypted=true){
+ const self=encrypted?getCurrent():null;
+ return Promise.all(states.map(async row=>{try{
+  let emojis;
+  if(!encrypted)emojis=validateReactions(JSON.parse(row.body));
+  else {
+   const signer=await trustedReader({id:row.user_id,public_key:row.signer_key,fingerprint:row.signer_fingerprint});
+   const key=`${self.userId}:${row.id}:${row.version}:${row.ciphertext}:${signer.fingerprint}`;
+   let value=reactionCache.get(key);
+   if(!value){for(const privateKey of [self.privateKey,...self.previousPrivateKeys]){try{value=await enc.open(privateKey,signer.public_key,row.ciphertext);break;}catch{}}if(!value)throw new Error('Reaction could not be unlocked.');reactionCache.set(key,value);if(reactionCache.size>1000)reactionCache.delete(reactionCache.keys().next().value);}
+   if(value.protocol!==1||value.kind!=='message-reactions'||value.channel!==row.channel||value.messageId!==row.message_id||value.userId!==row.user_id||value.revision!==row.version||value.clientId!==row.client_id||value.rosterHash!==row.recipient_hash)throw new Error('Reaction context changed.');
+   emojis=validateReactions(value.emojis);
+  }
+  if(emojis.length!==row.reaction_count)throw new Error('Reaction count changed.');
+  return {...row,emojis};
+ }catch{return {...row,emojis:[],invalid:true};}}));
 }

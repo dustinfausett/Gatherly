@@ -195,3 +195,7 @@ Contacts now uses **From Tree / From Phone**: bulk-add Tree members without typi
 ### Scheduled messages
 
 Use the **clock beside Send**, or **Schedule send** in Poll, RSVP, Assignment and batch builders, to schedule messages and supported attachments. Pending sends appear as faded previews visible only to the sender in their Nest, thread, private chat or phone text conversation, with edit, reschedule and cancel controls. **Your corner → Scheduled messages** keeps the combined list and history. Delivery runs without the sender keeping Churp open, rechecks permissions and encryption recipients, and resumes after restarts. Keep the Railway service running (disable App Sleeping/Serverless sleeping) for on-time sends. See [scheduling and deployment details](docs/SCHEDULING.md).
+
+## Message reactions
+
+Messages in Nests, threads and Churp private chats offer 👍, ❤️, 😂 and a searchable emoji picker. Each user can select five different emojis per message; adding a sixth replaces their oldest, and tapping a selected emoji removes it. Reactions appear beneath messages with live counts, persist across devices, and retain message encryption and youth protections. [Behavior and verification](docs/MESSAGE-REACTIONS.md).

@@ -1,3 +1,4 @@
+import MessageReactions,{ReactionsProvider} from './MessageReactions';
 import MessageText from './MessageText';
 import React,{useEffect,useState} from 'react';
 import {ArrowLeft,ShieldCheck,Users} from 'lucide-react';
@@ -46,7 +47,7 @@ function FamilyLinks({data,onRefresh,youth,userId}){
 export function FamilySettings({user}){
   const {data,error,refresh}=useFamily(),[code,setCode]=useState(''),[child,setChild]=useState(null),[actionError,setActionError]=useState('');
   async function act(fn){setActionError('');try{await fn();await refresh();}catch(e){setActionError(e.message);}}
-  if(child)return <ParentMessages child={child} onBack={()=>setChild(null)}/>;
+  if(child)return <ParentMessages user={user} child={child} onBack={()=>setChild(null)}/>;
   const youth=!!user.family?.protected;
   return <section className="family-settings"><p className="settings-intro">{youth?'Your parents help protect your direct messages.':'Link up to two parent accounts to each child. Either parent can approve adult contacts and read the child’s direct messages.'} Nest access follows its existing membership rules.</p>
     {!youth&&<div className="family-card"><h3>Link a child’s account</h3><p>Create a code for your child to enter, then confirm the account below. A code verifies control of the accounts; it does not independently verify age or the family relationship.</p><button className="button secondary" onClick={()=>act(async()=>setCode((await post('/family/codes')).code))}>Create parent invitation code</button>{code&&<><output className="family-code">{code}</output><p className="small-text muted">Single use · expires in 24 hours. A new code replaces your previous code.</p></>}</div>}
@@ -58,12 +59,12 @@ export function FamilySettings({user}){
     <p className="small-text muted">Parental access is read-only and applies only while the child is under 18 and the link is active. Previously downloaded messages cannot be taken back.</p>
   </section>;
 }
-function ParentMessages({child,onBack}){
+function ParentMessages({child,user,onBack}){
   const [list,setList]=useState([]),[cid,setCid]=useState(null),[messages,setMessages]=useState([]),[error,setError]=useState(''),[more,setMore]=useState(false),[cursor,setCursor]=useState(null);
   useEffect(()=>{let active=true;const load=()=>api(`/family/children/${child.id}/conversations`).then(r=>{if(active){setList(r.conversations);setError('');}}).catch(e=>{if(active){setList([]);setMessages([]);setError(e.message);}});load();const timer=setInterval(load,4000);return()=>{active=false;clearInterval(timer);};},[child.id]);
   useEffect(()=>{setMessages([]);setCursor(null);},[cid]);
   useEffect(()=>{if(!cid)return;let active=true;const load=async()=>{try{const r=await api(`/private/conversations/${cid}/messages?child_id=${child.id}${cursor?`&before=${cursor}`:''}`),plain=await decryptPrivate(cid,r.messages);if(active){setMessages(old=>cursor?[...plain,...old]:plain);setMore(r.more);setError('');}}catch(e){if(active){setMessages([]);setError(e.message);}}};load();const timer=cursor?null:setInterval(load,4000);return()=>{active=false;clearInterval(timer);};},[cid,child.id,cursor,list.length]);
-  return <div className="family-message-review"><button className="text-button" onClick={cid?()=>setCid(null):onBack}><ArrowLeft size={17}/>{cid?'Back to conversations':'Back to family settings'}</button><h3>{child.name}’s direct messages</h3><p className="info-banner"><ShieldCheck size={17}/>Parent-supervised · read-only. Viewing does not mark messages as read for your child.</p>{error&&<p className="error-banner" role="alert">{error}</p>}
-    {!cid?<>{!list.length&&<p>No direct conversations.</p>}{list.map(c=><button className="family-conversation" key={c.id} onClick={()=>setCid(c.id)}>{child.name} and {c.name}</button>)}</>:<>{more&&messages.length>0&&<button className="text-button" onClick={()=>setCursor(messages[0].id)}>Load earlier messages</button>}{!messages.length&&<p>No shared messages yet. Earlier messages become available when your child completes setup.</p>}{messages.map(m=><article className={`private-bubble ${m.user_id===child.id?'own':''}`} key={m.id}><strong>{m.user_id===child.id?child.name:list.find(c=>c.id===cid)?.name}</strong><p><MessageText text={m.body}/></p>{m.files.map(f=><PrivateAttachment key={f.id} file={f}/>)}<small>{formatTime(m.created_at)}</small></article>)}</>}
-  </div>;
+  return <ReactionsProvider key={cid||'none'} channel="private" messages={messages} user={user} version={user} canReact={false} childId={child.id}><div className="family-message-review"><button className="text-button" onClick={cid?()=>setCid(null):onBack}><ArrowLeft size={17}/>{cid?'Back to conversations':'Back to family settings'}</button><h3>{child.name}’s direct messages</h3><p className="info-banner"><ShieldCheck size={17}/>Parent-supervised · read-only. Viewing does not mark messages as read for your child.</p>{error&&<p className="error-banner" role="alert">{error}</p>}
+    {!cid?<>{!list.length&&<p>No direct conversations.</p>}{list.map(c=><button className="family-conversation" key={c.id} onClick={()=>setCid(c.id)}>{child.name} and {c.name}</button>)}</>:<>{more&&messages.length>0&&<button className="text-button" onClick={()=>setCursor(messages[0].id)}>Load earlier messages</button>}{!messages.length&&<p>No shared messages yet. Earlier messages become available when your child completes setup.</p>}{messages.map(m=><div className={`private-message-item ${m.user_id===child.id?'own':''}`} key={m.id}><article className={`private-bubble ${m.user_id===child.id?'own':''}`}><strong>{m.user_id===child.id?child.name:list.find(c=>c.id===cid)?.name}</strong><p><MessageText text={m.body}/></p>{m.files.map(f=><PrivateAttachment key={f.id} file={f}/>)}<small>{formatTime(m.created_at)}</small></article><MessageReactions message={m}/></div>)}</>}
+  </div></ReactionsProvider>;
 }
