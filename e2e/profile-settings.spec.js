@@ -1,5 +1,6 @@
 import {test,expect} from '@playwright/test';
 import {randomUUID} from 'node:crypto';
+import {BIRDS,birdIsAvailable} from '../shared/birds.js';
 
 test('compact settings separates avatars, pets, account security and notifications',async({page},info)=>{
  const errors=[];page.on('pageerror',e=>errors.push(e.message));
@@ -18,8 +19,8 @@ test('compact settings separates avatars, pets, account security and notificatio
  await dialog.locator('.avatar-picker').screenshot({path:info.outputPath('twenty-bird-avatars.png')});
  await dialog.getByRole('radio',{name:'Parrot',exact:true}).check();await dialog.getByRole('textbox',{name:'Display name',exact:true}).fill('New bird friend');await dialog.getByRole('button',{name:'Save profile',exact:true}).click();await expect(dialog).toHaveCount(0);
  await expect(page.locator('.profile-button [data-avatar-choice]')).toHaveAttribute('data-avatar-choice','parrot');await expect(page.locator('.banner-bird [data-bird-id]')).toHaveAttribute('data-bird-id','blue');
- let account=(await(await page.request.get('/api/me')).json()).user;expect(account.bird_id).toBe('blue');expect(account.unlocked_birds).toEqual(['blue','gold','christmas']);
- await settings();await dialog.getByRole('button',{name:'My pet',exact:true}).click();await expect(dialog.getByRole('radio')).toHaveCount(13);await expect(dialog.getByRole('radio',{name:'Parrot',exact:true})).toBeDisabled();await dialog.getByRole('radio',{name:'Goldfinch',exact:true}).check();await dialog.getByRole('button',{name:'Save pet',exact:true}).click();await expect(dialog).toHaveCount(0);
+ let account=(await(await page.request.get('/api/me')).json()).user;expect(account.bird_id).toBe('blue');expect(account.unlocked_birds).toEqual(BIRDS.filter(b=>b.free&&birdIsAvailable(b)).map(b=>b.id));
+ await settings();await dialog.getByRole('button',{name:'My pet',exact:true}).click();await expect(dialog.getByRole('radio')).toHaveCount(13);if(!birdIsAvailable(BIRDS.find(b=>b.id==='christmas'))){await expect(dialog.getByRole('radio',{name:'Christmas Bird',exact:true})).toBeDisabled();await expect(dialog.locator('.bird-choice').filter({hasText:'Christmas Bird'})).toContainText('Nov 1–Jan 3');}await expect(dialog.getByRole('radio',{name:'Parrot',exact:true})).toBeDisabled();await dialog.getByRole('radio',{name:'Goldfinch',exact:true}).check();await dialog.getByRole('button',{name:'Save pet',exact:true}).click();await expect(dialog).toHaveCount(0);
  await expect(page.locator('.profile-button [data-avatar-choice]')).toHaveAttribute('data-avatar-choice','parrot');await expect(page.locator('.banner-bird [data-bird-id]')).toHaveAttribute('data-bird-id','gold');
  await page.getByRole('button',{name:'Open Nest Hello birds',exact:true}).click();await expect(page.locator('.resident-bird')).toHaveAttribute('data-bird-id','gold');
  await page.getByRole('textbox',{name:'Write a message',exact:true}).fill('My avatar is a parrot; my pet is gold.');await page.getByRole('button',{name:'Send message',exact:true}).click();await expect(page.locator('.message-bubble')).toContainText('My avatar is a parrot; my pet is gold.');

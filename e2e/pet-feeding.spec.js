@@ -1,16 +1,17 @@
 import {test,expect} from '@playwright/test';
 import {randomUUID} from 'node:crypto';
-import {BIRDS} from '../shared/birds.js';
+import {BIRDS,birdIsAvailable} from '../shared/birds.js';
+const availableBirds=BIRDS.filter(b=>birdIsAvailable(b));
 
 async function setup(page){
  const result=await page.request.post('/api/auth/register',{data:{birth_date:'1990-01-01',name:'Pet keeper',username:`feed_${randomUUID().slice(0,8)}`,password:'A happy Churp feeding fixture!'}});expect(result.status()).toBe(201);
  const tree=(await(await page.request.post('/api/communities',{data:{name:'Our birds and friends'}})).json()).community,nest=(await(await page.request.post(`/api/communities/${tree.id}/circles`,{data:{name:'Pet chat'}})).json()).group;
  await page.goto(`/?community=${tree.id}`);await expect(page.getByRole('button',{name:'Feed Bluebird',exact:true})).toBeVisible();return {tree,nest};
 }
-test('all 13 pets eat generated food with continuously interpolated motion and can be fed again',async({page},info)=>{
+test('all available pets eat generated food with continuously interpolated motion and can be fed again',async({page},info)=>{
  test.setTimeout(120000);const errors=[];page.on('pageerror',e=>errors.push(e.message));await setup(page);
  expect((await page.request.post('/api/me/birds/unlock',{data:{code:'Churp'}})).ok()).toBeTruthy();
- for(const bird of BIRDS){
+ for(const bird of availableBirds){
   expect((await page.request.patch('/api/me',{data:{bird_id:bird.id}})).ok()).toBeTruthy();const button=page.getByRole('button',{name:`Feed ${bird.name}`,exact:true});await expect(button).toBeVisible();await expect(button.locator('[data-bird-id]')).toHaveAttribute('data-bird-id',bird.id);
   const box=await button.boundingBox();expect(box.width).toBeGreaterThanOrEqual(44);expect(box.height).toBeGreaterThanOrEqual(44);await button.click();await expect(button).toHaveAttribute('aria-busy','true');await expect(button).toBeDisabled();
   await expect.poll(()=>button.locator('.pet-feed-bird').evaluate(node=>node.getAnimations().length)).toBe(1);
@@ -26,7 +27,7 @@ test('all 13 pets eat generated food with continuously interpolated motion and c
   await button.evaluate(node=>{for(const animation of node.getAnimations({subtree:true})){animation.currentTime=animation.effect.getTiming().duration*.9;animation.play();}});
   await expect(button).toHaveAttribute('aria-busy','false');await expect(button).toBeEnabled();expect(await button.locator('.pet-feed-bird').evaluate(n=>getComputedStyle(n).transform)).toBe('none');await expect(page.getByRole('status').filter({hasText:`${bird.name} enjoyed`})).toBeAttached();
  }
- const again=page.getByRole('button',{name:'Feed Christmas Bird',exact:true});await again.focus();await page.keyboard.press('Enter');await expect(again).toHaveAttribute('aria-busy','true');await expect(again).toHaveAttribute('aria-busy','false',{timeout:8000});
+ const again=page.getByRole('button',{name:`Feed ${availableBirds.at(-1).name}`,exact:true});await again.focus();await page.keyboard.press('Enter');await expect(again).toHaveAttribute('aria-busy','true');await expect(again).toHaveAttribute('aria-busy','false',{timeout:8000});
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBeTruthy();expect(errors).toEqual([]);
 });
 

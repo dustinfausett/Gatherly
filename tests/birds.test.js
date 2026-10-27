@@ -13,7 +13,7 @@ test('account bird selection, protected code unlocks and photo migration persist
   const dir = mkdtempSync(join(tmpdir(),'churp-birds-'));
   let runtime, server, base;
   async function start() {
-    runtime=createApp({ encryptionRequired:false,dataDir:dir,testing:true,googleClientId:'',pushEnabled:false});server=createServer(runtime.app);
+    runtime=createApp({ encryptionRequired:false,dataDir:dir,testing:true,birdNow:()=>new Date('2026-12-15T12:00:00Z'),googleClientId:'',pushEnabled:false});server=createServer(runtime.app);
     await new Promise(r=>server.listen(0,'127.0.0.1',r));base=`http://127.0.0.1:${server.address().port}/api`;
   }
   async function stop() {runtime.close();await new Promise(r=>server.close(r));}

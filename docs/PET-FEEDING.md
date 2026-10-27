@@ -6,9 +6,9 @@ All 13 pets participate. The bluebird, goldfinch, mint bird, cockatiel and cardi
 
 ## Christmas Bird availability
 
-The Christmas Bird is an included seasonal pet, wearing a red Santa suit and hat. It is **available now for early testing**, including outside its normal season. `CHRISTMAS_PREVIEW_ENABLED` in `shared/birds.js` remains `true` until the owner explicitly requests seasonal-only availability. Do not switch it off automatically after testing.
+The Christmas Bird is an included seasonal pet, wearing a red Santa suit and hat. Early testing is complete: `CHRISTMAS_PREVIEW_ENABLED` in `shared/birds.js` is `false`.
 
-When that flag is switched to `false`, the shared calendar rule permits November 1 through the end of January 3, using America/Denver calendar dates. The server checks both the unlocked collection and explicit selection requests; an unlock code cannot bypass the season. An out-of-season selected Christmas Bird displays as the Bluebird. The picker labels the seasonal dates when unavailable. `tests/seasonal-pets.test.js` checks both date boundaries, the current early-test override, API selection, code bypass prevention and the fallback.
+Availability runs November 1 through the end of January 3, using America/Denver calendar dates, and repeats every year. The server checks both the unlocked collection and explicit selection requests; an unlock code cannot bypass the season. An out-of-season selected Christmas Bird displays as the Bluebird. The picker labels the seasonal dates when unavailable. `tests/seasonal-pets.test.js` checks both date boundaries, default enforcement, API selection, code bypass prevention and the fallback. General pet account tests freeze their seasonal clock in December; browser tests exercise the currently available collection.
 
 ## Artwork and motion
 

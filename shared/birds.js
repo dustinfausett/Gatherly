@@ -15,8 +15,8 @@ export const BIRDS = [
   { id: 'christmas', name: 'Christmas Bird', free: true, collection: 'christmas', row: 0, seasonal: true },
 ];
 export const getBird = id => BIRDS.find(b => b.id === id);
-// Keep enabled for the owner's early testing; switch off only when requested.
-export const CHRISTMAS_PREVIEW_ENABLED=true;
+// Early testing is complete; seasonal availability is enforced.
+export const CHRISTMAS_PREVIEW_ENABLED=false;
 export function christmasInSeason(date=new Date()){
  const parts=new Intl.DateTimeFormat('en-US',{timeZone:'America/Denver',month:'numeric',day:'numeric'}).formatToParts(date),value=type=>Number(parts.find(p=>p.type===type).value);
  return value('month')>=11||(value('month')===1&&value('day')<=3);

@@ -1,13 +1,15 @@
 import { test, expect } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
-import { BIRDS } from '../shared/birds.js';
+import { BIRDS,birdIsAvailable } from '../shared/birds.js';
+const availableBirds=BIRDS.filter(b=>birdIsAvailable(b));
+const seasonalUnavailable=BIRDS.length-availableBirds.length;
 
 const register = async (request,prefix) => {
   const r=await request.post('/api/auth/register',{data:{birth_date:'1990-01-01',username:`${prefix}_${randomUUID().slice(0,8)}`,name:'Bird watcher',password:'bird and tree browser password'}});
   expect(r.status()).toBe(201);return (await r.json()).user;
 };
 
-test('13 independent pets, code redemption and matching flights',async({page},info)=>{
+test('available pets, code redemption and matching flights',async({page},info)=>{
   test.setTimeout(120000);
   const errors=[];page.on('pageerror',e=>errors.push(e.message));
   await register(page.request,'birds');
@@ -34,7 +36,7 @@ test('13 independent pets, code redemption and matching flights',async({page},in
   await expect(page.getByRole('radio')).toHaveCount(13);
   await expect(page.getByRole('radio',{name:'Bluebird',exact:true})).toBeChecked();
   await expect(page.getByRole('radio',{name:'Goldfinch',exact:true})).toBeEnabled();
-  await expect(page.locator('.bird-picker input:disabled')).toHaveCount(10);
+  await expect(page.locator('.bird-picker input:disabled')).toHaveCount(10+seasonalUnavailable);
   await expect(page.getByRole('button',{name:'Purchases coming soon',exact:true})).toBeDisabled();
   await page.locator('.bird-choice').filter({has:page.getByRole('radio',{name:'Goldfinch',exact:true})}).click();
   await page.getByRole('button',{name:'Save pet',exact:true}).click();
@@ -50,14 +52,14 @@ test('13 independent pets, code redemption and matching flights',async({page},in
     await expect(page.getByRole('radio',{name:'Parrot',exact:true})).toBeDisabled();
     await page.getByRole('textbox',{name:'Unlock code',exact:true}).fill('Churp');
     await page.getByRole('button',{name:'Redeem code',exact:true}).click();
-    await expect(page.locator('.bird-picker input:disabled')).toHaveCount(0);
+    await expect(page.locator('.bird-picker input:disabled')).toHaveCount(seasonalUnavailable);
     await expect(page.getByText('Your pet collection is unlocked.',{exact:true})).toBeVisible();
     await page.locator('.bird-choice').filter({has:page.getByRole('radio',{name:'Parrot',exact:true})}).click();
     await page.locator('.bird-picker').screenshot({path:info.outputPath('bird-collection.png')});
     await page.getByRole('button',{name:'Save pet',exact:true}).click();
     await expect(second.locator('.banner-bird [data-bird-id]')).toHaveAttribute('data-bird-id','parrot');
   } finally {await second.close();}
-  for(const bird of BIRDS){
+  for(const bird of availableBirds){
     await page.getByRole('button',{name:'Edit your profile',exact:true}).click();await page.getByRole('button',{name:'My pet',exact:true}).click();
     await page.locator('.bird-choice').filter({has:page.getByRole('radio',{name:bird.name,exact:true})}).click();
     await page.getByRole('button',{name:'Save pet',exact:true}).click();
@@ -83,10 +85,10 @@ test('13 independent pets, code redemption and matching flights',async({page},in
     else await page.getByRole('button',{name:'Back to Tree',exact:true}).click();
   }
   await page.reload();
-  await expect(page.locator('.banner-bird [data-bird-id]')).toHaveAttribute('data-bird-id','christmas');
+  await expect(page.locator('.banner-bird [data-bird-id]')).toHaveAttribute('data-bird-id',availableBirds.at(-1).id);
   await page.getByRole('button',{name:'Edit your profile',exact:true}).click();await page.getByRole('button',{name:'My pet',exact:true}).click();
-  await expect(page.getByRole('radio',{name:'Christmas Bird',exact:true})).toBeChecked();
-  await expect(page.locator('.bird-picker input:disabled')).toHaveCount(0);
+  await expect(page.getByRole('radio',{name:availableBirds.at(-1).name,exact:true})).toBeChecked();
+  await expect(page.locator('.bird-picker input:disabled')).toHaveCount(seasonalUnavailable);
   for(const collection of ['meadow','canopy','woodland']){
     const size=await page.evaluate(async name=>{const img=new Image();img.src=`/brand/birds/${name}.png`;await img.decode();return img.naturalWidth;},collection);
     expect(size).toBeGreaterThan(1000);
