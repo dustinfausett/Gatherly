@@ -7,7 +7,7 @@ const register = async (request,prefix) => {
   expect(r.status()).toBe(201);return (await r.json()).user;
 };
 
-test('12 independent pets, code redemption and matching flights',async({page},info)=>{
+test('13 independent pets, code redemption and matching flights',async({page},info)=>{
   test.setTimeout(120000);
   const errors=[];page.on('pageerror',e=>errors.push(e.message));
   await register(page.request,'birds');
@@ -31,7 +31,7 @@ test('12 independent pets, code redemption and matching flights',async({page},in
   });
   await page.goto('/');
   await page.getByRole('button',{name:'Edit your profile',exact:true}).click();await page.getByRole('button',{name:'My pet',exact:true}).click();
-  await expect(page.getByRole('radio')).toHaveCount(12);
+  await expect(page.getByRole('radio')).toHaveCount(13);
   await expect(page.getByRole('radio',{name:'Bluebird',exact:true})).toBeChecked();
   await expect(page.getByRole('radio',{name:'Goldfinch',exact:true})).toBeEnabled();
   await expect(page.locator('.bird-picker input:disabled')).toHaveCount(10);
@@ -51,7 +51,7 @@ test('12 independent pets, code redemption and matching flights',async({page},in
     await page.getByRole('textbox',{name:'Unlock code',exact:true}).fill('Churp');
     await page.getByRole('button',{name:'Redeem code',exact:true}).click();
     await expect(page.locator('.bird-picker input:disabled')).toHaveCount(0);
-    await expect(page.getByText('All 12 pets are unlocked for your account.',{exact:true})).toBeVisible();
+    await expect(page.getByText('Your pet collection is unlocked.',{exact:true})).toBeVisible();
     await page.locator('.bird-choice').filter({has:page.getByRole('radio',{name:'Parrot',exact:true})}).click();
     await page.locator('.bird-picker').screenshot({path:info.outputPath('bird-collection.png')});
     await page.getByRole('button',{name:'Save pet',exact:true}).click();
@@ -83,9 +83,9 @@ test('12 independent pets, code redemption and matching flights',async({page},in
     else await page.getByRole('button',{name:'Back to Tree',exact:true}).click();
   }
   await page.reload();
-  await expect(page.locator('.banner-bird [data-bird-id]')).toHaveAttribute('data-bird-id','hummingbird');
+  await expect(page.locator('.banner-bird [data-bird-id]')).toHaveAttribute('data-bird-id','christmas');
   await page.getByRole('button',{name:'Edit your profile',exact:true}).click();await page.getByRole('button',{name:'My pet',exact:true}).click();
-  await expect(page.getByRole('radio',{name:'Hummingbird',exact:true})).toBeChecked();
+  await expect(page.getByRole('radio',{name:'Christmas Bird',exact:true})).toBeChecked();
   await expect(page.locator('.bird-picker input:disabled')).toHaveCount(0);
   for(const collection of ['meadow','canopy','woodland']){
     const size=await page.evaluate(async name=>{const img=new Image();img.src=`/brand/birds/${name}.png`;await img.decode();return img.naturalWidth;},collection);

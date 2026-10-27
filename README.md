@@ -80,7 +80,7 @@ The Tree banner places your selected bird and branch immediately after the Tree 
 
 ## Profile avatars and pets
 
-Tap the pet beside the Tree name to feed it: all 12 pets have a smooth eating animation with generated Churp food artwork, matching bites and a happy finish. Keyboard access and reduced motion are supported. See [pet feeding and artwork](docs/PET-FEEDING.md).
+Tap the pet beside the Tree name to feed it: all 13 pets have a smooth eating animation with generated Churp food artwork, matching bites and a happy finish. Keyboard access and reduced motion are supported. See [pet feeding and artwork](docs/PET-FEEDING.md). Feeding has no visible captions or hover hints. The included **Christmas Bird** wears a Santa suit and hat, eats candy canes and is available now for early testing; its November 1–January 3 season rule is ready to enable when requested.
 
 Click your name to open a compact settings menu: **Profile & avatar**, **My pet**, **Account settings**, **Security**, and **Notifications**. Each option opens its own screen with a back button. **Profile & avatar** offers 20 free Churp bird portraits or an uploaded image; changing a portrait or pet never changes the other. Message and member avatars use the selected portrait/photo. [View the portrait collection](public/brand/avatars/README.md).
 
@@ -174,7 +174,7 @@ npm run test:e2e:encryption # Real browser cryptography, recovery, and migration
 
 The browser tests use `/usr/bin/chromium` when available. Otherwise install Chromium with `npx playwright install chromium` or supply `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH`. Layout regression tests use a legacy plaintext fixture on port 3100; encryption tests enforce encryption on port 3101. Both use temporary storage and remove it afterward. The browser servers use NODE_ENV=test and test-only rate limits; production cannot opt out of encryption and retains normal authentication limits.
 
-Tests cover real accounts, invitations, live messaging, files, scoped administration, private access, pin order, touch swipes, unread/urgent colors, branching in place, image uploads, the Tree chooser, Churp branding, message bubble colors, creation approvals and scope boundaries, all 12 bird selections and flights, protected account unlocks, photo migration, reduced motion, owner-only Tree deletion, scoped deletion and confirmation, retained Branch conversations, live egg indicators, and persistence. Emulation does not prove actual Safari rendering, device keyboards, Home Screen installation, or system push delivery; check those on real phones. `GET /api/health` verifies SQLite access, not the full workflow.
+Tests cover real accounts, invitations, live messaging, files, scoped administration, private access, pin order, touch swipes, unread/urgent colors, branching in place, image uploads, the Tree chooser, Churp branding, message bubble colors, creation approvals and scope boundaries, all 13 bird selections and flights, protected account unlocks, photo migration, reduced motion, owner-only Tree deletion, scoped deletion and confirmation, retained Branch conversations, live egg indicators, and persistence. Emulation does not prove actual Safari rendering, device keyboards, Home Screen installation, or system push delivery; check those on real phones. `GET /api/health` verifies SQLite access, not the full workflow.
 
 ### Youth protection
 

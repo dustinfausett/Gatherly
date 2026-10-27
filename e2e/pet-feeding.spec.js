@@ -7,7 +7,7 @@ async function setup(page){
  const tree=(await(await page.request.post('/api/communities',{data:{name:'Our birds and friends'}})).json()).community,nest=(await(await page.request.post(`/api/communities/${tree.id}/circles`,{data:{name:'Pet chat'}})).json()).group;
  await page.goto(`/?community=${tree.id}`);await expect(page.getByRole('button',{name:'Feed Bluebird',exact:true})).toBeVisible();return {tree,nest};
 }
-test('all 12 pets eat generated food with continuously interpolated motion and can be fed again',async({page},info)=>{
+test('all 13 pets eat generated food with continuously interpolated motion and can be fed again',async({page},info)=>{
  test.setTimeout(120000);const errors=[];page.on('pageerror',e=>errors.push(e.message));await setup(page);
  expect((await page.request.post('/api/me/birds/unlock',{data:{code:'Churp'}})).ok()).toBeTruthy();
  for(const bird of BIRDS){
@@ -21,12 +21,12 @@ test('all 12 pets eat generated food with continuously interpolated motion and c
    return {matrices,frames:frames.map(f=>f.easing),pose:node.querySelector('[data-bird-pose]').dataset.birdPose,duration,dishOpacity:Number(getComputedStyle(node.querySelector('.pet-feed-dish')).opacity)};
   });
   expect(new Set(motion.matrices).size).toBe(3);expect(motion.frames.every(e=>!e.includes('steps'))).toBeTruthy();expect(motion.pose).toBe('perched');expect(motion.duration).toBeGreaterThanOrEqual(3500);expect(motion.dishOpacity).toBeGreaterThan(.9);
-  if(['blue','parrot','owl','hummingbird'].includes(bird.id))await page.locator('.community-banner').screenshot({path:info.outputPath(`feeding-${bird.id}.png`)});
-  if(bird.id==='parrot')await expect(button).toHaveAttribute('data-food','fruit');if(bird.id==='hummingbird')await expect(button).toHaveAttribute('data-food','nectar');
+  if(['blue','parrot','owl','hummingbird','christmas'].includes(bird.id))await page.locator('.community-banner').screenshot({path:info.outputPath(`feeding-${bird.id}.png`)});
+  await expect(button.locator('.pet-feed-caption')).toHaveCount(0);await expect(button).not.toHaveAttribute('title');if(bird.id==='christmas')await expect(button).toHaveAttribute('data-food','candycanes');if(bird.id==='parrot')await expect(button).toHaveAttribute('data-food','fruit');if(bird.id==='hummingbird')await expect(button).toHaveAttribute('data-food','nectar');
   await button.evaluate(node=>{for(const animation of node.getAnimations({subtree:true})){animation.currentTime=animation.effect.getTiming().duration*.9;animation.play();}});
   await expect(button).toHaveAttribute('aria-busy','false');await expect(button).toBeEnabled();expect(await button.locator('.pet-feed-bird').evaluate(n=>getComputedStyle(n).transform)).toBe('none');await expect(page.getByRole('status').filter({hasText:`${bird.name} enjoyed`})).toBeAttached();
  }
- const again=page.getByRole('button',{name:'Feed Hummingbird',exact:true});await again.focus();await page.keyboard.press('Enter');await expect(again).toHaveAttribute('aria-busy','true');await expect(again).toHaveAttribute('aria-busy','false',{timeout:8000});
+ const again=page.getByRole('button',{name:'Feed Christmas Bird',exact:true});await again.focus();await page.keyboard.press('Enter');await expect(again).toHaveAttribute('aria-busy','true');await expect(again).toHaveAttribute('aria-busy','false',{timeout:8000});
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBeTruthy();expect(errors).toEqual([]);
 });
 

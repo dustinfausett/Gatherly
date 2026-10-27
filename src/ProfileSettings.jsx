@@ -14,7 +14,7 @@ import { AccountSecuritySettings } from './AccountSecurity';
 import { EncryptionSettings } from './encryption/EncryptionGate';
 import {legalLinks,policyStatus} from '../shared/legal';
 import { AVATARS } from '../shared/avatars';
-import { getBird } from '../shared/birds';
+import { BIRDS, getBird } from '../shared/birds';
 import { api,post } from './api';
 import './profile-settings.css';
 
@@ -68,6 +68,6 @@ function PetScreen({user,onSave,onAccountUpdate,onDone,notify}){
       <div className="pet-preview"><Bird birdId={birdId}/><div><strong>{getBird(birdId)?.name}</strong><p>Your pet perches in the Tree banner and flies into each Nest with you.</p><small>Your profile picture stays the same.</small></div></div>
       <BirdPicker selected={birdId} unlocked={unlocked} onSelect={setBirdId}/>
     </Form>
-    <div className="settings-section bird-unlock"><h4>Grow your pet collection</h4>{unlocked.length<12?<Form submit="Redeem code" onSubmit={async form=>{const result=await post('/me/birds/unlock',{code:form.get('code')});setUnlocked(result.user.unlocked_birds);onAccountUpdate(result.user);notify('All 12 pets are unlocked. Choose your favorite and save your pet.');}}><p className="muted small-text">Bluebird and Goldfinch are included. Have an unlock code?</p><Field label="Unlock code" name="code" autoComplete="off" required maxLength={64}/></Form>:<p className="bird-unlocked-message" role="status"><Check size={16}/>All 12 pets are unlocked for your account.</p>}<button className="button secondary small" disabled>Purchases coming soon</button></div>
+    <div className="settings-section bird-unlock"><h4>Grow your pet collection</h4>{BIRDS.some(b=>!b.free&&!unlocked.includes(b.id))?<Form submit="Redeem code" onSubmit={async form=>{const result=await post('/me/birds/unlock',{code:form.get('code')});setUnlocked(result.user.unlocked_birds);onAccountUpdate(result.user);notify('Your pet collection is unlocked. Choose your favorite and save your pet.');}}><p className="muted small-text">Bluebird and Goldfinch are included. Have an unlock code?</p><Field label="Unlock code" name="code" autoComplete="off" required maxLength={64}/></Form>:<p className="bird-unlocked-message" role="status"><Check size={16}/>Your pet collection is unlocked.</p>}<button className="button secondary small" disabled>Purchases coming soon</button></div>
   </>;
 }
