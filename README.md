@@ -187,3 +187,5 @@ Terms of Service (`/terms`), Privacy Policy (`/privacy`) and proposed SMS Terms 
 Messages → Phone texts now supports owner-scoped phone conversations, public enrollment links, simulated adult consent, reviewed SMS batches, reply codes, global STOP handling, delivery simulations and durable results. Railway can retain `SMS_MODE=mock` with its existing Twilio variables: mock mode never calls Twilio. The signed webhook handlers and REST adapter are implemented, but real carrier delivery remains unverified and live mode needs additional approved-pilot settings. See [docs/SMS.md](docs/SMS.md) before changing modes or configuring webhooks. Native personal-phone texting and MMS are not included.
 
 See [communication refinements](docs/communication-refinements.md) for short invitation links, Tree/Nest recipient filters, Birdhouse import destinations, mobile navigation and family action alerts.
+
+Contacts now uses **From Tree / From Phone**: bulk-add Tree members without typing names or numbers, or import chosen device/file contacts and add phone contacts manually. See [contact source options](docs/CONTACTS.md), including the iPhone browser fallback.

@@ -97,3 +97,11 @@ test('historical session-key wrapping uses archived identities and preserves the
  const ciphertext=await enc.seal(sender.privateKey,[old.publicKey,sender.publicKey],{body:'Before key rotation'}),copy=await enc.rewrap([current.privateKey,old.privateKey],parent.publicKey,ciphertext);
  await enc.validateCiphertext(copy,[parent.publicKey]);assert.deepEqual(await enc.open(parent.privateKey,sender.publicKey,copy),{body:'Before key rotation'});assert.equal(await enc.encryptedContentsHash(copy),await enc.encryptedContentsHash(ciphertext));
 });
+
+test('bulk adding Tree members cannot bypass parent approval and fails the whole batch safely',async t=>{
+ const f=await fixture(t),{owner}=f,child=await f.actor('bulkchild','2011-01-01'),parent=await f.actor('bulkparent'),peer=await f.actor('bulkpeer');await f.link(parent,child);await f.join(child);await f.join(peer);
+ assert.equal((await f.req('/contacts/from-tree',owner,'POST',{user_ids:[peer.id,child.id],new_birdhouse_name:'Not yet'})).status,403);
+ assert.equal((await f.ok('/contacts',owner)).contacts.length,0);assert.equal((await f.ok('/contacts',owner)).birdhouses.length,0);
+ await f.ok('/private/conversations',owner,'POST',{user_id:child.id});await f.ok('/family/approvals',parent,'POST',{child_id:child.id,adult_id:owner.id,decision:'approved'});
+ assert.equal((await f.ok('/contacts/from-tree',owner,'POST',{user_ids:[peer.id,child.id]})).added,2);
+});

@@ -87,3 +87,19 @@ test('contact import atomically creates or uses an owned Birdhouse and includes 
  assert.equal((await f.ok('/contacts',owner)).birdhouses.length,1);assert.equal((await f.ok('/contacts',owner)).contacts.length,2);
  const linked=await f.ok('/contacts',owner,'POST',{name:'Bob',linked_user_id:bob.id,new_birdhouse_name:'Friends'});assert.equal((await f.ok('/contacts',owner)).memberships.length,3);assert.ok(linked.contact.linked_user_id===bob.id);
 });
+
+test('bulk Tree contacts use account names without phone entry, deduplicate, and add to owned Birdhouses',async t=>{
+ const f=await fixture(t),{owner,bob,carol}=f;
+ const bobContact=(await f.ok('/contacts',owner,'POST',{name:'My Bob',phone:'+12025550123',linked_user_id:bob.id})).contact;
+ const result=await f.ok('/contacts/from-tree',owner,'POST',{user_ids:[bob.id,carol.id],name:'Do not trust this name',phone:'+12025550124',new_birdhouse_name:'Tree friends'});assert.deepEqual(result,{added:1,duplicates:1,assigned:2});
+ let data=await f.ok('/contacts',owner);assert.equal(data.contacts.length,2);assert.equal(data.contacts.find(c=>c.id===bobContact.id).name,'My Bob');assert.equal(data.contacts.find(c=>c.id===bobContact.id).phone,'+12025550123');const c=data.contacts.find(c=>c.linked_user_id===carol.id);assert.equal(c.name,carol.name);assert.equal(c.phone,null);assert.equal(data.birdhouses[0].contact_count,2);
+ assert.deepEqual(await f.ok('/contacts/from-tree',owner,'POST',{user_ids:[bob.id,carol.id],birdhouse_id:data.birdhouses[0].id}),{added:0,duplicates:2,assigned:0});
+ const second=(await f.ok('/birdhouses',owner,'POST',{name:'Another list'})).birdhouse;assert.equal((await f.ok('/contacts/from-tree',owner,'POST',{user_ids:[bob.id,carol.id],birdhouse_id:second.id})).assigned,2);assert.equal((await f.ok('/contacts',bob)).contacts.length,0);
+ await f.restart();data=await f.ok('/contacts',owner);assert.equal(data.contacts.length,2);assert.equal(data.memberships.length,4);
+});
+test('bulk Tree contacts validate every member and destination before saving anything',async t=>{
+ const f=await fixture(t),{owner,bob,carol,outsider}=f;
+ for(const user_ids of [[],[bob.id,bob.id],[owner.id],[null]])assert.equal((await f.req('/contacts/from-tree',owner,'POST',{user_ids})).status,400);
+ assert.equal((await f.req('/contacts/from-tree',owner,'POST',{user_ids:[bob.id,outsider.id],new_birdhouse_name:'No partial save'})).status,400);let data=await f.ok('/contacts',owner);assert.equal(data.contacts.length,0);assert.equal(data.birdhouses.length,0);
+ const foreign=(await f.ok('/birdhouses',bob,'POST',{name:'Private'})).birdhouse;assert.equal((await f.req('/contacts/from-tree',owner,'POST',{user_ids:[bob.id,carol.id],birdhouse_id:foreign.id})).status,404);assert.equal((await f.ok('/contacts',owner)).contacts.length,0);
+});

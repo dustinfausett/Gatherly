@@ -21,6 +21,23 @@ export function installContacts({app,db,transaction,refreshUser,family,testing})
  app.patch('/api/contacts/:id',limited,(req,res)=>{const old=contact(req.params.id,req.user.id);const v=values({...old,...req.body},req.user.id,old.linked_user_id);if(one('SELECT 1 FROM personal_contacts WHERE owner_id=? AND id<>? AND ((phone IS NOT NULL AND phone=?) OR (linked_user_id IS NOT NULL AND linked_user_id=?))',req.user.id,old.id,v.phone,v.linked))fail(409,'That number or Churp member is already saved.');run('UPDATE personal_contacts SET name=?,phone=?,linked_user_id=? WHERE id=?',v.name,v.phone,v.linked,old.id);refreshUser(req.user.id);res.json({contact:contact(old.id,req.user.id)});});
  app.delete('/api/contacts/:id',limited,(req,res)=>{contact(req.params.id,req.user.id);run('DELETE FROM personal_contacts WHERE id=?',req.params.id);refreshUser(req.user.id);res.json({ok:true});});
  app.post('/api/contacts/import',limited,(req,res)=>{const rows=req.body.contacts;if(!Array.isArray(rows)||!rows.length||rows.length>1000)fail(400,'Select between 1 and 1,000 contacts.');const prepared=rows.map(r=>values({...r,country:req.body.country || r.country},req.user.id));let added=0,duplicates=0;transaction(()=>{const hid=destination(req.body,req.user.id);for(const v of prepared){const old=one('SELECT id FROM personal_contacts WHERE owner_id=? AND ((phone IS NOT NULL AND phone=?) OR (linked_user_id IS NOT NULL AND linked_user_id=?))',req.user.id,v.phone,v.linked);if(old){duplicates++;assign(hid,old.id);continue;}const id=randomUUID();run('INSERT INTO personal_contacts VALUES (?,?,?,?,?,?)',id,req.user.id,v.name,v.phone,v.linked,Date.now());assign(hid,id);added++;}});refreshUser(req.user.id);res.json({added,duplicates});});
+ app.post('/api/contacts/from-tree',limited,(req,res)=>{
+  const ids=req.body.user_ids;
+  if(!Array.isArray(ids)||!ids.length||ids.length>1000||ids.some(id=>typeof id!=='string'||id.length>100)||new Set(ids).size!==ids.length)fail(400,'Choose between 1 and 1,000 different Tree members.');
+  let added=0,duplicates=0,assigned=0;
+  transaction(()=>{
+   // Resolve names and eligibility here; the browser supplies only selected IDs.
+   // Validate the whole batch before creating a Birdhouse or saving any contact.
+   const prepared=ids.map(id=>{const person=one('SELECT name FROM users WHERE id=?',id);if(!person)fail(400,'Choose current members of your Trees.');return values({name:person.name,linked_user_id:id},req.user.id);});
+   const hid=destination(req.body,req.user.id);
+   for(const v of prepared){
+    const old=one('SELECT id FROM personal_contacts WHERE owner_id=? AND linked_user_id=?',req.user.id,v.linked),id=old?.id||randomUUID();
+    if(old)duplicates++;else{run('INSERT INTO personal_contacts VALUES (?,?,?,?,?,?)',id,req.user.id,v.name,null,v.linked,Date.now());added++;}
+    if(hid)assigned+=Number(run('INSERT OR IGNORE INTO birdhouse_contacts VALUES (?,?)',hid,id).changes);
+   }
+  });
+  refreshUser(req.user.id);res.status(added?201:200).json({added,duplicates,assigned});
+ });
  app.delete('/api/contacts',limited,(req,res)=>{if(req.body.confirm!==true)fail(400,'Confirm removal of your saved contacts.');run('DELETE FROM personal_contacts WHERE owner_id=?',req.user.id);refreshUser(req.user.id);res.json({ok:true});});
  app.post('/api/birdhouses',limited,(req,res)=>{const id=randomUUID();run('INSERT INTO birdhouses VALUES (?,?,?)',id,req.user.id,label(req.body.name));refreshUser(req.user.id);res.status(201).json({birdhouse:house(id,req.user.id)});});
  app.patch('/api/birdhouses/:id',limited,(req,res)=>{house(req.params.id,req.user.id);run('UPDATE birdhouses SET name=? WHERE id=?',label(req.body.name),req.params.id);refreshUser(req.user.id);res.json({ok:true});});
