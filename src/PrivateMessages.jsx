@@ -10,7 +10,7 @@ import UnreadEgg from './UnreadEgg';
 import SmsMessages from './SmsMessages';
 import {useNestScope,NestFilter} from './RecipientFilters';
 export default function PrivateMessages({user,version,smsUnread=0,conversationId,onConversation,compose,onCompose,notify}){
- const [channel,setChannel]=useState('churp'),[smsSource,setSmsSource]=useState(null);
+ const [channel,setChannel]=useState(new URLSearchParams(window.location.search).has('phone_texts')?'sms':'churp'),[smsSource,setSmsSource]=useState(null);
  const {enabled}=useEncryption();const [list,setList]=useState([]),[messages,setMessages]=useState([]),[error,setError]=useState(''),[body,setBody]=useState(''),[files,setFiles]=useState([]),[busy,setBusy]=useState(false),[uploading,setUploading]=useState(false),[more,setMore]=useState(false),[revision,setRevision]=useState(0),[retry,setRetry]=useState(null);const end=useRef();
  const refresh=()=>setRevision(n=>n+1),current=list.find(c=>c.id===conversationId);
  useEffect(()=>{let active=true;api('/private/conversations').then(r=>{if(active)setList(r.conversations);}).catch(e=>{if(active)setError(e.message);});return()=>{active=false;};},[version,revision,conversationId]);

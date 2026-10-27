@@ -4,6 +4,7 @@ import helmet from 'helmet';
 import { rateLimit } from 'express-rate-limit';
 import multer from 'multer';
 import webPush from 'web-push';
+import {createBadges} from './badges.js';
 import { OAuth2Client } from 'google-auth-library';
 import { randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, openSync, readSync, closeSync } from 'node:fs';
@@ -210,16 +211,25 @@ export function createApp(options = {}) {
   const sms=installSms({app,db,dataDir,appUrl,transaction,refreshUser,testing:options.testing,config:options.smsConfig,transport:options.smsTransport,autoProcess:!(options.testing&&options.smsAutoProcess===false)});
   app.use('/api', auth);
   app.use('/api',(req,res,next)=>{
-    const setup=req.path==='/me'||req.path==='/events'||/^\/family(?:\/|$)/.test(req.path)||(/^\/e2ee\//.test(req.path)&&!/^\/e2ee\/(?:uploads|legacy)(?:\/|$)/.test(req.path));
+    const setup=req.path==='/me'||req.path==='/badges'||req.path==='/events'||/^\/family(?:\/|$)/.test(req.path)||(/^\/e2ee\//.test(req.path)&&!/^\/e2ee\/(?:uploads|legacy)(?:\/|$)/.test(req.path));
     if(setup)return next();
     try{family.requireReady(req.user.id);next();}catch(e){next(e);}
   });
   const encryption = installEncryption({app,db,uploadDir,enabled:encryptionRequired,transaction,refresh,refreshUser,group,membership,visibleCircle,testing:options.testing});
   family=installFamily({app,db,encryption,transaction,refreshUser,publicUser,testing:options.testing});
+  const badges=createBadges({db,family,encryptionRequired,smsUnread:uid=>sms.unread(uid)});
+  app.get('/api/badges',(req,res)=>{res.set('Cache-Control','no-store');res.json(badges.snapshot(req.user.id));});
+  function notifyDevice(uid,payload){
+    if(!pushEnabled)return;
+    // Counts only, never message contents or another account's unread state.
+    const body=JSON.stringify({...payload,unread_count:badges.snapshot(uid).count});
+    for(const s of all('SELECT * FROM push_subscriptions WHERE user_id=?',uid))webPush.sendNotification(JSON.parse(s.subscription),body,{TTL:3600,timeout:10000,proxy:process.env.HTTPS_PROXY||process.env.https_proxy}).catch(error=>{if([404,410].includes(error.statusCode))run('DELETE FROM push_subscriptions WHERE endpoint=?',s.endpoint);});
+  }
+
   app.get('/api/me', (req,res)=>res.json({user:publicUser(req.user)}));
   installContacts({app,db,transaction,refreshUser,family,testing:options.testing});
   installRecipientScopes({app,db,groupAdmin,membership});
-  const privateMessages=installPrivateMessages({app,db,encryption,family,transaction,refreshUser,group,groupAdmin,testing:options.testing,notifyPrivate:(uid,id)=>{if(pushEnabled)for(const s of all('SELECT * FROM push_subscriptions WHERE user_id=?',uid))webPush.sendNotification(JSON.parse(s.subscription),JSON.stringify({title:'New private message on Churp',body:'You have a private message.',url:`/?conversation=${id}`}),{TTL:3600,timeout:10000,proxy:process.env.HTTPS_PROXY || process.env.https_proxy}).catch(()=>{});}});
+  const privateMessages=installPrivateMessages({app,db,encryption,family,transaction,refreshUser,group,groupAdmin,testing:options.testing,notifyPrivate:(uid,id)=>notifyDevice(uid,{title:'New private message on Churp',body:'You have a private message.',url:`/?conversation=${id}`})});
   installPolls({app,db,encryption,encryptionRequired,visibleCircle,joined,groupAdmin,transaction,refresh,testing:options.testing});
   installRsvps({app,db,encryption,encryptionRequired,visibleCircle,joined,groupAdmin,transaction,refresh,testing:options.testing});
   const assignments=installAssignments({app,db,encryption,encryptionRequired,visibleCircle,joined,groupAdmin,transaction,refresh,testing:options.testing});
@@ -532,7 +542,7 @@ export function createApp(options = {}) {
     refresh(entity.community_id); res.json({ ok: true });
   });
   const invitations=installInvitations({app,db,appUrl,testing:options.testing,transaction,membership,communityAdmin,groupAdmin,group,joinParent,refresh,refreshUser});
-  sms.installAuthenticated({family,membership,group,groupAdmin,invitations});
+  sms.installAuthenticated({family,membership,group,groupAdmin,invitations,notifySms:uid=>notifyDevice(uid,{title:'New phone text on Churp',body:'You have a new phone text.',url:'/?phone_texts=1'})});
   app.post('/api/groups/:id/join', (req, res) => {
     const g = visibleCircle(req.user.id, req.params.id);
     if (g.private && !groupAdmin(req.user.id, g) && !joined(req.user.id, g.id)) fail(403, 'A Nest admin must invite you.');
@@ -666,12 +676,7 @@ export function createApp(options = {}) {
       for (const r of recipients) run('INSERT INTO notifications(user_id,message_id) VALUES (?,?)', r.user_id, id);
     });
     refresh(g.community_id);
-    if (pushEnabled) for (const recipient of recipients) for (const s of all('SELECT * FROM push_subscriptions WHERE user_id=?', recipient.user_id)) {
-      // No message contents in device notifications; access is checked when the app opens.
-      webPush.sendNotification(JSON.parse(s.subscription), JSON.stringify({ title: 'New message on Churp', body: 'You have a new message in a Nest you joined.', url: `/?community=${g.community_id}&group=${g.id}` }), { TTL: 3600, timeout: 10000, proxy: process.env.HTTPS_PROXY || process.env.https_proxy }).catch(error => {
-        if ([404,410].includes(error.statusCode)) run('DELETE FROM push_subscriptions WHERE endpoint=?', s.endpoint);
-      });
-    }
+    for(const recipient of recipients)notifyDevice(recipient.user_id,{title:'New message on Churp',body:'You have a new message in a Nest you joined.',url:`/?community=${g.community_id}&group=${g.id}`});
     res.status(201).json({ id });
   });
   app.patch('/api/messages/:id', (req, res) => {

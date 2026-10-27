@@ -98,3 +98,9 @@ test('Nest filtering validates linked contacts at preview, queue and dispatch wi
  const j=await f.ok('/api/sms/jobs',owner,'POST',draft);await f.restart();f.db.prepare('DELETE FROM group_members WHERE group_id=? AND user_id=?').run(nest.id,other.id);await f.tick();assert.equal((await f.ok(`/api/sms/jobs/${j.id}`,owner)).messages[0].state,'suppressed');assert.equal(f.sends,0);
  const hidden=(await f.ok(`/api/communities/${tree.id}/circles`,owner,'POST',{name:'Secret',private:true})).group;assert.equal((await f.req('/api/sms/preview',other,'POST',{...await f.draft(other,[]),filter_nest:hidden.id})).status,403);
 });
+
+test('incoming SMS contributes to a user badge and reading clears only that user’s phone count',async t=>{
+ const f=await fixture(t),{owner,other}=f,th=await f.thread(owner,'+12025550131');await f.consent(owner,th);await f.simulate(owner,th,`${th.reply_code} A phone reply`);
+ assert.equal((await f.ok('/api/badges',owner)).sms,1);assert.equal((await f.ok('/api/badges',other)).sms,0);
+ const rows=(await f.ok(`/api/sms/threads/${th.id}/messages`,owner)).messages;await f.ok(`/api/sms/threads/${th.id}/read`,owner,'POST',{through:rows.at(-1).created_at});assert.equal((await f.ok('/api/badges',owner)).count,0);
+});

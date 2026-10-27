@@ -121,6 +121,7 @@ npm run setup:push -- --subject=mailto:you@example.com
 
 Device alerts prefer on by default. Already-approved browsers reconnect automatically; new devices get an **Enable notifications** prompt that requires a browser permission tap. Manage this under **your profile → Notifications**; an explicit opt-out is saved for this account/browser. Use an HTTPS production origin. Railway generates persistent keys when its domain and data Volume are available. Keep `/data/push-keys.json` or your deployment's existing key pair across releases.
 
+- **Home Screen badges:** supported installed apps show unread messages from unmuted Nests, private chats and phone texts. iPhone supports this on iOS 16.4+ with notification permission and the system Badges setting enabled. Counts refresh on new-message pushes, app activity and reading messages; Android presentation varies by launcher. No App Store release is required. See [Home Screen setup](docs/HOME_SCREEN.md).
 - **iPhone:** Safari → Share → Add to Home Screen. Turn on Open as Web App if offered. Launch the icon and sign in there. Push requires iOS 16.4 or newer and the installed Home Screen app.
 - **Android:** Chrome → three-dot menu → Install app or Add to home screen.
 - Existing Home Screen shortcuts may retain their old name/icon. Remove and re-add the shortcut from the same website to show Churp branding; this does not delete server-side accounts or messages.

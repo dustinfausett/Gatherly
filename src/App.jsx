@@ -1,3 +1,4 @@
+import {useAppBadge} from './app-badge';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Asterisk, ArrowRight, BellOff, Check, ChevronDown, ChevronRight, Info, ClipboardCheck, Heart, Link, Menu, Plus, Search, Settings2, Sprout, Users, X } from 'lucide-react';
 import { api, patch, post } from './api';
@@ -35,13 +36,14 @@ export default function App() {
   const [switcher, setSwitcher] = useState(false), [mobileNav, setMobileNav] = useState(false), [search, setSearch] = useState('');
   const [expandedGroups, setExpandedGroups] = useState({});
   const [invitationCount,setInvitationCount]=useState(0);
-  const [tab,setTab]=useState(initialParams.get('conversation')?'messages':'tree'),[conversationId,setConversationId]=useState(initialParams.get('conversation')),[compose,setCompose]=useState(null),[privateUnread,setPrivateUnread]=useState(0),[smsUnread,setSmsUnread]=useState(0);
+  const [tab,setTab]=useState((initialParams.get('conversation')||initialParams.has('phone_texts'))?'messages':'tree'),[conversationId,setConversationId]=useState(initialParams.get('conversation')),[compose,setCompose]=useState(null),[privateUnread,setPrivateUnread]=useState(0),[smsUnread,setSmsUnread]=useState(0);
   const [openingId,setOpeningId]=useState(null), [journey,setJourney]=useState(null);
   const navigationTimer=useRef(), navigationToken=useRef(0), returnFocus=useRef(null);
   const [mobileSwitcher, setMobileSwitcher] = useState(false);
   const toastTimer = useRef(), switcherRef = useRef();
   const mobileSwitcherRef = useRef();
   const notify = useCallback((message, error = false) => { clearTimeout(toastTimer.current); setToast({ message, error }); toastTimer.current = setTimeout(() => setToast(null), 5000); }, []);
+  useAppBadge(user,version);
   async function boot() {
     setBooting(true); setError('');
     try {
