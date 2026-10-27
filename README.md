@@ -189,3 +189,7 @@ Messages → Phone texts now supports owner-scoped phone conversations, public e
 See [communication refinements](docs/communication-refinements.md) for short invitation links, Tree/Nest recipient filters, Birdhouse import destinations, mobile navigation and family action alerts.
 
 Contacts now uses **From Tree / From Phone**: bulk-add Tree members without typing names or numbers, or import chosen device/file contacts and add phone contacts manually. See [contact source options](docs/CONTACTS.md), including the iPhone browser fallback.
+
+### Scheduled messages
+
+Use the **clock beside Send**, or **Schedule send** in Poll, RSVP, Assignment and batch builders, to schedule messages and supported attachments. Manage pending sends under **Your corner → Scheduled messages**, with view, edit, reschedule and cancel. Delivery runs without the sender keeping Churp open, rechecks permissions and encryption recipients, and resumes after restarts. Keep the Railway service running (disable App Sleeping/Serverless sleeping) for on-time sends. See [scheduling and deployment details](docs/SCHEDULING.md).

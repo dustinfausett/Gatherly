@@ -278,7 +278,8 @@ input::placeholder, textarea::placeholder { color: #92917f; }
 .landing-nest-art { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
 .chat-landing-nest .resident-bird { position: absolute; width: 54px; height: 54px; top: -9px; left: 0; }
 .bird-in-transit .resident-bird { opacity: 0; }
-.chat-layout { animation: enter-nest var(--nest-entry-duration,1400ms) cubic-bezier(.2,.7,.25,1) both; }
+/* Release the transform after entry so chat dialogs are fixed to the viewport. */
+.chat-layout { animation: enter-nest var(--nest-entry-duration,1400ms) cubic-bezier(.2,.7,.25,1) backwards; }
 @keyframes enter-nest { from { opacity: .25; transform: translateX(-56px); } to { opacity: 1; transform: translateX(0); } }
 .chat-heading h1:focus { outline: none; }
 

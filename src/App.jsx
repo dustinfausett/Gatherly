@@ -11,6 +11,8 @@ import { AccountLink } from './AccountSecurity';
 import { InvitationIcon } from './Invitations';
 import Contacts,{NavigationArt} from './Contacts';
 import PrivateMessages from './PrivateMessages';
+import ScheduledOutbox from './ScheduledOutbox';
+import {clearScheduleRequests} from './scheduled-client';
 import './personal.css';
 import EncryptionGate from './encryption/EncryptionGate';
 import PrivacyShield from './encryption/PrivacyShield';
@@ -32,6 +34,8 @@ export default function App() {
   const [user, setUser] = useState(null), [booting, setBooting] = useState(true), [config, setConfig] = useState({});
   const [communities, setCommunities] = useState([]), [community, setCommunity] = useState(null);
   const [view, setView] = useState({ cid: initialParams.get('community'), gid: initialParams.get('group') });
+  const [scheduledOpen,setScheduledOpen]=useState(initialParams.has('scheduled'));
+  useEffect(()=>{const open=()=>{setModal(null);setScheduledOpen(true);};window.addEventListener('churp-open-scheduled',open);return()=>window.removeEventListener('churp-open-scheduled',open);},[]);
   const [version, setVersion] = useState(0), [modal, setModal] = useState(null), [toast, setToast] = useState(null), [error, setError] = useState('');
   const [switcher, setSwitcher] = useState(false), [mobileNav, setMobileNav] = useState(false), [search, setSearch] = useState('');
   const [expandedGroups, setExpandedGroups] = useState({});
@@ -143,7 +147,7 @@ export default function App() {
     cancelEntry();
     try {
       await disconnectDeviceNotifications(user,false);
-      await post('/auth/logout'); await forgetEncryption(user.id); setUser(null); setCommunity(null); setCommunities([]); setModal(null); setView({ cid: null, gid: null });
+      await post('/auth/logout'); await forgetEncryption(user.id);clearScheduleRequests(); setUser(null); setCommunity(null); setCommunities([]); setModal(null);setScheduledOpen(false); setView({ cid: null, gid: null });
     } catch (err) { notify(err.message, true); }
   }
   const group = community?.circles.find(g => g.id === view.gid);
@@ -169,6 +173,7 @@ export default function App() {
     <nav className="bottom-navigation" aria-label="Main navigation">{[{id:'tree',label:'Tree'},{id:'messages',label:'Messages'},{id:'contacts',label:'Contacts'}].map(t=><button key={t.id} aria-label={t.label} aria-current={tab===t.id?'page':undefined} className={tab===t.id?'active':''} onClick={()=>{cancelEntry();setTab(t.id);setMobileNav(false);}}>{t.id==='tree'?<SpaceIcon kind="tree" size={28}/>:<NavigationArt kind={t.id}/>}<span>{t.label}</span>{t.id==='messages'&&privateUnread>0&&<span className="tab-unread" aria-label={`${privateUnread} unread private messages`}>{privateUnread}</span>}</button>)}</nav>
     {journey && group?.id === journey.id && <BirdJourney journey={journey} onDone={finishJourney}/>}
     <Toast toast={toast} />
+    {scheduledOpen&&<ScheduledOutbox version={version} onClose={()=>setScheduledOpen(false)} onRefresh={reload}/>}
     {modal?.kind === 'space' && <SpaceDialog modal={modal} community={community} onClose={() => setModal(null)} onDelete={async (result,type,entity)=>{cancelEntry();if(type === 'community'){setCommunity(null);setCommunities(prev=>prev.filter(c=>c.id !== entity.id));setUser(prev=>({...prev,last_community_id:prev.last_community_id === entity.id ? null : prev.last_community_id}));setView({cid:null,gid:null});}if(type === 'group' && view.gid === entity.id) communityHome();if(type === 'subcommunity')setExpandedGroups(prev=>({...prev,[view.cid]:{...prev[view.cid],[entity.id]:false}}));await reload();notify(type === 'community' ? 'Tree deleted.' : type === 'subcommunity' ? 'Branch deleted. Its Nests are kept at Tree level.' : 'Nest deleted.');}} onSave={async (result,type) => { if (type === 'community' && result.community) await chooseCommunity(result.community.id); if (type === 'group' && result.group) openCircle(result.group.id); if (type === 'subcommunity' && result.subcommunity) openGroup(result.subcommunity.id); await reload(); notify(result.request ? 'Submitted for approval. Follow its status in Creation requests.' : modal.entity ? 'Changes saved.' : `${type === 'subcommunity' ? 'Branch' : type === 'group' ? 'Nest' : 'Tree'} created. Make yourself at home!`); }} />}
     {modal?.kind === 'invite' && community && <InviteDialog community={community} group={modal.group} onClose={() => setModal(null)} />}
     {modal?.kind === 'join' && <JoinDialog version={version} initialToken={modal.token} onClose={() => setModal(null)} onJoined={finishInvitation} onJoin={async value => finishInvitation(await post('/invitations/accept',{token:value}))}/> }

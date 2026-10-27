@@ -1,3 +1,5 @@
+import {ScheduleFields,initialSchedule} from './ScheduleControls';
+import {publishNest} from './scheduled-client';
 import React, { useEffect, useRef, useState } from 'react';
 import { CalendarDays, MapPin } from 'lucide-react';
 import { Field, Modal } from './components';
@@ -19,8 +21,9 @@ export function eventDate(event) {
   const format = d => new Date(d).toLocaleString([], { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', timeZoneName: 'short' });
   return `${format(event.start)}${event.end ? ` – ${format(event.end)}` : ''}`;
 }
-export function RsvpBuilder({ group, message, onClose, onSent }) {
-  const initial = message && parseRsvp(message.body), { enabled } = useEncryption();
+export function RsvpBuilder({ group, message, onClose, onSent, initialValue=null, scheduledRecord=null }) {
+  const [when,setWhen]=useState(()=>initialSchedule(scheduledRecord?.send_at));
+  const initial = initialValue || (message && parseRsvp(message.body)), { enabled } = useEncryption();
   const [title, setTitle] = useState(initial?.title || ''), [allDay, setAllDay] = useState(initial?.allDay || false);
   const [start, setStart] = useState(initial ? initial.allDay ? initial.start : localInput(initial.start) : ''), [end, setEnd] = useState(initial ? initial.allDay ? initial.end || '' : localInput(initial.end) : '');
   const [location, setLocation] = useState(initial?.location || ''), [description, setDescription] = useState(initial?.description || ''), [responseDeadline, setDeadline] = useState(localInput(initial?.responseDeadline));
@@ -35,7 +38,7 @@ export function RsvpBuilder({ group, message, onClose, onSent }) {
       if (prepared.current?.body !== body) prepared.current = { body, request: enabled ? message ? await sealEdit(message, body) : await sealMessage(group.id, body, [], null, null, 'rsvp') : { body, ...(message ? { expectedVersion: message.edit_version || 0 } : {}) } };
       const request = { ...prepared.current.request, response_deadline: value.responseDeadline };
       if (message) await api(`/messages/${message.id}/content`, { method: 'PUT', body: request });
-      else await post(`/groups/${group.id}/messages`, { ...request, message_kind: 'rsvp' });
+      else await publishNest(group,{...request,message_kind:'rsvp'},{body,attachments:[]},when,scheduledRecord);
       await onSent(); sent.current = true; onClose();
     } catch (e) { if (e.status === 409) prepared.current = null; setError(e.message); } finally { saving.current = false; setBusy(false); }
   }
@@ -50,7 +53,8 @@ export function RsvpBuilder({ group, message, onClose, onSent }) {
       <Field label="Response deadline (optional)" type="datetime-local" value={responseDeadline} onChange={e => setDeadline(e.target.value)} />
       <p className="poll-help">Members can change their response until responses close. Going and Maybe each allow 0–99 additional guests. Invitations aren’t shared with later joiners.</p>
       {message && <p className="poll-help">Existing responses are kept. Members will see that the event was edited.</p>}
-    </fieldset>{error && <div className="error-banner" role="alert">{error}</div>}<div className="form-footer"><button className="button secondary" type="button" disabled={busy} onClick={onClose}>Cancel</button><button className="button primary" disabled={busy} type="submit">{busy ? 'Saving…' : message ? 'Save event' : 'Send invitation'}</button></div></form>
+      {!message&&<ScheduleFields value={when} onChange={setWhen} forced={!!scheduledRecord}/>}
+    </fieldset>{error && <div className="error-banner" role="alert">{error}</div>}<div className="form-footer"><button className="button secondary" type="button" disabled={busy} onClick={onClose}>Cancel</button><button className="button primary" disabled={busy} type="submit">{busy ? 'Saving…' : message ? 'Save event' : scheduledRecord?'Save scheduled invitation':when.enabled?'Schedule invitation':'Send invitation'}</button></div></form>
   </Modal>;
 }
 function Hatch({ selected, mood }) {

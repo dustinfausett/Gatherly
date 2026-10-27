@@ -10,7 +10,7 @@ test('compact settings separates avatars, pets, account security and notificatio
  const settings=async()=>{await page.getByRole('button',{name:'Edit your profile',exact:true}).click();};
  const back=()=>page.getByRole('button',{name:'Back to your settings',exact:true}).click();
  await settings();
- const dialog=page.getByRole('dialog');await expect(dialog.locator('.settings-menu>button')).toHaveCount(7);await expect(dialog.getByRole('radio')).toHaveCount(0);await expect(dialog.getByRole('textbox')).toHaveCount(0);await expect(dialog.locator('.encryption-settings')).toHaveCount(0);
+ const dialog=page.getByRole('dialog');await expect(dialog.locator('.settings-menu>button')).toHaveCount(8);await expect(dialog.getByRole('radio')).toHaveCount(0);await expect(dialog.getByRole('textbox')).toHaveCount(0);await expect(dialog.locator('.encryption-settings')).toHaveCount(0);
  await page.screenshot({path:info.outputPath('settings-menu.png'),fullPage:true});
  await dialog.getByRole('button',{name:'Profile & avatar',exact:true}).click();
  await expect(dialog.getByRole('radio')).toHaveCount(20);await expect(dialog.getByRole('radio',{name:'Parrot',exact:true})).toBeEnabled();await expect(dialog.getByRole('radio',{name:'Bluebird',exact:true})).toBeChecked();

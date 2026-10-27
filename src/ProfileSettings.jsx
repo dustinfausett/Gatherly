@@ -5,6 +5,8 @@ import AvatarPortrait from './AvatarPortrait';
 import BirdPicker from './BirdPicker';
 import { Bird } from './BirdJourney';
 import {FamilySettings} from './Family';
+import {Clock} from 'lucide-react';
+import {openScheduled} from './ScheduleControls';
 import {FamilyAlertAvatar,familyNeedsAction} from './FamilyAlert';
 import UnreadEgg from './UnreadEgg';
 import {NotificationScreen} from './notifications';
@@ -18,6 +20,7 @@ import './profile-settings.css';
 
 const sections=[
   {id:'profile',title:'Profile & avatar',description:'Your name and profile picture',icon:UserRound},
+  {id:'scheduled',title:'Scheduled messages',description:'View, edit, reschedule or cancel pending sends',icon:Clock},
   {id:'pet',title:'My pet',description:'Your companion in every Tree',icon:null},
   {id:'family',title:'Family & youth protection',description:'Linked parents and adult message approvals',icon:Users},
   {id:'account',title:'Account settings',description:'Password and recovery email',icon:Settings2},
@@ -42,7 +45,7 @@ export default function ProfileSettings({user,config,onClose,onSave,onAccountUpd
         {section==='notifications'  && <NotificationScreen config={config} user={user}/>}
       </>:<>
         <div className="settings-person"><FamilyAlertAvatar user={user} size={64}/><div><strong>{user.name}</strong><span>@{user.username}</span></div></div>
-        <nav className="settings-menu" aria-label="Your settings">{sections.map(({id,title,description,icon:Icon})=><button key={id} className={id==='family'&&familyNeedsAction(user)?'family-menu-alert':undefined} type="button" aria-label={title} onClick={()=>setSection(id)}><span className={`settings-menu-icon ${id==='pet' ? 'pet-menu-icon' : ''} ${id==='family'&&familyNeedsAction(user)?'family-action-glow':''}`}>{Icon?<Icon size={22}/>:<Bird birdId={user.bird_id}/>}<UnreadEgg active={id==='family'&&familyNeedsAction(user)}/></span><span><strong>{title}{id==='family'&&user.family?.pending_reviews>0?` (${user.family.pending_reviews})`:null}</strong><small>{description}</small></span><ChevronRight size={18}/></button>)}</nav>
+        <nav className="settings-menu" aria-label="Your settings">{sections.map(({id,title,description,icon:Icon})=><button key={id} className={id==='family'&&familyNeedsAction(user)?'family-menu-alert':undefined} type="button" aria-label={title} onClick={()=>{if(id==='scheduled'){onClose();openScheduled();}else setSection(id);}}><span className={`settings-menu-icon ${id==='pet' ? 'pet-menu-icon' : ''} ${id==='family'&&familyNeedsAction(user)?'family-action-glow':''}`}>{Icon?<Icon size={22}/>:<Bird birdId={user.bird_id}/>}<UnreadEgg active={id==='family'&&familyNeedsAction(user)}/></span><span><strong>{title}{id==='family'&&user.family?.pending_reviews>0?` (${user.family.pending_reviews})`:null}</strong><small>{description}</small></span><ChevronRight size={18}/></button>)}</nav>
         <button className="text-button danger settings-sign-out" onClick={onLogout}><LogOut size={17}/>Sign out of Churp</button>
       </>}
     </div>

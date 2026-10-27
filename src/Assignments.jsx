@@ -1,3 +1,5 @@
+import {ScheduleFields,initialSchedule} from './ScheduleControls';
+import {publishNest} from './scheduled-client';
 import React, { useEffect, useRef, useState } from 'react';
 import { Plus, Pencil, Trash2, Settings2, Check } from 'lucide-react';
 import { Field, Modal } from './components';
@@ -24,8 +26,9 @@ function ItemFields({item,onChange,members,index}){
     <Field label={`${prefix}: notes (optional)`}><textarea rows={2} maxLength={1000} value={item.notes} onChange={e=>onChange({...item,notes:e.target.value})}/></Field>
     <Field label={`${prefix}: due date (optional)`} type="date" value={item.dueDate || ''} onChange={e=>onChange({...item,dueDate:e.target.value || null})}/></>;
 }
-export function AssignmentBuilder({group,onClose,onSent}){
-  const {enabled}=useEncryption(),[settings,setSettings]=useState({title:'',description:'',dueDate:null,allowMemberAdds:false}),[items,setItems]=useState([blankItem()]);
+export function AssignmentBuilder({group,onClose,onSent,initialValue=null,scheduledRecord=null}){
+  const [when,setWhen]=useState(()=>initialSchedule(scheduledRecord?.send_at));
+  const {enabled}=useEncryption(),[settings,setSettings]=useState(initialValue||{title:'',description:'',dueDate:null,allowMemberAdds:false}),[items,setItems]=useState(initialValue?.items||[blankItem()]);
   const [members,setMembers]=useState(null),[busy,setBusy]=useState(false),[error,setError]=useState(''),[retry,setRetry]=useState(0);
   const saving=useRef(false),prepared=useRef(null);
   useEffect(()=>{let current=true;api(`/groups/${group.id}/assignment-members`).then(r=>{if(current){setMembers(r.members);setError('');}}).catch(e=>{if(current)setError(e.message);});return()=>{current=false;};},[group.id,retry]);
@@ -34,14 +37,14 @@ export function AssignmentBuilder({group,onClose,onSent}){
     try{
       const value=validateAssignments({...settings,items}),body=JSON.stringify(value),setup=assignmentSetup(value);
       if(prepared.current?.body!==body){let request=enabled ? await sealMessage(group.id,body,[],null,null,'assignments') : {body};if(enabled)request=await signAssignmentRequest(request,null,setup,'assignment-setup');prepared.current={body,request};}
-      await post(`/groups/${group.id}/messages`,{...prepared.current.request,message_kind:'assignments',assignment_setup:setup});await onSent();onClose();
+      await publishNest(group,{...prepared.current.request,message_kind:'assignments',assignment_setup:setup},{body,attachments:[]},when,scheduledRecord);await onSent();onClose();
     }catch(e){if(e.status===409)prepared.current=null;setError(e.message);}finally{saving.current=false;setBusy(false);}
   }
   return <Modal title="Create assignment list" subtitle="A shared plan for your Nest." onClose={()=>{if(!saving.current)onClose();}} wide><form className="form assignment-builder" onSubmit={submit}>
-    <fieldset disabled={busy || !members}><SettingsFields value={settings} onChange={setSettings}/>{items.map((item,index)=><section className="assignment-item-editor" key={item.id}><div className="assignment-editor-heading"><h3>Assignment {index+1}</h3>{items.length>1 && <button className="icon-button" type="button" aria-label={`Remove assignment ${index+1}`} onClick={()=>setItems(prev=>prev.filter(i=>i.id!==item.id))}><Trash2 size={17}/></button>}</div><ItemFields item={item} members={members || []} index={index+1} onChange={next=>setItems(prev=>prev.map(i=>i.id===item.id?next:i))}/></section>)}{items.length<ASSIGNMENT_LIMITS.initialItems && <button className="button secondary" type="button" onClick={()=>setItems(prev=>[...prev,blankItem()])}><Plus size={17}/>Add assignment</button>}</fieldset>
+    <fieldset disabled={busy || !members}><SettingsFields value={settings} onChange={setSettings}/>{items.map((item,index)=><section className="assignment-item-editor" key={item.id}><div className="assignment-editor-heading"><h3>Assignment {index+1}</h3>{items.length>1 && <button className="icon-button" type="button" aria-label={`Remove assignment ${index+1}`} onClick={()=>setItems(prev=>prev.filter(i=>i.id!==item.id))}><Trash2 size={17}/></button>}</div><ItemFields item={item} members={members || []} index={index+1} onChange={next=>setItems(prev=>prev.map(i=>i.id===item.id?next:i))}/></section>)}{items.length<ASSIGNMENT_LIMITS.initialItems && <button className="button secondary" type="button" onClick={()=>setItems(prev=>[...prev,blankItem()])}><Plus size={17}/>Add assignment</button>}<ScheduleFields value={when} onChange={setWhen} forced={!!scheduledRecord}/></fieldset>
     {!members && !error && <p role="status">Loading Nest members…</p>}{error && <div className="error-banner" role="alert">{error}{!members && <button type="button" className="text-button" onClick={()=>setRetry(n=>n+1)}>Try again</button>}</div>}
     <p className="poll-help">Each item has one responsible person. Members can claim open items and complete their own assignments. Completed items move below unfinished ones.</p>
-    <div className="form-footer"><button type="button" className="button secondary" disabled={busy} onClick={onClose}>Cancel</button><button type="submit" className="button primary" disabled={busy || !members}>{busy?'Sharing…':'Share assignments'}</button></div>
+    <div className="form-footer"><button type="button" className="button secondary" disabled={busy} onClick={onClose}>Cancel</button><button type="submit" className="button primary" disabled={busy || !members}>{busy?'Saving…':scheduledRecord?'Save scheduled list':when.enabled?'Schedule assignments':'Share assignments'}</button></div>
   </form></Modal>;
 }
 function AssignmentEditor({editor,data,user,busy,error,onClose,onSave}){

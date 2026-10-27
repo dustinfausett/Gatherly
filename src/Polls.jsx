@@ -1,3 +1,5 @@
+import {ScheduleFields,initialSchedule} from './ScheduleControls';
+import {publishNest} from './scheduled-client';
 import React, { useEffect, useRef, useState } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
 import { Modal, Field } from './components';
@@ -14,9 +16,10 @@ import './activity-cards.css';
 const newQuestion = () => ({ text: '', type: 'single', options: ['', ''] });
 export const messagePreview = m => m?.message_kind === 'poll' ? parsePoll(m.body)?.title || 'Poll' : m?.message_kind === 'rsvp' ? parseRsvp(m.body)?.title || 'RSVP' : m?.message_kind === 'assignments' ? parseAssignments(m.body)?.title || 'Assignments' : m?.body;
 
-export function PollBuilder({ group, onClose, onSent }) {
+export function PollBuilder({ group, onClose, onSent, initialValue=null, scheduledRecord=null }) {
   const { enabled } = useEncryption();
-  const [title, setTitle] = useState(''), [questions, setQuestions] = useState([newQuestion()]);
+  const [when,setWhen]=useState(()=>initialSchedule(scheduledRecord?.send_at));
+  const [title, setTitle] = useState(initialValue?.title||''), [questions, setQuestions] = useState(initialValue?.questions?.map(q=>({...q,options:q.options.map(o=>typeof o==='string'?o:o.text)}))||[newQuestion()]);
   const [busy, setBusy] = useState(false), [error, setError] = useState('');
   const prepared = useRef(null), submitted = useRef(false);
   function updateQuestion(index, values) { setQuestions(prev => prev.map((q, i) => i === index ? { ...q, ...values } : q)); }
@@ -26,7 +29,7 @@ export function PollBuilder({ group, onClose, onSent }) {
     try {
       const body = JSON.stringify(validatePoll({ title, questions }));
       if (prepared.current?.body !== body) prepared.current = { body, request: enabled ? await sealMessage(group.id, body, [], null, null, 'poll') : { body } };
-      await post(`/groups/${group.id}/messages`, { ...prepared.current.request, message_kind: 'poll' });
+      await publishNest(group,{...prepared.current.request,message_kind:'poll'},{body,attachments:[]},when,scheduledRecord);
       submitted.current = true; onClose(); await onSent();
     } catch (e) { if (e.status === 409) prepared.current = null; setError(e.message); }
     finally { setBusy(false); }
@@ -44,9 +47,9 @@ export function PollBuilder({ group, onClose, onSent }) {
         </section>)}
         {questions.length < POLL_LIMITS.questions && <button className="button secondary" type="button" onClick={() => setQuestions(prev => [...prev, newQuestion()])}><Plus size={17} />Add another question</button>}
       </fieldset>
-      <p className="poll-help">Nest members can respond, including in announcement-only Nests. Responses are linked to their accounts. Members joining later won’t see this poll.</p>
+      <ScheduleFields value={when} onChange={setWhen} forced={!!scheduledRecord}/><p className="poll-help">Nest members can respond, including in announcement-only Nests. Responses are linked to their accounts. Members joining later won’t see this poll.</p>
       {error && <div className="error-banner" role="alert">{error}</div>}
-      <div className="form-footer"><button className="button primary" disabled={busy} type="submit">{busy ? 'Sending…' : 'Send poll'}</button></div>
+      <div className="form-footer"><button className="button primary" disabled={busy} type="submit">{busy ? 'Saving…' : scheduledRecord?'Save scheduled poll':when.enabled?'Schedule poll':'Send poll'}</button></div>
     </form>
   </Modal>;
 }

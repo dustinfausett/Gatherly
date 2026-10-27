@@ -26,6 +26,7 @@ import { installContacts } from './contacts.js';
 import {installRecipientScopes} from './recipient-scopes.js';
 import { installPrivateMessages } from './private-messages.js';
 import {installSms} from './sms.js';
+import {installScheduling} from './scheduling.js';
 import { installFamily } from './family.js';
 import { birthDate } from '../shared/family.js';
 
@@ -144,6 +145,8 @@ export function createApp(options = {}) {
       imgSrc: ["'self'", 'data:', 'blob:'], upgradeInsecureRequests: null,
     },
   } : false, crossOriginOpenerPolicy: { policy: 'same-origin-allow-popups' }, strictTransportSecurity: production }));
+  // A scheduled batch contains up to 50 separately encrypted message packets.
+  app.use('/api/scheduled', express.json({ limit: '4mb' }));
   app.use(express.json({ limit: '1mb' }));
   app.use(cookieParser());
   app.use('/api', (req, res, next) => {
@@ -626,7 +629,7 @@ export function createApp(options = {}) {
     for (const m of messages) m.files = all('SELECT f.id,f.name,f.mime,f.size FROM files f JOIN message_files mf ON mf.file_id=f.id WHERE mf.message_id=?', m.id);
     res.json({ messages });
   });
-  app.post('/api/groups/:id/messages', rateLimit({ windowMs: 60_000, limit: options.testing ? 1000 : 90, keyGenerator: req => req.user.id, message: { error: 'Please slow down and try again in a moment.' } }), async (req, res) => {
+  async function sendNestMessage(req,{validateOnly=false}={}) {
     const messageKind=req.body.message_kind ?? 'chat';
     if(!['chat','poll','rsvp','assignments'].includes(messageKind))fail(400,'Choose a supported message type.');
     if(['poll','rsvp','assignments'].includes(messageKind) && (req.body.reply_to != null || req.body.files?.length))fail(400,'Post a poll, RSVP or assignment list directly in the Nest without attachments.');
@@ -636,7 +639,7 @@ export function createApp(options = {}) {
     if(encryptionRequired && req.body.body !== undefined)fail(400,'Message text must be encrypted on your device. Update the app before sending.');
     if(encryptionRequired && typeof req.body.clientId==='string'){
       const existing=one('SELECT * FROM messages WHERE client_id=?',req.body.clientId);
-      if(existing){if(existing.group_id!==g.id || existing.user_id!==req.user.id || existing.message_kind!==messageKind || existing.ciphertext!==req.body.ciphertext)fail(409,'That encrypted message ID is already in use.');return res.status(201).json({id:existing.id});}
+      if(existing){if(existing.group_id!==g.id || existing.user_id!==req.user.id || existing.message_kind!==messageKind || existing.ciphertext!==req.body.ciphertext)fail(409,'That encrypted message ID is already in use.');if(validateOnly)fail(409,'This message has already been sent.');return {id:existing.id};}
     }
     const checked=encryptionRequired ? await encryption.validateSend(req,g.id) : null;
     const assignmentSetup=messageKind==='assignments' ? await assignments.prepare(req,g.id) : null;
@@ -659,6 +662,7 @@ export function createApp(options = {}) {
       if(encryptionRequired && parent.reply_to)fail(400,'Reply to the visible root message of this thread.');
       reply = parent.reply_to || parent.id;
     }
+    if(validateOnly)return {ok:true};
     let id;
     const recipients = all('SELECT user_id FROM group_members WHERE group_id=? AND user_id<>? AND muted=0', g.id, req.user.id);
     transaction(() => {
@@ -674,11 +678,15 @@ export function createApp(options = {}) {
       for (const fid of files) run('INSERT INTO message_files VALUES (?,?)', id, fid);
       run('UPDATE group_members SET last_read=?,marked_unread=0 WHERE group_id=? AND user_id=?', id, g.id, req.user.id);
       for (const r of recipients) run('INSERT INTO notifications(user_id,message_id) VALUES (?,?)', r.user_id, id);
+      req.scheduledStored?.({id});
     });
     refresh(g.community_id);
     for(const recipient of recipients)notifyDevice(recipient.user_id,{title:'New message on Churp',body:'You have a new message in a Nest you joined.',url:`/?community=${g.community_id}&group=${g.id}`});
-    res.status(201).json({ id });
-  });
+    return {id};
+  }
+  app.post('/api/groups/:id/messages', rateLimit({windowMs:60000,limit:options.testing?1000:90,keyGenerator:req=>req.user.id,message:{error:'Please slow down and try again in a moment.'}}),async(req,res)=>res.status(201).json(await sendNestMessage(req)));
+
+  const scheduling=installScheduling({app,db,dataDir,encryption,family,transaction,refreshUser,sendNest:sendNestMessage,sendPrivate:privateMessages.send,sms,invitations,testing:options.testing,autoProcess:!(options.testing&&options.schedulingAutoProcess===false),now:options.schedulingNow||(()=>Date.now()),notifyHold:uid=>notifyDevice(uid,{title:'A scheduled send needs review',body:'Open Scheduled messages in Your corner to review it.',url:'/?scheduled=1'})});
   app.patch('/api/messages/:id', (req, res) => {
     const m = one('SELECT * FROM messages WHERE id=? AND deleted=0', req.params.id) || fail(404, 'Message not found.');
     const g = visibleCircle(req.user.id, m.group_id);
@@ -819,5 +827,5 @@ export function createApp(options = {}) {
     app.use(express.static(resolve('dist'), { setHeaders: (res, path) => { if (path.endsWith('/index.html') || path.endsWith('/sw.js')) res.setHeader('Cache-Control','no-store'); } }));
     app.get('/{*path}', (req, res) => { res.setHeader('Cache-Control','no-store'); res.sendFile(resolve('dist/index.html')); });
   }
-  return { app, db, sms, close: () => { sms.close(); for (const set of streams.values()) for (const res of set) res.end(); db.close(); } };
+  return { app, db, sms, scheduling, close: () => { scheduling.close();sms.close(); for (const set of streams.values()) for (const res of set) res.end(); db.close(); } };
 }

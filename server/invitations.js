@@ -87,7 +87,10 @@ export function installInvitations({app,db,appUrl,testing,transaction,membership
   app.post('/api/invitations/:id/decline',accepting,(req,res)=>{
     const inv=owned(req);if(inv.status!=='pending')fail(410,'This invitation has already been answered.');run("UPDATE nest_invitations SET status='declined' WHERE id=?",inv.id);refreshUser(req.user.id);res.json({ok:true});
   });
-  return {validateTextInvite:(uid,cid,value)=>{
+  return {createForText:async(uid,cid)=>{
+    membership(uid,cid);const value=token(),code=Array.from(randomBytes(10),byte=>'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[byte%32]).join('');
+    const approval=!treeReviewer(uid,cid);transaction(()=>{run('INSERT INTO invitations(token_hash,community_id,group_id,created_by,expires_at,requires_approval) VALUES (?,?,NULL,?,?,?)',hash(value),cid,uid,Date.now()+7*86400000,Number(approval));run('INSERT INTO invitation_codes VALUES (?,?)',hash(code),hash(value));});return shortInvitationUrl(appUrl,code);
+  },validateTextInvite:(uid,cid,value)=>{
     if(typeof value!=='string'||value.length>2048)fail(400,'Create a valid Tree invitation for this text.');
     let url;try{url=new URL(value);}catch{fail(400,'Use a valid Tree invitation URL.');}
     const short=/^\/i\/[A-HJ-NP-Z2-9]{10}\/?$/i.test(url.pathname);

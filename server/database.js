@@ -314,6 +314,14 @@ export function openDatabase(path) {
     CREATE TABLE IF NOT EXISTS sms_events (sid TEXT PRIMARY KEY,kind TEXT NOT NULL,created_at INTEGER NOT NULL);
     CREATE TABLE IF NOT EXISTS sms_status_events (sid TEXT PRIMARY KEY,status TEXT NOT NULL,created_at INTEGER NOT NULL);
   `);
+  db.exec(`CREATE TABLE IF NOT EXISTS scheduled_sends (
+    id TEXT PRIMARY KEY,owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,client_id TEXT NOT NULL,request_hash TEXT NOT NULL,
+    send_at INTEGER NOT NULL,time_zone TEXT NOT NULL,device_id TEXT NOT NULL,signer_key TEXT NOT NULL,packet_cipher TEXT NOT NULL,
+    version INTEGER NOT NULL DEFAULT 0,created_at INTEGER NOT NULL,UNIQUE(owner_id,client_id)
+  );CREATE TABLE IF NOT EXISTS scheduled_parts (
+    id TEXT PRIMARY KEY,send_id TEXT NOT NULL REFERENCES scheduled_sends(id) ON DELETE CASCADE,position INTEGER NOT NULL,
+    state TEXT NOT NULL,receipt TEXT,error TEXT,mode TEXT,delivery_context TEXT,UNIQUE(send_id,position)
+  );CREATE INDEX IF NOT EXISTS scheduled_due ON scheduled_sends(send_at);CREATE INDEX IF NOT EXISTS scheduled_state ON scheduled_parts(state,send_id);`);
   addColumn('sms_status_events','error_code','TEXT');
   addColumn('sms_job_context','filter_nest','TEXT');
   addColumn('sms_threads','read_through','INTEGER NOT NULL DEFAULT 0');
