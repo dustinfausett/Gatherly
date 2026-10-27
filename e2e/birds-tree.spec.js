@@ -80,7 +80,7 @@ test('12 independent pets, code redemption and matching flights',async({page},in
     expect(seat.width).toBeGreaterThanOrEqual(44);expect(seat.height).toBeGreaterThanOrEqual(44);
     if(bird.id==='blue')await page.locator('.chat-header').screenshot({path:info.outputPath('bird-seated-in-nest.png')});
     if(info.project.name==='desktop')await page.getByRole('button',{name:'Tree home',exact:true}).click();
-    else await page.getByRole('button',{name:'Back to Nests',exact:true}).click();
+    else await page.getByRole('button',{name:'Back to Tree',exact:true}).click();
   }
   await page.reload();
   await expect(page.locator('.banner-bird [data-bird-id]')).toHaveAttribute('data-bird-id','hummingbird');

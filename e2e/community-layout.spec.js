@@ -50,8 +50,14 @@ test('compact Tree home, Branch navigation, photos, and menu details', async ({ 
   await expect(circle('Family plans').locator('.row-avatar img')).toBeVisible();
   await circle('Family plans').getByRole('button',{name:'Open Nest Family plans',exact:true}).click();
   await expect(page.getByRole('heading',{name:'Family plans',exact:true})).toBeVisible();
-  if(testInfo.project.name!=='desktop') await page.getByRole('button',{name:'Back to Nests',exact:true}).click();
-  else await page.getByRole('button',{name:'Tree home',exact:true}).click();
+  const back=page.getByRole('button',{name:'Back to Tree',exact:true});
+  await expect(back).toBeVisible();
+  await expect(back.locator('img')).toHaveAttribute('src','/brand/navigation/back-to-tree.png');
+  await expect.poll(()=>back.locator('img').evaluate(img=>img.naturalWidth)).toBeGreaterThan(0);
+  const header=await page.locator('.chat-header').evaluate(el=>{const back=el.querySelector('.nest-back-button').getBoundingClientRect(),avatar=el.querySelector(':scope > .avatar').getBoundingClientRect();return {backRight:back.right,avatarLeft:avatar.left,width:back.width,height:back.height};});
+  expect(header.backRight).toBeLessThanOrEqual(header.avatarLeft);expect(header.width).toBeGreaterThanOrEqual(44);expect(header.height).toBeGreaterThanOrEqual(44);
+  await page.locator('.chat-header').screenshot({path:testInfo.outputPath('nest-back-bird-header.png')});
+  await back.click();
   await expect(group('Family life').getByRole('button')).toHaveAttribute('aria-expanded','true');
   await expect(circle('Family plans')).toBeVisible();
   await circle('Family plans').getByRole('button',{name:'Options for Family plans',exact:true}).click();

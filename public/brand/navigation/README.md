@@ -15,3 +15,9 @@ Generated with the existing blue/gold bird artwork as the style reference. Origi
 | Tree details | Members | Creation requests | Send Many Individually |
 | --- | --- | --- | --- |
 | <img src="leaf.png" width="150" alt="Olive leaf"/> | <img src="members.png" width="150" alt="Three Churp birds together"/> | <img src="requests.png" width="150" alt="Birds reviewing a request"/> | <img src="broadcast.png" width="150" alt="One blue bird messaging three birds"/> |
+
+## Back to Tree
+
+<img src="back-to-tree.png" width="220" alt="A blue Churp bird holding a wooden sign reading left arrow Back"/>
+
+Generated with the approved Churp bird style as a reference. This transparent illustration is the real Back to Tree button in every Nest header, immediately before the Nest avatar. Its sign includes a left arrow and the word **Back**. The original generated PNG is preserved; CSS scales it for desktop and phone headers. The button uses an explicit accessible label and a generous touch target.

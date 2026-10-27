@@ -60,7 +60,7 @@ test('members request Branches and Nests; admins review and configure immediate 
     await page.getByText('Require approval for Branches',{exact:true}).click();
     await page.getByText('Require approval for Nests',{exact:true}).click();
     await page.getByRole('button',{name:'Save changes',exact:true}).click();
-    if(info.project.name!=='desktop')await gp.getByRole('button',{name:'Back to Nests',exact:true}).click();
+    if(info.project.name!=='desktop')await gp.getByRole('button',{name:'Back to Tree',exact:true}).click();
     else await gp.getByRole('button',{name:'Tree home',exact:true}).click();
     await gp.getByRole('button',{name:'New Nest',exact:true}).click();
     await gp.getByRole('textbox',{name:'Nest name',exact:true}).fill('Immediate Nest');
@@ -131,7 +131,7 @@ test('Nest feedback, bird flight, keyboard return and reduced motion',async({pag
   await expect(page.locator('.resident-bird')).toHaveCSS('opacity','1');
   await expect(page.locator('.resident-bird image')).toHaveAttribute('href','/brand/previews/churp-bird-poses.png');
   await page.screenshot({path:info.outputPath('bird-at-nest.png'),fullPage:true});
-  if(info.project.name!=='desktop')await page.getByRole('button',{name:'Back to Nests',exact:true}).click();
+  if(info.project.name!=='desktop')await page.getByRole('button',{name:'Back to Tree',exact:true}).click();
   else await page.getByRole('button',{name:'Tree home',exact:true}).click();
   await expect(row.getByRole('button',{name:'Open Nest Morning songs',exact:true})).toBeFocused();
   await page.emulateMedia({reducedMotion:'reduce'});
