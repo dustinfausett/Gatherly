@@ -19,7 +19,7 @@ import { installAssignments } from './assignments.js';
 import { installAccountSecurity,accountMailer,normalizeEmail } from './account-security.js';
 import { parseRsvp, deadline } from '../shared/rsvps.js';
 import { parsePoll } from '../shared/polls.js';
-import { BIRDS, getBird, birdIsAvailable } from '../shared/birds.js';
+import { BIRDS, getBird, birdIsAvailable, birdIsVisible, seasonalLabel } from '../shared/birds.js';
 import { getAvatar } from '../shared/avatars.js';
 import { installInvitations } from './invitations.js';
 import { installContacts } from './contacts.js';
@@ -72,15 +72,19 @@ export function createApp(options = {}) {
   const one = (sql, ...args) => db.prepare(sql).get(...args);
   const all = (sql, ...args) => db.prepare(sql).all(...args);
   const run = (sql, ...args) => db.prepare(sql).run(...args);
-  const birdAvailable=bird=>birdIsAvailable(bird,options.testing&&options.birdNow?options.birdNow():new Date(),options.testing?options.christmasPreview:undefined);
-  const activeBird=id=>birdAvailable(getBird(id))?id:'blue';
+  const birdNow=()=>options.testing&&options.birdNow?options.birdNow():new Date();
+  // Account-specific early access, never inferred from Tree admin roles or request fields.
+  const holidayTester=user=>user?.username==='dustin';
+  const birdAvailable=(bird,user)=>birdIsAvailable(bird,birdNow(),holidayTester(user));
+  const activeBird=(id,user)=>birdAvailable(getBird(id),user)?id:'blue';
   const unlockedBirds = userId => {
     const earned = new Set(all('SELECT bird_id FROM bird_unlocks WHERE user_id=?', userId).map(b => b.bird_id));
-    return BIRDS.filter(b => birdAvailable(b)&&(b.free || earned.has(b.id))).map(b => b.id);
+    const user=one('SELECT username FROM users WHERE id=?',userId);
+    return BIRDS.filter(b => birdAvailable(b,user)&&(b.free || earned.has(b.id))).map(b => b.id);
   };
   let family;
   const publicUser = u => ({ family:family?.summary(u.id), has_password:!!u.password,has_google:!!u.google_id,recovery_email:u.email || null,recovery_email_verified:!!u.email_verified_at,pending_recovery_email:u.pending_email || null,id: u.id, username: u.username, name: u.name, avatar_id: u.avatar_id,
-    bird_id: activeBird(u.bird_id), avatar_choice:u.avatar_choice, avatar_style: u.avatar_style, unlocked_birds: unlockedBirds(u.id), last_community_id: u.last_community_id });
+    bird_id: activeBird(u.bird_id,u), visible_birds:BIRDS.filter(b=>birdIsVisible(b,birdNow(),holidayTester(u))).map(b=>b.id), bird_seasons:Object.fromEntries(BIRDS.filter(b=>b.seasonal).map(b=>[b.id,seasonalLabel(b,birdNow())])), avatar_choice:u.avatar_choice, avatar_style: u.avatar_style, unlocked_birds: unlockedBirds(u.id), last_community_id: u.last_community_id });
   const transaction = fn => {
     db.exec('BEGIN');
     try { const result = fn(); db.exec('COMMIT'); return result; }
@@ -250,9 +254,9 @@ export function createApp(options = {}) {
   app.patch('/api/me', (req, res) => {
     const name = req.body.name === undefined ? req.user.name : text(req.body.name, 'Display name');
     const avatarId = req.body.avatar_id === undefined ? req.user.avatar_id : avatar(req.user.id, req.body.avatar_id);
-    const birdId = req.body.bird_id === undefined ? activeBird(req.user.bird_id) : req.body.bird_id;
+    const birdId = req.body.bird_id === undefined ? activeBird(req.user.bird_id,req.user) : req.body.bird_id;
     if (!getBird(birdId)) fail(400, 'Choose a bird from the collection.');
-    if (!birdAvailable(getBird(birdId))) fail(403,'The Christmas Bird is available November 1 through January 3.');
+    if (!birdAvailable(getBird(birdId),req.user)) fail(403,`${getBird(birdId).name} is not currently available. Its holiday season is ${seasonalLabel(getBird(birdId),birdNow())}.`);
     if (!unlockedBirds(req.user.id).includes(birdId)) fail(403, 'Unlock this bird before selecting it.');
     const style = req.body.avatar_style ?? (req.body.avatar_id === undefined ? req.user.avatar_style : 'photo');
     // Older open clients may still send 'bird'; keep their pet separate from the portrait.

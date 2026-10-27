@@ -1,5 +1,6 @@
+import {HOLIDAY_ART} from './holidayArtwork';
 import {getBird} from '../shared/birds';
-import {birdFrame,CHRISTMAS_ART} from './birdArtwork';
+import {birdFrame} from './birdArtwork';
 
 export const FEED_DURATION=3800;
 export const FOOD_ART='/brand/pets/feeding-food.png';
@@ -17,7 +18,7 @@ const pets={
  robin:{food:'berries',label:'berries',mouth:[267,440],feet:[180,610]},
  cardinal:{food:'seeds',label:'golden seeds',mouth:[267,751],feet:[180,916]},
  hummingbird:{food:'nectar',label:'flower nectar',mouth:[310,1018],feet:[175,1200]},
- christmas:{food:'candycanes',label:'candy canes',foodArt:CHRISTMAS_ART,mouth:[353,318],feet:[230,566]},
+ ...Object.fromEntries(Object.entries(HOLIDAY_ART).map(([id,art])=>[id,{...art,foodArt:art.src}])),
 };
 export function feedingProfile(id){
  const bird=getBird(id)||getBird('blue'),pet=pets[bird.id];

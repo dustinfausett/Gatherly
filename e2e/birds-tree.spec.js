@@ -1,8 +1,9 @@
 import { test, expect } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
-import { BIRDS,birdIsAvailable } from '../shared/birds.js';
+import { BIRDS,birdIsAvailable,birdIsVisible } from '../shared/birds.js';
 const availableBirds=BIRDS.filter(b=>birdIsAvailable(b));
-const seasonalUnavailable=BIRDS.length-availableBirds.length;
+const visibleBirds=BIRDS.filter(b=>birdIsVisible(b));
+const seasonalUnavailable=visibleBirds.length-availableBirds.length;
 
 const register = async (request,prefix) => {
   const r=await request.post('/api/auth/register',{data:{birth_date:'1990-01-01',username:`${prefix}_${randomUUID().slice(0,8)}`,name:'Bird watcher',password:'bird and tree browser password'}});
@@ -33,7 +34,7 @@ test('available pets, code redemption and matching flights',async({page},info)=>
   });
   await page.goto('/');
   await page.getByRole('button',{name:'Edit your profile',exact:true}).click();await page.getByRole('button',{name:'My pet',exact:true}).click();
-  await expect(page.getByRole('radio')).toHaveCount(13);
+  await expect(page.getByRole('radio')).toHaveCount(visibleBirds.length);
   await expect(page.getByRole('radio',{name:'Bluebird',exact:true})).toBeChecked();
   await expect(page.getByRole('radio',{name:'Goldfinch',exact:true})).toBeEnabled();
   await expect(page.locator('.bird-picker input:disabled')).toHaveCount(10+seasonalUnavailable);

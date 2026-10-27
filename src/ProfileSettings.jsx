@@ -66,7 +66,7 @@ function PetScreen({user,onSave,onAccountUpdate,onDone,notify}){
   return <>
     <Form submit="Save pet" onSubmit={async()=>{await onSave({bird_id:birdId});notify('Your pet is ready to fly.');onDone();}}>
       <div className="pet-preview"><Bird birdId={birdId}/><div><strong>{getBird(birdId)?.name}</strong><p>Your pet perches in the Tree banner and flies into each Nest with you.</p><small>Your profile picture stays the same.</small></div></div>
-      <BirdPicker selected={birdId} unlocked={unlocked} onSelect={setBirdId}/>
+      <BirdPicker selected={birdId} visible={user.visible_birds} seasons={user.bird_seasons} unlocked={unlocked} onSelect={setBirdId}/>
     </Form>
     <div className="settings-section bird-unlock"><h4>Grow your pet collection</h4>{BIRDS.some(b=>!b.free&&!unlocked.includes(b.id))?<Form submit="Redeem code" onSubmit={async form=>{const result=await post('/me/birds/unlock',{code:form.get('code')});setUnlocked(result.user.unlocked_birds);onAccountUpdate(result.user);notify('Your pet collection is unlocked. Choose your favorite and save your pet.');}}><p className="muted small-text">Bluebird and Goldfinch are included. Have an unlock code?</p><Field label="Unlock code" name="code" autoComplete="off" required maxLength={64}/></Form>:<p className="bird-unlocked-message" role="status"><Check size={16}/>Your pet collection is unlocked.</p>}<button className="button secondary small" disabled>Purchases coming soon</button></div>
   </>;

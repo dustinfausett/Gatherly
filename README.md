@@ -80,7 +80,7 @@ The Tree banner places your selected bird and branch immediately after the Tree 
 
 ## Profile avatars and pets
 
-Tap the pet beside the Tree name to feed it: all 13 pets have a smooth eating animation with generated Churp food artwork, matching bites and a happy finish. Keyboard access and reduced motion are supported. See [pet feeding and artwork](docs/PET-FEEDING.md). Feeding has no visible captions or hover hints. The included **Christmas Bird** wears a Santa suit and hat, eats candy canes and is available only November 1 through January 3.
+Tap the pet beside the Tree name to feed it: all 18 pets have a smooth eating animation with generated Churp food artwork, matching bites and a happy finish. Keyboard access and reduced motion are supported. See [pet feeding and artwork](docs/PET-FEEDING.md). Feeding has no visible captions or hover hints. The included **Christmas Bird** wears a Santa suit and hat, eats candy canes and is selectable November 25–December 28, with a locked preview November 18–24. Five new holiday pets are currently available only to `dustin` for testing.
 
 Click your name to open a compact settings menu: **Profile & avatar**, **My pet**, **Account settings**, **Security**, and **Notifications**. Each option opens its own screen with a back button. **Profile & avatar** offers 20 free Churp bird portraits or an uploaded image; changing a portrait or pet never changes the other. Message and member avatars use the selected portrait/photo. [View the portrait collection](public/brand/avatars/README.md).
 

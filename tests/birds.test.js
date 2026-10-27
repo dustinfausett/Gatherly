@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { createServer } from 'node:http';
 import { DatabaseSync } from 'node:sqlite';
 import { createApp } from '../server/app.js';
-import { BIRDS } from '../shared/birds.js';
+import { BIRDS, birdIsAvailable } from '../shared/birds.js';
 import { AVATARS } from '../shared/avatars.js';
 
 test('account bird selection, protected code unlocks and photo migration persist', async t => {
@@ -33,7 +33,7 @@ test('account bird selection, protected code unlocks and photo migration persist
   await ok(`/groups/${nest.id}/join`,member,'POST');
 
   await t.test('only included birds are available until a valid account unlock',async()=>{
-    assert.equal(BIRDS.length,13);assert.equal(new Set(BIRDS.map(b=>b.id)).size,13);
+    assert.equal(BIRDS.length,18);assert.equal(new Set(BIRDS.map(b=>b.id)).size,18);
     assert.equal(owner.bird_id,'blue');assert.equal(owner.avatar_style,'portrait');assert.deepEqual(owner.unlocked_birds,['blue','gold','christmas']);
     assert.equal((await req('/me',owner,'PATCH',{bird_id:'parrot',avatar_style:'bird',unlocked_birds:['parrot']})).status,403);
     assert.equal((await req('/me',owner,'PATCH',{bird_id:'not-a-bird'})).status,400);
@@ -48,7 +48,7 @@ test('account bird selection, protected code unlocks and photo migration persist
     for(let i=0;i<2;i++) assert.equal((await ok('/me/birds/unlock',owner,'POST',{code:'Churp'})).user.unlocked_birds.length,13);
     assert.equal(runtime.db.prepare('SELECT COUNT(*) AS n FROM bird_unlocks WHERE user_id=?').get(owner.id).n,10);
     assert.equal((await req('/me',member,'PATCH',{bird_id:'parrot',avatar_style:'bird'})).status,403);
-    for(const bird of BIRDS) assert.equal((await ok('/me',owner,'PATCH',{bird_id:bird.id,avatar_style:'bird'})).user.bird_id,bird.id);
+    for(const bird of BIRDS.filter(b=>birdIsAvailable(b,new Date('2026-12-15T12:00:00Z')))) assert.equal((await ok('/me',owner,'PATCH',{bird_id:bird.id,avatar_style:'bird'})).user.bird_id,bird.id);
     await ok('/me',owner,'PATCH',{bird_id:'parrot',avatar_style:'bird'});
     await ok(`/groups/${nest.id}/messages`,owner,'POST',{body:'Hello from Parrot'});
     const message=(await ok(`/groups/${nest.id}/messages`,member)).messages[0];

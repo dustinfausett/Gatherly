@@ -1,15 +1,16 @@
 import React,{useEffect,useId,useRef,useState} from 'react';
 import {Bird} from './BirdJourney';
 import {FEED_DURATION,FOOD_ART,feedingMotion,feedingProfile} from './petFeedingMotion';
-import {CHRISTMAS_ART} from './birdArtwork';
+import {HOLIDAY_ART} from './holidayArtwork';
 import './pet-feeding.css';
 
 // Display crops only: the generated sheet is stored intact alongside the pets.
-const foods={seeds:[18,334,398,254],berries:[430,332,395,256],fruit:[841,332,399,256],treats:[18,747,398,259],nectar:[442,716,379,286],grain:[889,810,315,174],berryBite:[648,391,137,135],fruitBite:[1004,343,115,109],treatBite:[168,758,103,100],nectarBite:[565,858,150,82],candycanes:[471,792,388,334],candyBite:[943,814,252,290]};
-const bites={seeds:'grain',berries:'berryBite',fruit:'fruitBite',treats:'treatBite',nectar:'nectarBite',candycanes:'candyBite'};
+const foods={seeds:[18,334,398,254],berries:[430,332,395,256],fruit:[841,332,399,256],treats:[18,747,398,259],nectar:[442,716,379,286],grain:[889,810,315,174],berryBite:[648,391,137,135],fruitBite:[1004,343,115,109],treatBite:[168,758,103,100],nectarBite:[565,858,150,82]};
+const bites={seeds:'grain',berries:'berryBite',fruit:'fruitBite',treats:'treatBite',nectar:'nectarBite'};
 function Food({kind,className=''}){
- const id=useId(),[x,y,width,height]=foods[kind];
- return <svg className={`pet-food-art ${className}`} viewBox={`${x} ${y} ${width} ${height}`} aria-hidden="true"><defs><clipPath id={id}><rect x={x} y={y} width={width} height={height}/></clipPath></defs><image href={kind==='candycanes'||kind==='candyBite'?CHRISTMAS_ART:FOOD_ART} width="1254" height="1254" clipPath={`url(#${id})`}/></svg>;
+ const holiday=Object.values(HOLIDAY_ART).find(art=>kind===art.food||kind===`${art.food}Bite`);
+ const id=useId(),[x,y,width,height]=holiday ? (kind===holiday.food?holiday.dish:holiday.bite) : foods[kind];
+ return <svg className={`pet-food-art ${className}`} viewBox={`${x} ${y} ${width} ${height}`} aria-hidden="true"><defs><clipPath id={id}><rect x={x} y={y} width={width} height={height}/></clipPath></defs><image href={holiday?.src || FOOD_ART} width="1254" height="1254" clipPath={`url(#${id})`}/></svg>;
 }
 export default function PetFeeding({birdId}){
  const profile=feedingProfile(birdId),bird=profile.bird,statusId=useId(),button=useRef(),body=useRef(),dish=useRef(),morsels=useRef([]),hearts=useRef([]),locked=useRef(false);
@@ -41,7 +42,7 @@ export default function PetFeeding({birdId}){
   <button type="button" className="banner-bird pet-feed-button" data-bird-perch data-feeding={feeding?'true':'false'} data-food={profile.food} ref={button} aria-label={`Feed ${bird.name}`} aria-describedby={statusId} aria-busy={feeding} disabled={feeding} onClick={()=>{if(locked.current)return;locked.current=true;setStatus(`${bird.name} is enjoying ${profile.label}.`);setFeeding(true);}}>
    <span className="pet-feed-bird" ref={body}><Bird birdId={bird.id}/></span>
    <span className="pet-feed-dish" ref={dish} style={{left:`${x/512*100}%`,top:`${y/512*100}%`}}><Food kind={profile.food}/></span>
-   {[0,1,2].map(index=><span className="pet-feed-morsel" ref={node=>morsels.current[index]=node} key={index}><Food kind={bites[profile.food]}/></span>)}
+   {[0,1,2].map(index=><span className="pet-feed-morsel" ref={node=>morsels.current[index]=node} key={index}><Food kind={HOLIDAY_ART[bird.id]?`${profile.food}Bite`:bites[profile.food]}/></span>)}
    <span className="pet-feed-hearts" aria-hidden="true">{[0,1,2].map(index=><svg key={index} ref={node=>hearts.current[index]=node} viewBox="0 0 24 24"><path d="M12 21S2 15 2 8a5 5 0 0 1 10-2A5 5 0 0 1 22 8c0 7-10 13-10 13Z"/></svg>)}</span>
   </button>
   <span id={statusId} className="visually-hidden" role="status" aria-live="polite">{status}</span>

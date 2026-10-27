@@ -2,13 +2,26 @@
 
 Tap the pet beside the Tree's name to feed it. The snack appears beside its beak, the bird leans forward for three pecks, and little hearts finish the interaction. The button also works with Enter or Space. There are no visible feeding captions or hover hints: feeding is a discovery. Screen-reader labels and status announcements remain available.
 
-All 13 pets participate. The bluebird, goldfinch, mint bird, cockatiel and cardinal get golden seeds; pink, lavender, coral and robin get berries; the parrot gets fruit; the owl gets little bird treats; the hummingbird gets nectar in a flower; the Christmas Bird gets candy canes. Pet selection and unlocks continue through **Your corner → My pet**.
+All 18 pets participate. The bluebird, goldfinch, mint bird, cockatiel and cardinal get golden seeds; pink, lavender, coral and robin get berries; the parrot gets fruit; the owl gets little bird treats; the hummingbird gets nectar in a flower; the Christmas Bird gets candy canes. Pet selection and unlocks continue through **Your corner → My pet**.
 
-## Christmas Bird availability
+## Seasonal availability and private testing
 
-The Christmas Bird is an included seasonal pet, wearing a red Santa suit and hat. Early testing is complete: `CHRISTMAS_PREVIEW_ENABLED` in `shared/birds.js` is `false`.
+All six holiday pets use the same annual rules: selectable one **calendar month** before the holiday, visible but locked seven days before that, and selectable through the end of the third day after the holiday. Calendar dates and midnight boundaries use **America/Denver**. Month subtraction clamps to the last valid day (Halloween starts September 30).
 
-Availability runs November 1 through the end of January 3, using America/Denver calendar dates, and repeats every year. The server checks both the unlocked collection and explicit selection requests; an unlock code cannot bypass the season. An out-of-season selected Christmas Bird displays as the Bluebird. The picker labels the seasonal dates when unavailable. `tests/seasonal-pets.test.js` checks both date boundaries, default enforcement, API selection, code bypass prevention and the fallback. General pet account tests freeze their seasonal clock in December; browser tests exercise the currently available collection.
+| Pet | Preview begins | Selectable | Treat |
+| --- | --- | --- | --- |
+| Christmas | November 18 | November 25–December 28 | Candy canes |
+| Valentine | January 7 | January 14–February 17 | Heart cookies |
+| St. Patrick’s | February 10 | February 17–March 20 | Shamrock cookies |
+| Independence | May 28 | June 4–July 7 | Star cookies |
+| Halloween | September 23 | September 30–November 3 | Candy corn |
+| Thanksgiving (2026) | October 19 | October 26–November 29 | Pumpkin pie |
+
+Thanksgiving is recalculated as the fourth Thursday in November each year; availability ends that Sunday. Outside the preview and selectable windows, a pet disappears from the picker. A selected pet that leaves its season displays as Bluebird. Other pet unlocks and profile portraits are preserved.
+
+**Current rollout:** Christmas follows its public schedule. The five new pets have `testingOnly: true` in `shared/birds.js`; only the existing username **dustin** can select and feed them at any time during testing. They remain hidden from everyone else until the owner requests their public seasonal rollout. Remove `testingOnly: true` from those five entries to activate their prepared calendars after testing. This exception does not bypass Christmas's schedule. Tree ownership, client-supplied flags and unlock codes grant no early access.
+
+The server sends `visible_birds`, `unlocked_birds` and seasonal date labels to the picker and enforces selection itself. `tests/seasonal-pets.test.js` checks all six calendars, calendar clamping, Thanksgiving across years, Denver midnight transitions, locked preview, account-specific testing, code bypass prevention and out-of-season fallback.
 
 ## Artwork and motion
 
@@ -16,10 +29,12 @@ Availability runs November 1 through the end of January 3, using America/Denver 
 
 `public/brand/birds/christmas.png` is the original 1254 × 1254 transparent sheet generated in the same style: the Santa bird perched, wings up, wings down and landing, plus a candy-cane dish and an individual candy cane. It is stored intact. `birdArtwork.js` supplies pose crops; feeding uses the same smooth motion and a candy-cane bite from this sheet.
 
+`valentine.png`, `st-patrick.png`, `independence.png`, `halloween.png` and `thanksgiving.png` in the same directory are the five original generated transparent sheets. Each contains perched, wings-up, wings-down and landing poses, a treat dish and a matching single bite. `src/holidayArtwork.js` holds SVG viewports and beak/feet anchors, shared by the existing flight and feeding renderers. All six source PNGs are stored intact in GitHub.
+
 The pet keeps its existing perched artwork. `petFeedingMotion.js` maps each bird's original mouth and feet positions into its displayed coordinates, accounting for different shapes such as the hummingbird's long beak. The Web Animations API continuously interpolates the lean, pecks, food movement and hearts over 3.8 seconds. There is no pose swapping, stepped sprite playback, or React timer updating every frame.
 
 Only one feeding runs at a time. Animations stop cleanly on resize, a motion preference change, switching pets, leaving the Tree or opening a Nest. The existing flight into the Nest continues to use the selected pet. With reduced motion enabled, feeding uses a brief still snack and an accessible status announcement. Feeding is local, repeatable and requires no inventory or server state.
 
 ## Checks
 
-`e2e/pet-feeding.spec.js` exercises all 13 pets, intermediate animation transforms, snack artwork, repeat feeding, keyboard access, minimum touch size, reduced motion, absence of visible captions and navigation cleanup across desktop and phone layouts. It captures the bluebird, parrot, owl, hummingbird and Christmas Bird while eating. The existing bird collection and flight checks cover unlocks, independent avatars, all 13 flights and accurate Nest landings.
+`e2e/pet-feeding.spec.js` exercises the publicly available pets, intermediate animation transforms, snack artwork, repeat feeding, keyboard access, minimum touch size, reduced motion, absence of visible captions and navigation cleanup across desktop and phone layouts. It captures the bluebird, parrot, owl, hummingbird and Christmas Bird while eating. The existing bird collection and flight checks cover unlocks, independent avatars, flights and accurate Nest landings. `e2e/holiday-pets.spec.js` separately checks the five new birds through dustin’s account: visible enabled choices, saved selection, all flight poses, Nest residency, smooth feeding, matching food, reload persistence and phone layout.
