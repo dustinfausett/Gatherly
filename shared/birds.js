@@ -13,12 +13,11 @@ export const BIRDS = [
   { id: 'cardinal', name: 'Cardinal', collection: 'woodland', row: 2 },
   { id: 'hummingbird', name: 'Hummingbird', collection: 'woodland', row: 3 },
   { id: 'christmas', name: 'Christmas Bird', free: true, collection: 'christmas', row: 0, seasonal: true },
-  // Private preview for dustin until the owner finishes testing these five pets.
-  { id: 'valentine', name: 'Valentine Bird', free: true, collection: 'valentine', row: 0, seasonal: true, testingOnly: true },
-  { id: 'st-patrick', name: 'St. Patrick’s Bird', free: true, collection: 'st-patrick', row: 0, seasonal: true, testingOnly: true },
-  { id: 'independence', name: 'Independence Bird', free: true, collection: 'independence', row: 0, seasonal: true, testingOnly: true },
-  { id: 'halloween', name: 'Halloween Bird', free: true, collection: 'halloween', row: 0, seasonal: true, testingOnly: true },
-  { id: 'thanksgiving', name: 'Thanksgiving Bird', free: true, collection: 'thanksgiving', row: 0, seasonal: true, testingOnly: true },
+  { id: 'valentine', name: 'Valentine Bird', free: true, collection: 'valentine', row: 0, seasonal: true },
+  { id: 'st-patrick', name: 'St. Patrick’s Bird', free: true, collection: 'st-patrick', row: 0, seasonal: true },
+  { id: 'independence', name: 'Independence Bird', free: true, collection: 'independence', row: 0, seasonal: true },
+  { id: 'halloween', name: 'Halloween Bird', free: true, collection: 'halloween', row: 0, seasonal: true },
+  { id: 'thanksgiving', name: 'Thanksgiving Bird', free: true, collection: 'thanksgiving', row: 0, seasonal: true },
 
 ];
 export const getBird = id => BIRDS.find(b => b.id === id);
@@ -62,15 +61,12 @@ export function seasonalLabel(bird,date=new Date()) {
  const format=value=>new Intl.DateTimeFormat('en-US',{timeZone:'UTC',month:'short',day:'numeric'}).format(new Date(value));
  return `${format(window.start)}–${format(window.end)}`;
 }
-export function birdStatus(bird,date=new Date(),earlyAccess=false) {
+export function birdStatus(bird,date=new Date()) {
  if(!bird)return 'hidden';
  if(!bird.seasonal)return 'available';
- // The five new pets are private until their public rollout is enabled here.
- // Early access comes only from the server's approved tester account.
- if(bird.testingOnly)return earlyAccess?'available':'hidden';
  const window=seasonalWindow(bird,date),today=dateKey(localCalendar(date));
  if(!window||today<window.preview||today>window.end)return 'hidden';
  return today<window.start?'preview':'available';
 }
-export const birdIsAvailable=(bird,date=new Date(),earlyAccess=false)=>birdStatus(bird,date,earlyAccess)==='available';
-export const birdIsVisible=(bird,date=new Date(),earlyAccess=false)=>birdStatus(bird,date,earlyAccess)!=='hidden';
+export const birdIsAvailable=(bird,date=new Date())=>birdStatus(bird,date)==='available';
+export const birdIsVisible=(bird,date=new Date())=>birdStatus(bird,date)!=='hidden';

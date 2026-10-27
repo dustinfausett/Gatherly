@@ -15,4 +15,4 @@ Each transparent 1254 × 1254 sheet has perched, wings-up, wings-down and landin
 | [halloween.png](halloween.png) | Lavender, witch hat and pumpkin capelet | Candy corn |
 | [thanksgiving.png](thanksgiving.png) | Gold, autumn leaves, russet vest and scarf | Pumpkin pie |
 
-Pose viewports and food/beak/feet coordinates live in `src/holidayArtwork.js`. The existing flight and continuous feeding animations consume the same sheet. Availability and the temporary private testing rollout are documented in [PET-FEEDING.md](../../../docs/PET-FEEDING.md).
+Pose viewports and food/beak/feet coordinates live in `src/holidayArtwork.js`. The existing flight and continuous feeding animations consume the same sheet. Annual availability are documented in [PET-FEEDING.md](../../../docs/PET-FEEDING.md).
