@@ -7,3 +7,5 @@ test-results/
 test-results-encryption/
 playwright-report/
 *.log
+
+public/push-preview.js

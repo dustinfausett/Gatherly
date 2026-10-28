@@ -1,3 +1,5 @@
+// This generated, same-origin helper decrypts notification snippets on the phone.
+if(typeof importScripts==='function')try{importScripts('/push-preview.js');}catch{}
 self.addEventListener('install',event=>event.waitUntil(self.skipWaiting()));
 self.addEventListener('activate',event=>event.waitUntil(self.clients.claim()));
 // Never cache authenticated requests, message contents or private conversations.
@@ -16,15 +18,30 @@ async function refreshBadge(fallback){
   const badge=await response.json();await applyBadge(badge.count);
  }catch{await applyBadge(fallback);}finally{clearTimeout(timeout);}
 }
+// Late or retried provider deliveries update the existing tray item quietly.
+async function quietAlert(userId){
+ if(!userId||typeof indexedDB==='undefined')return false;
+ let db;
+ try{
+  db=await new Promise((resolve,reject)=>{const request=indexedDB.open('churp-push-alerts',1);request.onupgradeneeded=()=>request.result.createObjectStore('alerts');request.onsuccess=()=>resolve(request.result);request.onerror=()=>reject(request.error);});
+  return await new Promise((resolve,reject)=>{const transaction=db.transaction('alerts','readwrite'),store=transaction.objectStore('alerts'),request=store.get(userId);let quiet=false;
+   request.onsuccess=()=>{const now=Date.now();quiet=typeof request.result==='number'&&now-request.result<30000;if(!quiet)store.put(now,userId);};transaction.oncomplete=()=>resolve(quiet);transaction.onerror=()=>reject(transaction.error);transaction.onabort=()=>reject(transaction.error);
+  });
+ }catch{return false;}finally{db?.close();}
+}
 self.addEventListener('push',event=>{
  let payload;try{payload=event.data?.json();}catch{return;}if(!payload||typeof payload!=='object')return;
  // Keep a visible notification for every message push: iOS does not support
  // using silent pushes solely to change a badge.
- event.waitUntil(Promise.allSettled([
-  self.registration.showNotification(payload.title||'Churp',{
-   body:payload.body,icon:'/icons/churp-home-192.png',data:{url:payload.url||'/'},tag:'gatherly-message',
+ event.waitUntil((async()=>{
+  const display=self.churpPushPreview?await self.churpPushPreview(payload):{title:payload.title||'Churp',body:payload.body};
+  const quiet=await quietAlert(payload.recipient_id);
+  await Promise.allSettled([
+  self.registration.showNotification(display.title,{
+   body:display.body,icon:'/icons/churp-home-192.png',data:{url:payload.url||'/'},tag:'gatherly-message',renotify:!quiet,silent:quiet,
   }),refreshBadge(payload.unread_count),
- ]));
+ ]);
+ })());
 });
 self.addEventListener('notificationclick',event=>{
  event.notification.close();let target;try{target=new URL(event.notification.data?.url||'/',self.location.origin);}catch{return;}

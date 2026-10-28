@@ -8,7 +8,7 @@ export const notificationPreferred=id=>read(id).enabled!==false;
 const supported=()=>window.isSecureContext&&'serviceWorker' in navigator&&'PushManager' in window&&'Notification' in window;
 let operations=Promise.resolve();
 const serial=operation=>{const next=operations.then(operation,operation);operations=next.catch(()=>{});return next;};
-async function registration(){return await navigator.serviceWorker.getRegistration()||await navigator.serviceWorker.register('/sw.js');}
+async function registration(){return await navigator.serviceWorker.getRegistration()||await navigator.serviceWorker.register('/sw.js',{updateViaCache:'none'});}
 export async function enableDeviceNotifications(user,config,ask=false){
  if(!supported())throw new Error('Device notifications need a supported browser and HTTPS. On iPhone, add Churp to your Home Screen first.');
  if(!config.vapidPublicKey)throw new Error('Device notifications are awaiting server setup. Nest unread indicators still work.');
@@ -41,4 +41,10 @@ export function DeviceNotifications({user,config}){
 export function NotificationScreen({user,config}){
  const state=useDeviceNotifications(user),[busy,setBusy]=useState(false),[notice,setNotice]=useState('');
  return <div className="settings-section notification-settings"><h4>Stay in the loop</h4><p className="muted small-text">Device alerts are on by default after your browser grants permission. Each Nest can be muted separately. Supported Home Screen apps also show an unread-message badge. {state.preferred&&!state.subscribed?'This device still needs permission or setup.':''}</p><button type="button" className="button secondary" disabled={!state.loaded||busy} onClick={async()=>{setBusy(true);setNotice('');try{if(state.subscribed){await disconnectDeviceNotifications(user);setNotice('Device notifications are off for this browser.');}else{await enableDeviceNotifications(user,config,true);setNotice('Device notifications are on for this browser.');}}catch(e){setNotice(e.message);}finally{setBusy(false);}}}>{state.subscribed?<BellOff size={17}/>:<Bell size={17}/>}{busy?'Updating…':state.subscribed?'Turn off device notifications':'Enable device notifications'}</button>{!config.vapidPublicKey&&<p className="small-text muted">Device push is awaiting server configuration.</p>}{notice&&<p className="info-banner" role="status">{notice}</p>}</div>;
+}
+
+export function NotificationPrivacySettings({user,onAccountUpdate}){
+ const [enabled,setEnabled]=useState(user.notification_previews!==false),[busy,setBusy]=useState(false),[error,setError]=useState('');
+ useEffect(()=>setEnabled(user.notification_previews!==false),[user.notification_previews]);
+ return <section className="settings-section notification-privacy"><h4>Notification privacy</h4><label className="toggle-row"><span><strong>Show message previews</strong><small>Show who sent a message and its first few words in phone notifications. Turn this off to keep those details private.</small></span><input className="visually-hidden" type="checkbox" aria-label="Show message previews" checked={enabled} disabled={busy} onChange={async event=>{const next=event.target.checked;setEnabled(next);setBusy(true);setError('');try{const result=await api('/me/notification-privacy',{method:'PATCH',body:{show_previews:next}});onAccountUpdate(result.user);}catch(e){setEnabled(!next);setError(e.message);}finally{setBusy(false);}}}/><span className={`toggle ${enabled?'checked':''}`} aria-hidden="true"><span/></span></label><p className="small-text muted">Applies to future alerts on all your devices. Alerts are limited to one every 30 seconds; messages arriving together are combined into the next alert. Messages still arrive in your chats immediately.</p>{error&&<p className="error-banner" role="alert">{error}</p>}</section>;
 }

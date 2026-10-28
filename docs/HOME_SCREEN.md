@@ -29,3 +29,5 @@ Install Churp using the browser's install or Add to Home Screen command. The Bad
 The new app icon, Apple touch icon and push notification icon share the same green bird-and-nest artwork, with new filenames to refresh caches and the existing manifest identity preserved.
 
 Tests cover totals, authorization, mute/read/delete/leave behavior, private and SMS unread state, service-worker push/offline/session handling, icon dimensions, feature fallback, browser reads and logout. Browser tests mock the platform Badging API; physical iPhone/Home Screen display still needs verification on a device with push permission.
+
+Phone alerts now show sender/message previews by default. Turn off **Your corner → Security → Show message previews** for generic private alerts. Bursts are coalesced on the server into at most one alert every 30 seconds, and the worker quietly replaces delayed duplicates. See [push notification privacy and cooldown](PUSH-NOTIFICATIONS.md).

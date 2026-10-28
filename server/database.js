@@ -105,6 +105,7 @@ export function openDatabase(path) {
   addColumn('group_members', 'pin_position', 'INTEGER');
   addColumn('group_members', 'marked_unread', 'INTEGER NOT NULL DEFAULT 0');
   addColumn('messages', 'urgent', 'INTEGER NOT NULL DEFAULT 0');
+  addColumn('users','notification_previews','INTEGER NOT NULL DEFAULT 1 CHECK(notification_previews IN (0,1))');
   addColumn('messages', 'edited_at', 'TEXT');
   addColumn('messages', 'edit_version', 'INTEGER NOT NULL DEFAULT 0');
   addColumn('messages', 'edit_client_id', 'TEXT');
@@ -409,6 +410,12 @@ export function openDatabase(path) {
   CREATE TABLE IF NOT EXISTS reaction_readers (
     reaction_id INTEGER NOT NULL REFERENCES message_reactions(id) ON DELETE CASCADE,
     user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,PRIMARY KEY(reaction_id,user_id)
+  );`);
+  db.exec(`CREATE TABLE IF NOT EXISTS push_alert_windows (
+    user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,last_alert_at INTEGER NOT NULL,token TEXT NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS pending_push_alerts (
+    user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,due_at INTEGER NOT NULL,payload TEXT NOT NULL
   );`);
   return db;
 }

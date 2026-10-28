@@ -1,3 +1,4 @@
+await import('../scripts/build-push-worker.js');
 import { createServer } from 'node:http';
 import { createServer as createViteServer } from 'vite';
 import { createApp } from './app.js';

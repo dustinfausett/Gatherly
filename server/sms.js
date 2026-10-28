@@ -53,7 +53,7 @@ export function installSms({app,db,dataDir,appUrl,transaction,refreshUser,testin
   if(!reply)return 'Churp: Begin your reply with the R-code from the message, followed by your reply. Uncoded replies are not shared with any sender. '+helpText;
   const t=one('SELECT * FROM sms_threads WHERE phone=? AND reply_code=?',phone,reply[1].toUpperCase());if(!t)return 'Churp: Conversation code not found. Use the R-code from your message.';
   try{eligible(t,m);}catch{return 'Churp: This text conversation is unavailable. Contact the sender through another channel.';}
-  const id=randomUUID();run("INSERT INTO sms_messages(id,thread_id,mode,direction,state,body_cipher,created_at,provider_sid) VALUES (?,?,?,'inbound',?,?,?,?)",id,t.id,m,m==='mock'?'mock_received':'received',seal(id,reply[2].slice(0,5000)),Date.now(),providerSid);refreshUser(t.owner_id);queueMicrotask(()=>permissions.notifySms?.(t.owner_id));return '';
+  const id=randomUUID();run("INSERT INTO sms_messages(id,thread_id,mode,direction,state,body_cipher,created_at,provider_sid) VALUES (?,?,?,'inbound',?,?,?,?)",id,t.id,m,m==='mock'?'mock_received':'received',seal(id,reply[2].slice(0,5000)),Date.now(),providerSid);refreshUser(t.owner_id);queueMicrotask(()=>permissions.notifySms?.(t.owner_id,{id,senderName:t.name,text:reply[2]}));return '';
  }
  const webhookLimit=rateLimit({windowMs:60000,limit:testing?10000:600,message:{error:'Webhook rate exceeded.'}});
  const webhookAuth=(path)=>(req,res,next)=>{if(!liveReady(config,appUrl))return res.status(503).send('Live SMS is not enabled.');if(!validTwilioSignature(config.authToken,new URL(path,appUrl).href,req.body,req.get('x-twilio-signature'))||req.body.AccountSid!==config.accountSid)return res.status(403).send('Invalid webhook signature.');next();};

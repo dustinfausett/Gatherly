@@ -1,3 +1,5 @@
+import {validateNotificationPreviews} from './notification-previews.js';
+import {previewProof} from '../shared/notification-previews.js';
 import {randomUUID} from 'node:crypto';
 import {rateLimit} from 'express-rate-limit';
 import * as enc from '../shared/encryption.js';
@@ -29,13 +31,14 @@ export function installPrivateMessages({app,db,encryption,family,transaction,ref
    const rs=await roster(c);if(rs.roster_hash!==rosterHash)fail(409,'Message keys changed. Refresh and try again.');
    if(!Array.isArray(files)||files.length>5||new Set(files).size!==files.length)fail(400,'Choose up to five attachments.');
    for(const id of files)if(typeof id!=='string'||!one('SELECT 1 FROM files WHERE id=? AND user_id=? AND encrypted=1',id,req.user.id)||one('SELECT 1 FROM message_files WHERE file_id=?',id))fail(400,'Choose your encrypted private attachments.');
-   const payload={conversationId:c.id,clientId,rosterHash,cipherHash:await enc.digest(ciphertext),files,sourceNest};
+   try{await validateNotificationPreviews(req.body.notificationPreviews,rs.readers,req.user.id);}catch(e){fail(400,e.message);}
+   const payload={conversationId:c.id,clientId,rosterHash,cipherHash:await enc.digest(ciphertext),files,sourceNest,...await previewProof(req.body.notificationPreviews)};
    try{await enc.validateCiphertext(ciphertext,rs.readers.map(r=>r.public_key));await enc.verify(encryption.identity(req.user.id).public_key,'private-send',payload,signature);}catch{fail(400,'The encrypted private message could not be verified.');}
    const latest=await roster(checked(req));if(latest.roster_hash!==rosterHash)fail(409,'Message keys changed. Try again.');
    if(validateOnly)return {ok:true};
    let id;transaction(()=>{checked(req);sourceAllowed();if(enc.canonical(family.readerIds(c))!==enc.canonical(rs.readers.map(r=>r.id).sort()))fail(409,'Message keys changed. Try again.');if(rs.readers.some(r=>{const i=encryption.identity(r.id);return i.fingerprint!==r.fingerprint||i.custody!==r.custody;}))fail(409,'Message keys changed. Try again.');const repeated=one('SELECT * FROM private_messages WHERE user_id=? AND client_id=?',req.user.id,clientId);if(repeated){if(repeated.conversation_id!==c.id||repeated.ciphertext!==ciphertext)fail(409,'This send ID has already been used.');id=repeated.id;return;}
      id=Number(run('INSERT INTO private_messages(conversation_id,user_id,client_id,recipient_hash,ciphertext,signer_fingerprint,self_encrypted) VALUES (?,?,?,?,?,?,?)',c.id,req.user.id,clientId,rosterHash,ciphertext,encryption.identity(req.user.id).fingerprint,Number(rs.self_encrypted)).lastInsertRowid);for(const r of rs.readers)run('INSERT INTO private_message_readers VALUES (?,?)',id,r.id);files.forEach(fid=>run('INSERT INTO private_message_files VALUES (?,?)',id,fid));req.scheduledStored?.({id,status:'stored'});});
-   for(const r of rs.readers)refreshUser(r.id);notifyPrivate?.(participant(c,req.user.id),c.id);return {id,status:'stored'};
+   for(const r of rs.readers)refreshUser(r.id);notifyPrivate?.(participant(c,req.user.id),c.id,{id,sender:req.user,clientId,notificationPreviews:req.body.notificationPreviews});return {id,status:'stored'};
  }
  app.post('/api/private/conversations/:id/messages',limited,async(req,res)=>res.status(201).json(await send(req)));
 

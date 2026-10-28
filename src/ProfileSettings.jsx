@@ -9,7 +9,7 @@ import {Clock} from 'lucide-react';
 import {openScheduled} from './ScheduleControls';
 import {FamilyAlertAvatar,familyNeedsAction} from './FamilyAlert';
 import UnreadEgg from './UnreadEgg';
-import {NotificationScreen} from './notifications';
+import {NotificationScreen,NotificationPrivacySettings} from './notifications';
 import { AccountSecuritySettings } from './AccountSecurity';
 import { EncryptionSettings } from './encryption/EncryptionGate';
 import {legalLinks,policyStatus} from '../shared/legal';
@@ -40,7 +40,7 @@ export default function ProfileSettings({user,config,onClose,onSave,onAccountUpd
         {section==='pet' && <PetScreen user={user} onSave={onSave} onAccountUpdate={onAccountUpdate} onDone={onClose} notify={notify}/>}
         {section==='account' && <><div className="settings-account-id"><span>Signed in as</span><strong>@{user.username}</strong></div><AccountSecuritySettings user={user} config={config} onAccountUpdate={onAccountUpdate}/></>}
         {section==='family' && <FamilySettings user={user}/>}
-        {section==='security' && <><p className="settings-intro">Choose who manages your message keys and how you recover encrypted conversations.</p>{config.encryptionRequired?<EncryptionSettings/>:<p className="info-banner">Encrypted messaging is not enabled in this environment.</p>}</>}
+        {section==='security' && <><NotificationPrivacySettings user={user} onAccountUpdate={onAccountUpdate}/><p className="settings-intro">Choose who manages your message keys and how you recover encrypted conversations.</p>{config.encryptionRequired?<EncryptionSettings/>:<p className="info-banner">Encrypted messaging is not enabled in this environment.</p>}</>}
         {section==='legal' && <section className="settings-section"><p>Read Churp’s policies without signing in. Each document opens in a separate tab.</p><nav className="policy-links" aria-label="Churp policies">{legalLinks.map(link=><a key={link.path} href={link.path} target="_blank" rel="noopener noreferrer">{link.title}<ChevronRight size={17}/></a>)}</nav><p className="small-text muted">{policyStatus}</p></section>}
         {section==='notifications'  && <NotificationScreen config={config} user={user}/>}
       </>:<>

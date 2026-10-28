@@ -1,3 +1,5 @@
+import {validateNotificationPreviews} from './notification-previews.js';
+import {previewProof} from '../shared/notification-previews.js';
 import { randomUUID, createHash } from 'node:crypto';
 import { readFileSync, unlinkSync } from 'node:fs';
 import { join, basename, dirname } from 'node:path';
@@ -280,7 +282,8 @@ export function installEncryption({app,db,uploadDir,enabled,transaction,refresh,
     const files=req.body.files ?? [];
     if(!Array.isArray(files) || files.length>5 || files.some(id=>!uuid(id)) || new Set(files).size!==files.length)fail(400,'Attach up to five encrypted files.');
     for(const id of files)if(!one('SELECT 1 FROM files WHERE id=? AND user_id=? AND encrypted=1',id,req.user.id) || one('SELECT 1 FROM message_files WHERE file_id=?',id))fail(400,'An encrypted attachment is unavailable. Upload it again.');
-    const payload=sendPayload({groupId:gid,clientId,rosterHash,cipherHash:await digest(ciphertext),files,replyTo:req.body.reply_to ?? null});
+    try{await validateNotificationPreviews(req.body.notificationPreviews,rs.readers,req.user.id);}catch(e){fail(400,e.message);}
+    const payload=sendPayload({groupId:gid,clientId,rosterHash,cipherHash:await digest(ciphertext),files,replyTo:req.body.reply_to ?? null,...await previewProof(req.body.notificationPreviews)});
     await proof(req,legacyId ? 'migrate' : 'send',legacyId ? {...payload,legacyId} : payload,signature);
     return {rs,files,clientId,ciphertext,rosterHash};
   }

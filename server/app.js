@@ -1,3 +1,5 @@
+import {createPushNotifications} from './push-notifications.js';
+import {previewText} from '../shared/notification-previews.js';
 import {installReactions} from './reactions.js';
 import express from 'express';
 import cookieParser from 'cookie-parser';
@@ -68,7 +70,7 @@ export function createApp(options = {}) {
   const vapidPublic = process.env.VAPID_PUBLIC_KEY;
   const vapidPrivate = process.env.VAPID_PRIVATE_KEY;
   const pushEnabled = options.pushEnabled ?? !!(vapidPublic && vapidPrivate && process.env.VAPID_SUBJECT);
-  if (pushEnabled) webPush.setVapidDetails(process.env.VAPID_SUBJECT, vapidPublic, vapidPrivate);
+  if (pushEnabled && !(options.testing&&options.pushSender)) webPush.setVapidDetails(process.env.VAPID_SUBJECT, vapidPublic, vapidPrivate);
   const streams = new Map();
   const one = (sql, ...args) => db.prepare(sql).get(...args);
   const all = (sql, ...args) => db.prepare(sql).all(...args);
@@ -81,7 +83,7 @@ export function createApp(options = {}) {
     return BIRDS.filter(b => birdAvailable(b)&&(b.free || earned.has(b.id))).map(b => b.id);
   };
   let family;
-  const publicUser = u => ({ family:family?.summary(u.id), has_password:!!u.password,has_google:!!u.google_id,recovery_email:u.email || null,recovery_email_verified:!!u.email_verified_at,pending_recovery_email:u.pending_email || null,id: u.id, username: u.username, name: u.name, avatar_id: u.avatar_id,
+  const publicUser = u => ({ family:family?.summary(u.id), has_password:!!u.password,has_google:!!u.google_id,recovery_email:u.email || null,recovery_email_verified:!!u.email_verified_at,pending_recovery_email:u.pending_email || null,notification_previews:!!u.notification_previews,id: u.id, username: u.username, name: u.name, avatar_id: u.avatar_id,
     bird_id: activeBird(u.bird_id), visible_birds:BIRDS.filter(b=>birdIsVisible(b,birdNow())).map(b=>b.id), bird_seasons:Object.fromEntries(BIRDS.filter(b=>b.seasonal).map(b=>[b.id,seasonalLabel(b,birdNow())])), avatar_choice:u.avatar_choice, avatar_style: u.avatar_style, unlocked_birds: unlockedBirds(u.id), last_community_id: u.last_community_id });
   const transaction = fn => {
     db.exec('BEGIN');
@@ -226,17 +228,45 @@ export function createApp(options = {}) {
   family=installFamily({app,db,encryption,transaction,refreshUser,publicUser,testing:options.testing});
   const badges=createBadges({db,family,encryptionRequired,smsUnread:uid=>sms.unread(uid)});
   app.get('/api/badges',(req,res)=>{res.set('Cache-Control','no-store');res.json(badges.snapshot(req.user.id));});
-  function notifyDevice(uid,payload){
-    if(!pushEnabled)return;
-    // Counts only, never message contents or another account's unread state.
-    const body=JSON.stringify({...payload,unread_count:badges.snapshot(uid).count});
-    for(const s of all('SELECT * FROM push_subscriptions WHERE user_id=?',uid))webPush.sendNotification(JSON.parse(s.subscription),body,{TTL:3600,timeout:10000,proxy:process.env.HTTPS_PROXY||process.env.https_proxy}).catch(error=>{if([404,410].includes(error.statusCode))run('DELETE FROM push_subscriptions WHERE endpoint=?',s.endpoint);});
+  function pushEligible(uid,source){
+    if(!family.ready(uid))return false;
+    if(!source)return true;
+    if(source.channel==='nest'){
+      const m=one('SELECT * FROM messages WHERE id=? AND deleted=0',source.messageId);
+      return !!m&&!!one('SELECT 1 FROM group_members gm JOIN groups g ON g.id=gm.group_id JOIN community_members cm ON cm.community_id=g.community_id AND cm.user_id=gm.user_id WHERE gm.group_id=? AND gm.user_id=? AND gm.muted=0 AND gm.last_read<?',m.group_id,uid,m.id)&&(!encryptionRequired||encryption.canRead(uid,m));
+    }
+    if(source.channel==='private'){
+      const m=one('SELECT * FROM private_messages WHERE id=?',source.messageId),c=m&&one('SELECT * FROM private_conversations WHERE id=?',m.conversation_id);
+      return !!c&&[c.user_low,c.user_high].includes(uid)&&m.user_id!==uid&&!c.blocked_low&&!c.blocked_high&&m.id>(c.user_low===uid?c.read_low:c.read_high)&&family.pairAllowed(c.user_low,c.user_high);
+    }
+    if(source.channel==='sms')return !!one("SELECT 1 FROM sms_messages m JOIN sms_threads t ON t.id=m.thread_id JOIN community_members cm ON cm.community_id=t.community_id AND cm.user_id=t.owner_id WHERE m.id=? AND t.owner_id=? AND m.direction='inbound' AND m.created_at>t.read_through",source.messageId,uid);
+    return false;
   }
+  function pushPreviewAllowed(uid,source,preview){
+    if(!source||!pushEligible(uid,source))return false;
+    if(source.channel==='sms')return true;
+    const m=one(`SELECT * FROM ${source.channel==='nest'?'messages':'private_messages'} WHERE id=?`,source.messageId);
+    return !!m&&m.client_id===preview.client_id&&m.user_id===preview.sender_id&&(!m.edit_version||m.edit_version===0);
+  }
+  const push=createPushNotifications({db,dataDir,enabled:pushEnabled,badge:uid=>badges.snapshot(uid).count,eligible:pushEligible,canPreview:pushPreviewAllowed,
+    now:options.testing&&options.pushNow?options.pushNow:Date.now,autoProcess:!(options.testing&&options.pushAutoProcess===false),
+    send:options.testing&&options.pushSender?options.pushSender:(subscription,body)=>webPush.sendNotification(subscription,body,{TTL:3600,timeout:10000,proxy:process.env.HTTPS_PROXY||process.env.https_proxy})});
+  function notifyDevice(...args){push.notify(...args).catch(()=>{});}
+  function encryptedPreview(uid,context,channel,contextName){
+    const packet=context?.notificationPreviews?.find(p=>p.userId===uid),identity=context&&encryption.identity(context.sender.id);
+    return packet&&identity?{ciphertext:packet.ciphertext,client_id:context.clientId,channel,sender_id:context.sender.id,sender_name:context.sender.name,context_name:contextName,signer_key:identity.public_key,signer_fingerprint:identity.fingerprint}:null;
+  }
+  app.get('/api/push/privacy',(req,res)=>{res.set('Cache-Control','no-store');res.json({user_id:req.user.id,show_previews:!!req.user.notification_previews,device_approved:!!one('SELECT 1 FROM e2ee_devices WHERE id=? AND user_id=?',req.get('x-churp-device')||'',req.user.id),can_preview:['nest','private','sms'].includes(req.query.channel)&&pushPreviewAllowed(req.user.id,{channel:req.query.channel,messageId:req.query.channel==='sms'?req.query.message_id:Number(req.query.message_id)},{client_id:req.query.client_id,sender_id:req.query.sender_id})});});
+  app.patch('/api/me/notification-privacy',(req,res)=>{
+    if(typeof req.body.show_previews!=='boolean')fail(400,'Choose whether to show message previews.');
+    run('UPDATE users SET notification_previews=? WHERE id=?',Number(req.body.show_previews),req.user.id);refreshUser(req.user.id);
+    res.json({user:publicUser(one('SELECT * FROM users WHERE id=?',req.user.id))});
+  });
 
   app.get('/api/me', (req,res)=>res.json({user:publicUser(req.user)}));
   installContacts({app,db,transaction,refreshUser,family,testing:options.testing});
   installRecipientScopes({app,db,groupAdmin,membership});
-  const privateMessages=installPrivateMessages({app,db,encryption,family,transaction,refreshUser,group,groupAdmin,testing:options.testing,notifyPrivate:(uid,id)=>notifyDevice(uid,{title:'New private message on Churp',body:'You have a private message.',url:`/?conversation=${id}`})});
+  const privateMessages=installPrivateMessages({app,db,encryption,family,transaction,refreshUser,group,groupAdmin,testing:options.testing,notifyPrivate:(uid,id,context)=>notifyDevice(uid,{title:'New private message on Churp',body:'You have a private message.',url:`/?conversation=${id}`},encryptedPreview(uid,context,'private'),{channel:'private',messageId:context.id})});
   installReactions({app,db,encryption,encryptionRequired,family,visibleCircle,joined,transaction,refresh,refreshUser,testing:options.testing});
   installPolls({app,db,encryption,encryptionRequired,visibleCircle,joined,groupAdmin,transaction,refresh,testing:options.testing});
   installRsvps({app,db,encryption,encryptionRequired,visibleCircle,joined,groupAdmin,transaction,refresh,testing:options.testing});
@@ -551,7 +581,7 @@ export function createApp(options = {}) {
     refresh(entity.community_id); res.json({ ok: true });
   });
   const invitations=installInvitations({app,db,appUrl,testing:options.testing,transaction,membership,communityAdmin,groupAdmin,group,joinParent,refresh,refreshUser});
-  sms.installAuthenticated({family,membership,group,groupAdmin,invitations,notifySms:uid=>notifyDevice(uid,{title:'New phone text on Churp',body:'You have a new phone text.',url:'/?phone_texts=1'})});
+  sms.installAuthenticated({family,membership,group,groupAdmin,invitations,notifySms:(uid,context)=>notifyDevice(uid,{title:'New phone text on Churp',body:'You have a new phone text.',url:'/?phone_texts=1'},{channel:'sms',sender_name:context.senderName,text:previewText(context.text)},{channel:'sms',messageId:context.id})});
   app.post('/api/groups/:id/join', (req, res) => {
     const g = visibleCircle(req.user.id, req.params.id);
     if (g.private && !groupAdmin(req.user.id, g) && !joined(req.user.id, g.id)) fail(403, 'A Nest admin must invite you.');
@@ -687,7 +717,7 @@ export function createApp(options = {}) {
       req.scheduledStored?.({id});
     });
     refresh(g.community_id);
-    for(const recipient of recipients)notifyDevice(recipient.user_id,{title:'New message on Churp',body:'You have a new message in a Nest you joined.',url:`/?community=${g.community_id}&group=${g.id}`});
+    for(const recipient of recipients)notifyDevice(recipient.user_id,{title:'New message on Churp',body:'You have a new message in a Nest you joined.',url:`/?community=${g.community_id}&group=${g.id}`},encryptionRequired?encryptedPreview(recipient.user_id,{sender:req.user,clientId:req.body.clientId,notificationPreviews:req.body.notificationPreviews},'nest',g.name):null,{channel:'nest',messageId:id});
     return {id};
   }
   app.post('/api/groups/:id/messages', rateLimit({windowMs:60000,limit:options.testing?1000:90,keyGenerator:req=>req.user.id,message:{error:'Please slow down and try again in a moment.'}}),async(req,res)=>res.status(201).json(await sendNestMessage(req)));
@@ -831,8 +861,8 @@ export function createApp(options = {}) {
     res.status(status).json({ error: status === 500 ? 'Something went wrong. Please try again.' : error.message });
   });
   if (production && existsSync(resolve('dist/index.html'))) {
-    app.use(express.static(resolve('dist'), { setHeaders: (res, path) => { if (path.endsWith('/index.html') || path.endsWith('/sw.js')) res.setHeader('Cache-Control','no-store'); } }));
+    app.use(express.static(resolve('dist'), { setHeaders: (res, path) => { if (path.endsWith('/index.html') || path.endsWith('/sw.js') || path.endsWith('/push-preview.js')) res.setHeader('Cache-Control','no-store'); } }));
     app.get('/{*path}', (req, res) => { res.setHeader('Cache-Control','no-store'); res.sendFile(resolve('dist/index.html')); });
   }
-  return { app, db, sms, scheduling, close: () => { scheduling.close();sms.close(); for (const set of streams.values()) for (const res of set) res.end(); db.close(); } };
+  return { app, db, sms, scheduling, push, close: () => { push.close();scheduling.close();sms.close(); for (const set of streams.values()) for (const res of set) res.end(); db.close(); } };
 }

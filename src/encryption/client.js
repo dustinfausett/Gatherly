@@ -1,3 +1,4 @@
+import {sealNotificationPreviews,previewProof} from '../../shared/notification-previews.js';
 import {validateReactions,reactionProof} from '../../shared/reactions.js';
 import { assignmentProof } from '../../shared/assignments';
 import { api,post } from '../api';
@@ -166,8 +167,9 @@ export async function sealMessage(groupId,body,attachments,replyTo,legacy=null,c
     rosterHash:rs.roster_hash,replyTo:replyTo ?? null,migrated:!!legacy,selfEncrypted:!legacy && !!rs.self_encrypted,contentType,body,attachments};
   validateContents(payload);
   const ciphertext=await enc.seal(self.privateKey,rs.readers.map(u=>u.public_key),payload),files=attachments.map(f=>f.id);
-  const signed=enc.sendPayload({groupId,clientId,rosterHash:rs.roster_hash,cipherHash:await enc.digest(ciphertext),files,replyTo});
-  return {ciphertext,clientId,rosterHash:rs.roster_hash,files,reply_to:replyTo ?? null,signature:await enc.sign(self.privateKey,legacy ? 'migrate' : 'send',legacy ? {...signed,legacyId:legacy.id} : signed)};
+  const notificationPreviews=legacy?undefined:await sealNotificationPreviews(self.privateKey,rs.readers,{senderId:self.userId,clientId,channel:'nest',body,attachments,kind:contentType});
+  const signed=enc.sendPayload({groupId,clientId,rosterHash:rs.roster_hash,cipherHash:await enc.digest(ciphertext),files,replyTo,...await previewProof(notificationPreviews)});
+  return {...(notificationPreviews===undefined?{}:{notificationPreviews}),ciphertext,clientId,rosterHash:rs.roster_hash,files,reply_to:replyTo ?? null,signature:await enc.sign(self.privateKey,legacy ? 'migrate' : 'send',legacy ? {...signed,legacyId:legacy.id} : signed)};
 }
 const decryptedCache=new Map();
 export async function sealEdit(message,body){
@@ -257,8 +259,8 @@ export async function sealPrivate(conversationId,body,attachments=[],clientId=cr
  if(typeof body!=='string'||body.length>10000||(!body.trim()&&!attachments.length))throw new Error('Write a message or attach a file.');
  const self=getCurrent(),rs=await api(`/private/conversations/${conversationId}/roster`),readers=await Promise.all(rs.readers.map(trustedReader));
  const contents={version:1,kind:'private-message',conversationId,clientId,senderId:self.userId,rosterHash:rs.roster_hash,selfEncrypted:rs.self_encrypted,body,attachments};
- const ciphertext=await enc.seal(self.privateKey,readers.map(r=>r.public_key),contents),files=attachments.map(f=>f.id),payload={conversationId,clientId,rosterHash:rs.roster_hash,cipherHash:await enc.digest(ciphertext),files,sourceNest};
- return {ciphertext,clientId,rosterHash:rs.roster_hash,files,sourceNest,signature:await enc.sign(self.privateKey,'private-send',payload)};
+ const ciphertext=await enc.seal(self.privateKey,readers.map(r=>r.public_key),contents),files=attachments.map(f=>f.id),notificationPreviews=await sealNotificationPreviews(self.privateKey,readers,{senderId:self.userId,clientId,channel:'private',body,attachments}),payload={conversationId,clientId,rosterHash:rs.roster_hash,cipherHash:await enc.digest(ciphertext),files,sourceNest,...await previewProof(notificationPreviews)};
+ return {notificationPreviews,ciphertext,clientId,rosterHash:rs.roster_hash,files,sourceNest,signature:await enc.sign(self.privateKey,'private-send',payload)};
 }
 export async function decryptPrivate(conversationId,messages){
  const self=getCurrent();return Promise.all(messages.map(async m=>{try{

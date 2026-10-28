@@ -130,7 +130,7 @@ Device alerts prefer on by default. Already-approved browsers reconnect automati
 
 No store account or SMS service is required. Hosting costs still apply. The app requires an internet connection and deliberately does not cache private conversations for offline use. Native App Store/Google Play distribution remains a separate step.
 
-Outbound push must reach the subscription's provider, commonly `fcm.googleapis.com`, `updates.push.services.mozilla.com`, `web.push.apple.com`, or `*.notify.windows.com`. Google verification needs `www.googleapis.com`; browsers load `accounts.google.com`. Push payloads omit private message contents. Real push delivery and Google authorization need testing with the configured domain and devices.
+Outbound push must reach the subscription's provider, commonly `fcm.googleapis.com`, `updates.push.services.mozilla.com`, `web.push.apple.com`, or `*.notify.windows.com`. Google verification needs `www.googleapis.com`; browsers load `accounts.google.com`. Churp message-preview snippets are encrypted for the recipient and decrypted on the receiving device; Security can hide the sender and message text. Real push delivery and Google authorization need testing with the configured domain and devices.
 
 ## Configuration and persistence
 
@@ -203,3 +203,7 @@ Messages in Nests, threads and Churp private chats offer 👍, ❤️, 😂 and 
 ## Hold for message options
 
 Chat messages show their existing sender, time, content and chosen reactions. Hold a message for **750 milliseconds** to isolate it over a dimmed background, with quick reactions above and available actions below. Desktop users can also right-click or focus a message and press Enter, Space, Shift+F10 or the context-menu key. Escape, the close button or tapping outside dismisses the view. Movement, scrolling, pointer cancellation and releasing early cancel the hold. This applies to Nest messages, threads, private chats, read-only parent review, scheduled previews and phone texts; each keeps its existing permissions and supported actions. Scheduled/phone messages do not gain emoji reactions. See [message options](docs/MESSAGE-OPTIONS.md).
+
+## Notification previews and cooldown
+
+Phone alerts show the sender and the first part of a message by default. **Your corner → Security → Show message previews** switches to private, generic alerts across devices. Alerts are spaced at least 30 seconds apart across Nests, private chats and phone texts; bursts are combined into the next eligible alert, with an updated unread badge. Messages still arrive in chat immediately. [Privacy, encrypted previews and cooldown behavior](docs/PUSH-NOTIFICATIONS.md).

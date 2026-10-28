@@ -100,7 +100,7 @@ export async function validateEncryptedFile(data) {
   if(!tags.includes(3) || !tags.some(t=>[18,20].includes(t)) || tags.some(t=>![3,18,20].includes(t)))throw new Error('Upload an authenticated encrypted attachment.');
 }
 export const enrollmentPayload = ({userId,publicKey,backupHash,deviceId,deviceName}) => ({userId,publicKey,backupHash,deviceId,deviceName});
-export const sendPayload = ({groupId,clientId,rosterHash,cipherHash,files,replyTo}) => ({groupId,clientId,rosterHash,cipherHash,files,replyTo:replyTo ?? null});
+export const sendPayload = ({groupId,clientId,rosterHash,cipherHash,files,replyTo,notificationPreviewHash}) => ({groupId,clientId,rosterHash,cipherHash,files,replyTo:replyTo ?? null,...(notificationPreviewHash===undefined?{}:{notificationPreviewHash})});
 export const editPayload = ({messageId,expectedVersion,...message}) => ({messageId,expectedVersion,...sendPayload(message)});
 
 // Share access to a signed historical message without changing its encrypted
