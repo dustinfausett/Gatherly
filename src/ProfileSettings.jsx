@@ -11,6 +11,7 @@ import {FamilyAlertAvatar,familyNeedsAction} from './FamilyAlert';
 import UnreadEgg from './UnreadEgg';
 import {NotificationScreen,NotificationPrivacySettings} from './notifications';
 import { AccountSecuritySettings } from './AccountSecurity';
+import { GoogleAccountSettings } from './GoogleSignIn';
 import { EncryptionSettings } from './encryption/EncryptionGate';
 import {legalLinks,policyStatus} from '../shared/legal';
 import { AVATARS } from '../shared/avatars';
@@ -23,7 +24,7 @@ const sections=[
   {id:'scheduled',title:'Scheduled messages',description:'View, edit, reschedule or cancel pending sends',icon:Clock},
   {id:'pet',title:'My pet',description:'Your companion in every Tree',icon:null},
   {id:'family',title:'Family & youth protection',description:'Linked parents and adult message approvals',icon:Users},
-  {id:'account',title:'Account settings',description:'Password and recovery email',icon:Settings2},
+  {id:'account',title:'Account settings',description:'Sign-in, password and recovery email',icon:Settings2},
   {id:'security',title:'Security',description:'Message privacy, E2EE and recovery keys',icon:ShieldCheck},
   {id:'legal',title:'About & policies',description:'Terms, privacy and SMS program status',icon:FileText},
   {id:'notifications',title:'Notifications',description:'Alerts on this device',icon:Bell},
@@ -38,7 +39,7 @@ export default function ProfileSettings({user,config,onClose,onSave,onAccountUpd
       {section ? <><button type="button" className="text-button settings-back" onClick={()=>setSection(null)}><ArrowLeft size={17}/>Back to your settings</button>
         {section==='profile' && <ProfileScreen user={user} onSave={onSave} onDone={onClose} notify={notify}/>}
         {section==='pet' && <PetScreen user={user} onSave={onSave} onAccountUpdate={onAccountUpdate} onDone={onClose} notify={notify}/>}
-        {section==='account' && <><div className="settings-account-id"><span>Signed in as</span><strong>@{user.username}</strong></div><AccountSecuritySettings user={user} config={config} onAccountUpdate={onAccountUpdate}/></>}
+        {section==='account' && <><div className="settings-account-id"><span>Signed in as</span><strong>@{user.username}</strong></div><GoogleAccountSettings user={user} config={config} onAccountUpdate={onAccountUpdate}/><AccountSecuritySettings user={user} config={config} onAccountUpdate={onAccountUpdate}/></>}
         {section==='family' && <FamilySettings user={user}/>}
         {section==='security' && <><NotificationPrivacySettings user={user} onAccountUpdate={onAccountUpdate}/><p className="settings-intro">Choose who manages your message keys and how you recover encrypted conversations.</p>{config.encryptionRequired?<EncryptionSettings/>:<p className="info-banner">Encrypted messaging is not enabled in this environment.</p>}</>}
         {section==='legal' && <section className="settings-section"><p>Read Churp’s policies without signing in. Each document opens in a separate tab.</p><nav className="policy-links" aria-label="Churp policies">{legalLinks.map(link=><a key={link.path} href={link.path} target="_blank" rel="noopener noreferrer">{link.title}<ChevronRight size={17}/></a>)}</nav><p className="small-text muted">{policyStatus}</p></section>}

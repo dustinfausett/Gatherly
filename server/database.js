@@ -106,6 +106,14 @@ export function openDatabase(path) {
   addColumn('group_members', 'marked_unread', 'INTEGER NOT NULL DEFAULT 0');
   addColumn('messages', 'urgent', 'INTEGER NOT NULL DEFAULT 0');
   addColumn('users','notification_previews','INTEGER NOT NULL DEFAULT 1 CHECK(notification_previews IN (0,1))');
+  addColumn('users', 'google_email', 'TEXT');
+  db.exec(`CREATE TABLE IF NOT EXISTS google_auth_challenges (
+    token_hash TEXT PRIMARY KEY,
+    user_id TEXT REFERENCES users(id) ON DELETE CASCADE,
+    session_hash TEXT REFERENCES sessions(token_hash) ON DELETE CASCADE,
+    purpose TEXT NOT NULL CHECK(purpose IN ('login','signup','link')),
+    expires_at INTEGER NOT NULL
+  );`);
   addColumn('messages', 'edited_at', 'TEXT');
   addColumn('messages', 'edit_version', 'INTEGER NOT NULL DEFAULT 0');
   addColumn('messages', 'edit_client_id', 'TEXT');

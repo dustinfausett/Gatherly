@@ -1,31 +1,13 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useState } from 'react';
 import { ArrowRight, ShieldCheck, Users, Sprout, LockKeyhole } from 'lucide-react';
-import { api, post } from './api';
+import { post } from './api';
 import { Field, Form, Logo } from './components';
 import { ForgotPasswordDialog } from './AccountSecurity';
+import GoogleSignIn from './GoogleSignIn';
 
 export default function Auth({ onLogin, config }) {
-  const [signup, setSignup] = useState(()=>new URLSearchParams(location.search).get('signup')==='1'), [googleError, setGoogleError] = useState('');
-  const googleRef = useRef();
+  const [signup, setSignup] = useState(()=>new URLSearchParams(location.search).get('signup')==='1');
   const [forgot,setForgot]=useState(false);
-  useEffect(() => {
-    if (!config.googleClientId) return;
-    let cancelled = false;
-    const initialize = () => {
-      if (cancelled || !window.google) return;
-      window.google.accounts.id.initialize({ client_id: config.googleClientId, callback: async response => {
-        try { onLogin((await post('/auth/google', { credential: response.credential })).user); }
-        catch (error) { setGoogleError(error.message); }
-      } });
-      window.google.accounts.id.renderButton(googleRef.current, { theme: 'outline', size: 'large', shape: 'pill', width: 340, text: 'continue_with' });
-    };
-    const existing = document.querySelector('script[data-google-auth]');
-    if (window.google) initialize();
-    else if (!existing) {
-      const script = document.createElement('script'); script.src = 'https://accounts.google.com/gsi/client'; script.async = true; script.dataset.googleAuth = 'true'; script.onload = initialize; script.onerror = () => setGoogleError('Google Sign-in could not load. You can use your username and password.'); document.head.appendChild(script);
-    } else existing.addEventListener('load', initialize);
-    return () => { cancelled = true; existing?.removeEventListener('load', initialize); };
-  }, [config.googleClientId]);
   return <div className="auth-page">
     <div className="auth-story">
       <Logo />
@@ -36,8 +18,8 @@ export default function Auth({ onLogin, config }) {
     </div>
     <main className="auth-main"><span className="auth-corner">A space to call yours <Sprout size={16} /></span><div className="auth-form-wrap">
       <div className="auth-mobile-logo"><Logo /></div><span className="eyebrow">LET’S GET TOGETHER</span><h2>{signup ? 'Find your people.' : 'Welcome home.'}</h2><p className="muted">{signup ? 'Create an account. Start something good.' : 'Sign in and pick up where you left off.'}</p>
-      {config.googleClientId ? <div className="google-button" ref={googleRef} /> : <div className="google-unavailable"><span className="google-g">G</span><span>Google Sign-in <small>Awaiting setup</small></span><LockKeyhole size={15} /></div>}
-      {googleError && <div className="error-banner" role="alert">{googleError}</div>}
+      {config.googleClientId ? <GoogleSignIn key={signup?'signup':'login'} clientId={config.googleClientId} createAccount={signup} onCredential={async credential=>onLogin((await post('/auth/google',{credential})).user)}/> : <div className="google-unavailable"><span className="google-g">G</span><span>Google Sign-in <small>Awaiting setup</small></span><LockKeyhole size={15} /></div>}
+      {config.googleClientId && signup && <p className="small-text muted google-existing-account">Already use Churp? Sign in with your username first, then connect Google in Account settings.</p>}
       <div className="divider"><span>or continue with your username</span></div>
       <Form key={signup ? 'signup' : 'login'} submit={signup ? 'Create your account' : 'Sign in'} onSubmit={async form => {
         const result = await post(`/auth/${signup ? 'register' : 'login'}`, Object.fromEntries(form)); onLogin(result.user,result.emailNotice);

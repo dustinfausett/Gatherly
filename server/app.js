@@ -8,7 +8,7 @@ import { rateLimit } from 'express-rate-limit';
 import multer from 'multer';
 import webPush from 'web-push';
 import {createBadges} from './badges.js';
-import { OAuth2Client } from 'google-auth-library';
+import { installGoogleAuth } from './google-auth.js';
 import { randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, openSync, readSync, closeSync } from 'node:fs';
 import { resolve, join } from 'node:path';
@@ -64,7 +64,6 @@ export function createApp(options = {}) {
   if (!/^\d+$/.test(String(trustProxy)) || Number(trustProxy) > 10) throw new Error('TRUST_PROXY must be a proxy hop count between 0 and 10.');
   app.set('trust proxy', Number(trustProxy));
   const googleClientId = options.googleClientId ?? process.env.GOOGLE_CLIENT_ID;
-  const google = new OAuth2Client(googleClientId);
   const appUrl = options.appUrl || process.env.APP_URL || `http://localhost:${process.env.PORT || 3000}`;
   const production = options.production ?? process.env.NODE_ENV === 'production';
   const vapidPublic = process.env.VAPID_PUBLIC_KEY;
@@ -83,7 +82,7 @@ export function createApp(options = {}) {
     return BIRDS.filter(b => birdAvailable(b)&&(b.free || earned.has(b.id))).map(b => b.id);
   };
   let family;
-  const publicUser = u => ({ family:family?.summary(u.id), has_password:!!u.password,has_google:!!u.google_id,recovery_email:u.email || null,recovery_email_verified:!!u.email_verified_at,pending_recovery_email:u.pending_email || null,notification_previews:!!u.notification_previews,id: u.id, username: u.username, name: u.name, avatar_id: u.avatar_id,
+  const publicUser = u => ({ family:family?.summary(u.id), has_password:!!u.password,has_google:!!u.google_id,google_email:u.google_email || null,recovery_email:u.email || null,recovery_email_verified:!!u.email_verified_at,pending_recovery_email:u.pending_email || null,notification_previews:!!u.notification_previews,id: u.id, username: u.username, name: u.name, avatar_id: u.avatar_id,
     bird_id: activeBird(u.bird_id), visible_birds:BIRDS.filter(b=>birdIsVisible(b,birdNow())).map(b=>b.id), bird_seasons:Object.fromEntries(BIRDS.filter(b=>b.seasonal).map(b=>[b.id,seasonalLabel(b,birdNow())])), avatar_choice:u.avatar_choice, avatar_style: u.avatar_style, unlocked_birds: unlockedBirds(u.id), last_community_id: u.last_community_id });
   const transaction = fn => {
     db.exec('BEGIN');
@@ -196,21 +195,7 @@ export function createApp(options = {}) {
     if (!user || !valid || !user.password) fail(401, 'Your username or password is incorrect.');
     res.json({ user: session(res, user) });
   });
-  app.post('/api/auth/google', authLimit, async (req, res) => {
-    if (!googleClientId) fail(503, 'Google Sign-in is not configured yet. Use a username and password.');
-    if (typeof req.body.credential !== 'string') fail(400, 'Missing Google credential.');
-    let payload;
-    try { payload = (await google.verifyIdToken({ idToken: req.body.credential, audience: googleClientId })).getPayload(); }
-    catch { fail(401, 'Google could not verify this sign-in. Please try again.'); }
-    if (!payload?.sub || !payload.email_verified) fail(401, 'A verified Google account is required.');
-    let user = one('SELECT * FROM users WHERE google_id=?', payload.sub);
-    if (!user) {
-      const id = randomUUID();
-      run("INSERT INTO users(id,username,name,google_id,avatar_style) VALUES (?,?,?,?,'portrait')", id, `g_${id.replaceAll('-', '').slice(0,20)}`, (payload.name || 'New member').slice(0,80), payload.sub);
-      user = one('SELECT * FROM users WHERE id=?', id);
-    }
-    res.json({ user: session(res, user) });
-  });
+  installGoogleAuth({app,db,auth,limited:authLimit,clientId:googleClientId,production,session,publicUser,refreshUser,transaction,testing:options.testing,verifyToken:options.googleVerifyToken});
   app.post('/api/auth/logout', auth, (req, res) => {
     run('DELETE FROM sessions WHERE token_hash=?', hash(req.cookies.gatherly_session));
     for (const stream of streams.get(req.user.id) || []) stream.end();
