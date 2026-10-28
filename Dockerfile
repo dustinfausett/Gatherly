@@ -7,6 +7,7 @@ COPY src ./src
 COPY shared ./shared
 COPY public ./public
 COPY website ./website
+COPY scripts ./scripts
 RUN npm run build && npm prune --omit=dev --no-audit --no-fund
 
 FROM node:24-bookworm-slim AS runtime

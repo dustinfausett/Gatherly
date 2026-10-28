@@ -49,7 +49,10 @@ async function start() {
     '-p', '127.0.0.1::3000', '-v', `${volume}:/data`, image);
   base = `http://${docker('port', container, '3000/tcp').split('\n')[0]}`;
   for (let attempt = 0; attempt < 40; attempt++) {
-    try { if ((await request('/health')).data.status === 'ok') return; } catch { /* wait for listening */ }
+    try { if ((await request('/health')).data.status === 'ok') {
+      const worker=await fetch(`${base}/push-preview.js`,{headers:{'X-Forwarded-Proto':'https'}});
+      assert.equal(worker.status,200);assert.match(worker.headers.get('content-type')||'',/javascript/);assert.equal(worker.headers.get('cache-control'),'no-store');assert.match(await worker.text(),/churpPushPreview/);return;
+    } } catch(error) { if(error.code==='ERR_ASSERTION')throw error; /* wait for listening */ }
     await new Promise(resolve => setTimeout(resolve, 250));
   }
   throw new Error(`Container did not become healthy: ${docker('logs', container)}`);
@@ -75,7 +78,8 @@ async function browserCheck(cid,gid,recovery,managedFixture,privateId){
     await expect(page.locator('.message-bubble').filter({hasText:'A durable message.'})).toBeVisible();
     const durable=page.locator('.message').filter({hasText:'A durable message.'});
     await expect(durable.locator('.message-edited')).toHaveText('edited');
-    await durable.getByRole('button',{name:'Edit message',exact:true}).click();
+    await durable.focus();await durable.press('Enter');
+    await page.getByRole('dialog',{name:'Message options',exact:true}).getByRole('button',{name:'Edit message',exact:true}).click();
     await page.getByRole('textbox',{name:'Message text',exact:true}).fill('A corrected durable message.');
     await page.getByRole('button',{name:'Save changes',exact:true}).click();await expect(page.getByRole('dialog')).toHaveCount(0);
     await expect(page.locator('.message-bubble').filter({hasText:'A corrected durable message.'})).toBeVisible();
