@@ -73,13 +73,14 @@ test('phone preview recovery handles old senders and read races without exposing
  let details=await f.ok(query,member);assert.equal(details.can_preview,true);assert.equal(details.context.sender_name,owner.name);assert.equal(details.context.context_name,nest.name);assert.equal(details.device_approved,true);assert.ok(!JSON.stringify(details).includes('A message without'));
  assert.equal((await enc.open(member.privateKey,details.message.signer_key,details.message.ciphertext)).body,'A message without its own compact preview');
  await f.ok(`/groups/${nest.id}/membership`,member,'PATCH',{read_to:sent.id});details=await f.ok(query,member);assert.equal(details.can_preview,true,'Reading is not an authorization failure');
- const noDevice=await f.ok(query,{...member,deviceId:randomUUID()});assert.equal(noDevice.device_approved,false);assert.equal(noDevice.message,undefined);assert.equal(noDevice.context.sender_name,owner.name);
+ assert.equal(details.recipient_identity.custody,'self');assert.equal(details.recipient_identity.fingerprint,member.privateKey.getFingerprint());
+ const noDevice=await f.ok(query,{...member,deviceId:randomUUID()});assert.equal(noDevice.device_approved,false);assert.equal(noDevice.message,undefined);assert.equal(noDevice.recipient_identity,undefined);assert.equal(noDevice.context.sender_name,owner.name);
  const outsider=await f.actor('preview_outsider');assert.equal((await f.ok(query,outsider)).can_preview,false);
  const cid=(await f.ok('/private/conversations',owner,'POST',{user_id:member.id})).conversation.id;
  const privateMessage=await f.ok(`/private/conversations/${cid}/messages`,owner,'POST',await f.prepare('Private fallback content','private',cid,false));
  const privateQuery=`/push/message?channel=private&message_id=${privateMessage.id}`;
  await f.ok(`/private/conversations/${cid}/read`,member,'POST',{through:privateMessage.id});const privateDetails=await f.ok(privateQuery,member);assert.equal(privateDetails.can_preview,true);assert.equal(privateDetails.context.context_name,null);assert.equal((await enc.open(member.privateKey,privateDetails.message.signer_key,privateDetails.message.ciphertext)).body,'Private fallback content');
- await f.ok('/me/notification-privacy',member,'PATCH',{show_previews:false});details=await f.ok(query,member);assert.equal(details.show_previews,false);assert.equal(details.context,undefined);assert.equal(details.message,undefined);
+ await f.ok('/me/notification-privacy',member,'PATCH',{show_previews:false});details=await f.ok(query,member);assert.equal(details.show_previews,false);assert.equal(details.context,undefined);assert.equal(details.message,undefined);assert.equal(details.recipient_identity,undefined);
  await f.ok('/me/notification-privacy',member,'PATCH',{show_previews:true});
  await f.ok(`/private/conversations/${cid}/block`,member,'PATCH',{blocked:true});assert.equal((await f.ok(privateQuery,member)).can_preview,false);
  await f.ok(`/groups/${nest.id}/join`,member,'DELETE');assert.equal((await f.ok(query,member)).can_preview,false);

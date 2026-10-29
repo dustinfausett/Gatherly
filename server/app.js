@@ -269,7 +269,10 @@ export function createApp(options = {}) {
     const sender=one('SELECT name FROM users WHERE id=?',m.user_id),nest=source.channel==='nest'?one('SELECT name FROM groups WHERE id=?',m.group_id):null;
     result.can_preview=true;
     result.context={channel:source.channel,message_id:m.id,client_id:m.client_id,sender_id:m.user_id,signer_id:signerId,sender_name:sender?.name||'Someone',context_name:nest?.name||null,group_id:m.group_id||null,conversation_id:m.conversation_id||null,content_type:m.message_kind||'chat',recipient_hash:m.recipient_hash,reply_to:m.reply_to??null,self_encrypted:!!m.self_encrypted,edit_version:m.edit_version||0,edit_client_id:m.edit_client_id||null};
-    if(approved&&m.ciphertext&&identity)result.message={ciphertext:m.ciphertext,signer_key:historical?.public_key||identity.public_key,signer_fingerprint:m.signer_fingerprint||identity.fingerprint};
+    if(approved&&m.ciphertext&&identity){
+      result.message={ciphertext:m.ciphertext,signer_key:historical?.public_key||identity.public_key,signer_fingerprint:m.signer_fingerprint||identity.fingerprint};
+      const recipient=encryption.identity(req.user.id);result.recipient_identity={fingerprint:recipient?.fingerprint,custody:recipient?.custody};
+    }
     res.json(result);
   });
   app.patch('/api/me/notification-privacy',(req,res)=>{
