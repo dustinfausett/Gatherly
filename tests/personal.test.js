@@ -103,3 +103,18 @@ test('bulk Tree contacts validate every member and destination before saving any
  assert.equal((await f.req('/contacts/from-tree',owner,'POST',{user_ids:[bob.id,outsider.id],new_birdhouse_name:'No partial save'})).status,400);let data=await f.ok('/contacts',owner);assert.equal(data.contacts.length,0);assert.equal(data.birdhouses.length,0);
  const foreign=(await f.ok('/birdhouses',bob,'POST',{name:'Private'})).birdhouse;assert.equal((await f.req('/contacts/from-tree',owner,'POST',{user_ids:[bob.id,carol.id],birdhouse_id:foreign.id})).status,404);assert.equal((await f.ok('/contacts',owner)).contacts.length,0);
 });
+
+test('exact username lookup adds cross-Tree contacts without exposing profiles or bypassing blocks',async t=>{
+ const f=await fixture(t),{owner,outsider}=f;
+ assert.equal((await f.ok('/private/username?username=out',owner)).person,null);
+ const match=(await f.ok('/private/username?username=%40OUTSIDER',owner)).person;assert.equal(match.id,outsider.id);assert.equal(match.username,'outsider');assert.equal(match.birth_date,undefined);assert.equal(match.phone,undefined);
+ assert.equal((await f.ok('/private/username?username=owner',owner)).person,null);
+ const cid=(await f.ok('/private/conversations',owner,'POST',{username:'@OUTSIDER'})).conversation.id;
+ assert.equal((await f.ok('/private/conversations',owner,'POST',{username:'outsider'})).conversation.id,cid);
+ assert.equal((await f.ok('/contacts',owner)).contacts.filter(c=>c.linked_user_id===outsider.id).length,1);
+ assert.equal((await f.ok('/private/people',owner)).people.some(p=>p.id===outsider.id),true);
+ assert.equal(f.db.prepare('SELECT COUNT(*) AS n FROM community_members WHERE user_id=?').get(outsider.id).n,0);
+ await f.ok(`/private/conversations/${cid}/messages`,owner,'POST',await f.prepare(owner,cid,'Hello from another Tree'));
+ const row=(await f.ok(`/private/conversations/${cid}/messages`,outsider)).messages[0];assert.equal((await enc.open(outsider.privateKey,owner.privateKey.toPublic().armor(),row.ciphertext)).body,'Hello from another Tree');
+ await f.ok(`/private/conversations/${cid}/block`,outsider,'PATCH',{blocked:true});assert.equal((await f.ok('/private/username?username=outsider',owner)).person,null);assert.equal((await f.req('/private/conversations',owner,'POST',{username:'outsider'})).status,404);
+});

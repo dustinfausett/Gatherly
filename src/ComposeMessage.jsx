@@ -7,6 +7,7 @@ import { queueScheduled, localDate } from './scheduled-client';
 import { scheduleTime } from '../shared/scheduling';
 import { sealPrivate } from './encryption/client';
 import { hasFirstNameToken, personalizeMessage } from '../shared/personalization';
+import UsernameContact from './UsernameContact';
 import PersonalizedMessageField from './PersonalizedMessageField';
 import {isMobileMessagingDevice} from './message-keyboard';
 
@@ -23,7 +24,7 @@ export default function ComposeMessage({ user, source, single, phoneFirst, onClo
   const all = new Map((people || []).map(p => [`u:${p.id}`, { key: `u:${p.id}`, id: p.id, name: p.name, channel: 'Churp', tree_ids: p.tree_ids, blocked: !!p.requires_parent_approval, reason: p.requires_parent_approval ? 'Parent approval required' : '' }]));
   for (const c of contacts?.contacts || []) {
     const key = c.linked_user_id ? `u:${c.linked_user_id}` : `c:${c.id}`;
-    if (!all.has(key)) all.set(key, c.linked_user_id ? { key, name: c.name, blocked: true, reason: 'Churp account setup or shared membership required', channel: 'Unavailable' } : { key, contactId: c.id, name: c.name, phone: c.phone, channel: 'Phone', blocked: !c.phone || !!user.family?.protected, reason: user.family?.protected ? 'Phone drafts are for adult accounts' : !c.phone ? 'Add a phone number first' : '' });
+    if (!all.has(key)) all.set(key, c.linked_user_id ? { key, name: c.name, blocked: true, reason: 'Churp account setup required', channel: 'Unavailable' } : { key, contactId: c.id, name: c.name, phone: c.phone, channel: 'Phone', blocked: !c.phone || !!user.family?.protected, reason: user.family?.protected ? 'Phone drafts are for adult accounts' : !c.phone ? 'Add a phone number first' : '' });
   }
   const chosen = selected.map(key => all.get(key)).filter(Boolean), eligible = chosen.filter(r => r.id && !r.blocked), phones = chosen.filter(r => r.contactId && !r.blocked), unavailable = chosen.filter(r => r.blocked);
   let rows = [...all.values()];
@@ -68,6 +69,7 @@ export default function ComposeMessage({ user, source, single, phoneFirst, onClo
     {error && <p className="error-banner" role="alert">{error}</p>}
     {!people ? <p role="status">Finding your people…</p> : step === 0 ? <>
       <p className="small-text muted">Churp members receive private Churp messages. Phone-only contacts get individual drafts for you to send from your own messaging app.</p>
+      {single&&<UsernameContact onStart={onStart}/>}
       <div className="recipient-filters"><Field label="Tree"><select value={tree} onChange={e => { setTree(e.target.value); setNest(''); setSelected([]); change(); }}><option value="">All my Trees</option>{trees.map(t => <option value={t.id} key={t.id}>{t.name}</option>)}</select></Field>{tree && <NestFilter scope={scope} nest={nest} onChange={n => { setNest(n); setSelected([]); change(); }}/>}</div>
       <div className="recipient-categories"><button className={category === 'members' ? 'selected' : ''} onClick={() => setCategory('members')}>Members</button><button className={category === 'contacts' ? 'selected' : ''} onClick={() => setCategory('contacts')}>Contacts</button>{contacts?.birdhouses.map(b => <button className={category === b.id ? 'selected' : ''} key={b.id} onClick={() => setCategory(b.id)}>{b.name}</button>)}</div>
       <Field label="Find recipients" value={search} onChange={e => setSearch(e.target.value)}/>

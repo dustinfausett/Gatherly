@@ -105,3 +105,14 @@ test('bulk adding Tree members cannot bypass parent approval and fails the whole
  await f.ok('/private/conversations',owner,'POST',{user_id:child.id});await f.ok('/family/approvals',parent,'POST',{child_id:child.id,adult_id:owner.id,decision:'approved'});
  assert.equal((await f.ok('/contacts/from-tree',owner,'POST',{user_ids:[peer.id,child.id]})).added,2);
 });
+
+test('username contacts outside shared Trees still require parent approval and include guardian readers',async t=>{
+ const f=await fixture(t),parent=await f.actor('cross_parent'),child=await f.actor('cross_child','2012-01-01');await f.link(parent,child);
+ assert.equal((await f.ok('/private/username?username=cross_child',f.owner)).person.requires_parent_approval,true);
+ const result=await f.ok('/private/conversations',f.owner,'POST',{username:'cross_child'}),cid=result.conversation.id;assert.equal(result.approval_required,true);
+ assert.equal((await f.ok('/contacts',f.owner)).contacts.length,0);assert.equal((await f.req(`/private/conversations/${cid}/roster`,f.owner)).status,403);assert.equal((await f.req(`/private/conversations/${cid}/messages`,f.owner,'POST',{})).status,403);
+ await f.ok('/family/approvals',parent,'POST',{child_id:child.id,adult_id:f.owner.id,decision:'approved'});await f.ok('/private/conversations',f.owner,'POST',{username:'cross_child'});assert.equal((await f.ok('/contacts',f.owner)).contacts[0].linked_user_id,child.id);
+ const rs=await f.ok(`/private/conversations/${cid}/roster`,f.owner);assert.deepEqual(rs.readers.map(r=>r.id).sort(),[f.owner.id,parent.id,child.id].sort());
+ await f.ok(`/private/conversations/${cid}/messages`,f.owner,'POST',await f.prepare(f.owner,cid,'Approved outside our Tree'));
+ const row=(await f.ok(`/private/conversations/${cid}/messages?child_id=${child.id}`,parent)).messages[0];assert.equal((await enc.open(parent.privateKey,f.owner.privateKey.toPublic().armor(),row.ciphertext)).body,'Approved outside our Tree');
+});

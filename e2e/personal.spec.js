@@ -39,3 +39,16 @@ test('CSV and vCard imports upload only the contacts explicitly confirmed',async
  await page.getByRole('button',{name:'Import contacts',exact:true}).click();d=page.getByRole('dialog');await d.locator('input[type=file]').setInputFiles({name:'friend.vcf',mimeType:'text/vcard',buffer:Buffer.from('BEGIN:VCARD\r\nVERSION:3.0\r\nFN:London Friend\r\nTEL;TYPE=CELL:tel:+442079460123\r\nEND:VCARD\r\n')});await d.getByRole('button',{name:'Import 1 contacts',exact:true}).click();await expect(d).toHaveCount(0);
  const contacts=(await(await page.request.get('/api/contacts')).json()).contacts;expect(contacts.map(c=>c.name)).toEqual(['Alice','London Friend']);expect(contacts.map(c=>c.phone)).toEqual(['+12025550123','+442079460123']);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBeTruthy();
 });
+
+test('username search starts encrypted private chats across Trees and saves the contact',async({page,browser},info)=>{
+ const peerContext=await browser.newContext({...info.project.use,baseURL:'http://127.0.0.1:3101'});
+ try{
+  const username=`outside_${randomUUID().slice(0,8)}`;
+  for(const [request,name,handle] of [[page.request,'Username finder',`finder_${randomUUID().slice(0,8)}`],[peerContext.request,'Outside friend',username]])expect((await request.post('/api/auth/register',{data:{birth_date:'1990-01-01',username:handle,name,password:'Username browser fixture!'}})).status()).toBe(201);
+  await page.goto('/');await page.getByRole('navigation',{name:'Main navigation',exact:true}).getByRole('button',{name:'Messages',exact:true}).click();await page.getByRole('button',{name:'Compose',exact:true}).click();await page.getByRole('button',{name:/New Message/}).click();
+  const d=page.getByRole('dialog');await d.getByLabel('Churp username',{exact:true}).fill(`@${username.toUpperCase()}`);await d.getByRole('button',{name:'Find username',exact:true}).click();await expect(d).toContainText('@'+username);await d.getByRole('button',{name:'Add & message',exact:true}).click();await expect(d).toHaveCount(0);
+  await page.getByRole('textbox',{name:'Write a private message',exact:true}).fill('Hello across Trees!');await page.getByRole('button',{name:'Send private message',exact:true}).click();await expect(page.locator('.private-bubble')).toContainText('Hello across Trees!');
+  const contact=(await(await page.request.get('/api/contacts')).json()).contacts.find(c=>c.name==='Outside friend');expect(contact.linked_user_id).toBeTruthy();expect(contact.phone).toBeNull();
+  const conversation=(await(await page.request.get('/api/private/conversations')).json()).conversations[0],peer=await peerContext.newPage();await peer.goto(`/?conversation=${conversation.id}`);await expect(peer.locator('.private-bubble')).toContainText('Hello across Trees!');expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+ }finally{await peerContext.close();}
+});

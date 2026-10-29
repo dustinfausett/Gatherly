@@ -207,3 +207,5 @@ Chat messages show their existing sender, time, content and chosen reactions. Ho
 ## Notification previews and foreground behavior
 
 Phone alerts show the sender and the first part of a message by default. **Your corner → Security → Show message previews** switches to private, generic alerts across devices. Alerts are suppressed on devices where Churp is visible. Background devices receive each eligible message without a cooldown, with an updated unread badge. Messages still arrive in chat immediately. [Privacy, encrypted previews and foreground behavior](docs/PUSH-NOTIFICATIONS.md).
+
+In **Messages → Compose → New Message**, use **Find someone by username** to enter a full username (with or without `@`). **Add & message** saves the linked Churp contact and opens an encrypted private conversation, even without a shared Tree. Exact lookup reveals no phone number, age or Tree membership. Blocked accounts are unavailable. Adult/youth pairs still request parent approval before messaging; linked parents remain readers of the youth’s private messages.
