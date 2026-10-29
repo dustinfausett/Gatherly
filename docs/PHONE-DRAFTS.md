@@ -10,6 +10,10 @@ The review shows exactly how many messages go through Churp and how many become 
 
 Tree filters apply to known Churp memberships and supply invitation context for phone contacts. Unlinked saved phone contacts have no known Tree/Nest membership: they can appear under Contacts/Birdhouses when a Tree is selected, but a Nest filter excludes them. Phone numbers are never guessed into Churp identities.
 
+## Enter and new lines
+
+On computers, Enter sends a Nest/private message and Shift+Enter adds a new line. This also applies to Nest thread replies. Send Many Individually keeps its review: Enter in the message box opens Review, then Enter again on the focused confirmation button sends or schedules the batch. Holding Enter cannot confirm the review. On phones/tablets, Enter always adds a new line in the message box; use the Review/Send buttons. Device detection is independent of viewport width, so a narrow computer window still uses desktop shortcuts. IME composition, empty messages, uploading and busy states do not trigger sends. External phone messaging apps retain their own keyboard behavior after handoff.
+
 ## First-name personalization
 
 Write `Hi [first name], ...` in Send Many Individually, or use **Insert first name** at the cursor. Review shows a separate expanded message for each recipient before sending. Churp uses the first word of the member’s display name or the saved phone contact’s name, preserving spelling, accents and punctuation; an unavailable/blank name uses `there`. Case and spacing variants such as `[First Name]`, `[firstname]` and `[first_name]` work too. Other bracketed text remains literal. Check previews for names that begin with a title or a family/group label.
