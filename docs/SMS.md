@@ -1,3 +1,7 @@
+# Archived provider-texting pilot
+
+Provider texting has been retired. The current flow is [Churp-first messaging and personal-phone drafts](PHONE-DRAFTS.md). Production ignores the activation settings below and cannot dispatch provider texts. The remaining content records the previous implementation for historical reference and isolated tests.
+
 # Churp phone texting — mock pilot and Twilio adapter
 
 ## What is delivered

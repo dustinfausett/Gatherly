@@ -29,6 +29,8 @@ import { installContacts } from './contacts.js';
 import {installRecipientScopes} from './recipient-scopes.js';
 import { installPrivateMessages } from './private-messages.js';
 import {installSms} from './sms.js';
+import {smsConfiguration} from './sms-provider.js';
+import {installPhoneDrafts} from './phone-drafts.js';
 import {installScheduling} from './scheduling.js';
 import { installFamily } from './family.js';
 import { birthDate } from '../shared/family.js';
@@ -202,7 +204,10 @@ export function createApp(options = {}) {
     res.clearCookie('gatherly_session', { path: '/' });
     res.json({ ok: true });
   });
-  const sms=installSms({app,db,dataDir,appUrl,transaction,refreshUser,testing:options.testing,config:options.smsConfig,transport:options.smsTransport,autoProcess:!(options.testing&&options.smsAutoProcess===false)});
+  // Provider texting is retired. Production cannot re-enable it through stale
+  // Railway variables. Explicit isolated test fixtures retain legacy coverage.
+  const smsConfig=options.testing===true&&!production&&options.smsConfig ? options.smsConfig : {...smsConfiguration(),mode:'disabled',retired:true};
+  const sms=installSms({app,db,dataDir,appUrl,transaction,refreshUser,testing:options.testing,config:smsConfig,transport:options.smsTransport,autoProcess:!(options.testing&&options.smsAutoProcess===false)});
   app.use('/api', auth);
   app.use('/api',(req,res,next)=>{
     const setup=req.path==='/me'||req.path==='/badges'||req.path==='/events'||/^\/family(?:\/|$)/.test(req.path)||(/^\/e2ee\//.test(req.path)&&!/^\/e2ee\/(?:uploads|legacy)(?:\/|$)/.test(req.path));
@@ -216,6 +221,7 @@ export function createApp(options = {}) {
   function pushEligible(uid,source){
     if(!family.ready(uid))return false;
     if(!source)return true;
+    if(source.channel==='phone-draft')return phoneDrafts.canNotify(uid,source.messageId);
     if(source.channel==='nest'){
       const m=one('SELECT * FROM messages WHERE id=? AND deleted=0',source.messageId);
       return !!m&&!!one('SELECT 1 FROM group_members gm JOIN groups g ON g.id=gm.group_id JOIN community_members cm ON cm.community_id=g.community_id AND cm.user_id=gm.user_id WHERE gm.group_id=? AND gm.user_id=? AND gm.muted=0 AND gm.last_read<?',m.group_id,uid,m.id)&&(!encryptionRequired||encryption.canRead(uid,m));
@@ -224,7 +230,7 @@ export function createApp(options = {}) {
       const m=one('SELECT * FROM private_messages WHERE id=?',source.messageId),c=m&&one('SELECT * FROM private_conversations WHERE id=?',m.conversation_id);
       return !!c&&[c.user_low,c.user_high].includes(uid)&&m.user_id!==uid&&!c.blocked_low&&!c.blocked_high&&m.id>(c.user_low===uid?c.read_low:c.read_high)&&family.pairAllowed(c.user_low,c.user_high);
     }
-    if(source.channel==='sms')return !!one("SELECT 1 FROM sms_messages m JOIN sms_threads t ON t.id=m.thread_id JOIN community_members cm ON cm.community_id=t.community_id AND cm.user_id=t.owner_id WHERE m.id=? AND t.owner_id=? AND m.direction='inbound' AND m.created_at>t.read_through",source.messageId,uid);
+    if(source.channel==='sms')return sms.mode!=='disabled'&&!!one("SELECT 1 FROM sms_messages m JOIN sms_threads t ON t.id=m.thread_id JOIN community_members cm ON cm.community_id=t.community_id AND cm.user_id=t.owner_id WHERE m.id=? AND t.owner_id=? AND m.direction='inbound' AND m.created_at>t.read_through",source.messageId,uid);
     return false;
   }
   function pushPreviewAllowed(uid,source,preview){
@@ -566,6 +572,7 @@ export function createApp(options = {}) {
     refresh(entity.community_id); res.json({ ok: true });
   });
   const invitations=installInvitations({app,db,appUrl,testing:options.testing,transaction,membership,communityAdmin,groupAdmin,group,joinParent,refresh,refreshUser});
+  const phoneDrafts=installPhoneDrafts({app,db,dataDir,appUrl,family,membership,group,groupAdmin,invitations,transaction,refreshUser,testing:options.testing,now:options.testing&&options.phoneDraftNow?options.phoneDraftNow:Date.now,autoProcess:!(options.testing&&options.phoneDraftAutoProcess===false),notifyReady:(uid,id)=>notifyDevice(uid,{title:'Your phone text drafts are ready',body:'Open Churp to review and send them from your phone.',url:'/?phone_texts=1'},null,{channel:'phone-draft',messageId:id})});
   sms.installAuthenticated({family,membership,group,groupAdmin,invitations,notifySms:(uid,context)=>notifyDevice(uid,{title:'New phone text on Churp',body:'You have a new phone text.',url:'/?phone_texts=1'},{channel:'sms',sender_name:context.senderName,text:previewText(context.text)},{channel:'sms',messageId:context.id})});
   app.post('/api/groups/:id/join', (req, res) => {
     const g = visibleCircle(req.user.id, req.params.id);
@@ -849,5 +856,5 @@ export function createApp(options = {}) {
     app.use(express.static(resolve('dist'), { setHeaders: (res, path) => { if (path.endsWith('/index.html') || path.endsWith('/sw.js') || path.endsWith('/push-preview.js')) res.setHeader('Cache-Control','no-store'); } }));
     app.get('/{*path}', (req, res) => { res.setHeader('Cache-Control','no-store'); res.sendFile(resolve('dist/index.html')); });
   }
-  return { app, db, sms, scheduling, push, close: () => { push.close();scheduling.close();sms.close(); for (const set of streams.values()) for (const res of set) res.end(); db.close(); } };
+  return { app, db, sms, phoneDrafts, scheduling, push, close: () => { phoneDrafts.close();push.close();scheduling.close();sms.close(); for (const set of streams.values()) for (const res of set) res.end(); db.close(); } };
 }

@@ -1,3 +1,7 @@
+# Current phone delivery
+
+[Churp-first messaging and personal-phone drafts](PHONE-DRAFTS.md) now replaces the previous SMS pilot. Linked members receive Churp messages; phone-only contacts get a draft to send manually. Provider sending is disabled in production. Historical phase notes below may describe earlier limitations.
+
 # Personal messaging: delivered first phase
 
 Protected youth accounts now add mandatory age/parent setup, adult-contact approval and read-only parent supervision. See [YOUTH-PROTECTION.md](YOUTH-PROTECTION.md); it supersedes the original two-reader-only descriptions below for protected accounts.

@@ -3,7 +3,7 @@ import {cancelScheduled} from './scheduled-client';
 import {activeScheduledPart} from './scheduled-state';
 
 export default function ScheduledActions({row,onEdit,onReschedule,onChanged}){
- const [busy,setBusy]=useState(false),[error,setError]=useState(''),editable=row.parts.every(p=>['pending','held'].includes(p.state));
+ const [busy,setBusy]=useState(false),[error,setError]=useState(''),editable=!row.entries.some(e=>e.channel==='sms')&&row.parts.every(p=>['pending','held'].includes(p.state));
  return <><div className="personal-actions scheduled-actions">
   <button type="button" className="text-button" disabled={!editable||!row.draft||busy} onClick={onEdit}>Edit</button>
   <button type="button" className="text-button" disabled={!editable||!row.draft||busy} onClick={onReschedule}>Reschedule</button>

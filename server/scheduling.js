@@ -63,6 +63,7 @@ export function installScheduling({app,db,dataDir,encryption,family,transaction,
     if(entry.channel==='nest')receipt=await sendNest(ctx);
     else if(entry.channel==='private')receipt=await sendPrivate(ctx);
     else{
+     if(sms.mode==='disabled')fail(410,'Provider texting has been retired. Cancel this text and prepare a phone draft in Messages.');
      if(part.mode!==sms.mode)fail(409,'Phone texting mode changed. Review this scheduled send before resubmitting.');
      let delivery=part.delivery_context?open(part.id,part.delivery_context):null;
      if(!delivery){delivery={invitation_url:await invitations.createForText(part.owner_id,entry.target_id)};run('UPDATE scheduled_parts SET delivery_context=? WHERE id=?',seal(part.id,delivery),part.id);}

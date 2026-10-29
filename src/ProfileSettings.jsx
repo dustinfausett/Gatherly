@@ -26,7 +26,7 @@ const sections=[
   {id:'family',title:'Family & youth protection',description:'Linked parents and adult message approvals',icon:Users},
   {id:'account',title:'Account settings',description:'Sign-in, password and recovery email',icon:Settings2},
   {id:'security',title:'Security',description:'Message privacy, E2EE and recovery keys',icon:ShieldCheck},
-  {id:'legal',title:'About & policies',description:'Terms, privacy and SMS program status',icon:FileText},
+  {id:'legal',title:'About & policies',description:'Terms, privacy and phone texting',icon:FileText},
   {id:'notifications',title:'Notifications',description:'Alerts on this device',icon:Bell},
 ];
 export default function ProfileSettings({user,config,onClose,onSave,onAccountUpdate,onLogout,notify}){

@@ -3,13 +3,13 @@
 ## Where to find it
 
 - **Nest messages, thread replies and private chats:** use the clock beside Send, choose a local date and time, then select **Schedule message**.
-- **Polls, RSVPs, Assignments, Send Many Individually and Phone texts:** turn on **Schedule send** in the existing creation/review screen. Attachments in supported in-app messages are included.
+- **Polls, RSVPs, Assignments, Send Many Individually and phone drafts:** turn on **Schedule send** in the existing creation/review screen. Attachments in supported in-app messages are included.
 - **In the conversation:** scheduled messages appear as faded, sender-only previews in their Nest, private chat or phone text conversation. They show the send time and **Not sent yet**, with Edit, Reschedule and Cancel send controls available by holding the preview for ¾ of a second. Scheduled replies also appear in their thread. Polls, RSVPs and Assignments keep their branded artwork but cannot receive responses before posting.
-- **Your corner → Scheduled messages:** the central list remains available to view upcoming sends, edit their contents, reschedule or cancel. Messages and Phone texts also have a Scheduled messages shortcut. **All sends** includes history.
+- **Your corner → Scheduled messages:** the central list remains available to view upcoming sends, edit their contents, reschedule or cancel. Messages has a Scheduled messages shortcut. Phone reminders are listed under Phone drafts and in the same outbox. **All sends** includes history.
 
 Scheduling is a one-time send, up to a year ahead. The picker uses the device's time zone; Churp stores an absolute UTC instant and displays its saved zone in the outbox. A batch can contain up to 50 private recipients, and each account can have up to 100 active scheduled sends. Send now continues to use the existing message flow.
 
-Recipients cannot see queued drafts or their attachments. Attachments are uploaded and encrypted when scheduled; their filenames appear in the sender's preview, and recipients gain access only when the message posts. Editing a scheduled Poll, RSVP or Assignment reopens its original builder. RSVP deadlines must fall after the send time. Once delivery starts, completed messages cannot be edited or cancelled through the scheduler; remaining parts of a partially completed batch can be cancelled. The faded preview disappears when its message posts or is cancelled. For Send Many Individually and phone text batches, the preview appears in each selected conversation; its controls clearly state that changes affect the whole batch.
+Recipients cannot see queued drafts or their attachments. Attachments are uploaded and encrypted when scheduled; their filenames appear in the sender's preview, and recipients gain access only when the message posts. Editing a scheduled Poll, RSVP or Assignment reopens its original builder. RSVP deadlines must fall after the send time. Once delivery starts, completed messages cannot be edited or cancelled through the scheduler; remaining parts of a partially completed batch can be cancelled. The faded preview disappears when its message posts or is cancelled. For Send Many Individually and phone draft reminders, the preview appears in each selected conversation; its controls clearly state that changes affect the whole batch.
 
 ## Encryption and permission checks
 
@@ -17,7 +17,7 @@ The browser signs and encrypts in-app messages for their current recipients befo
 
 At delivery, Churp checks the scheduling device's approval, the sender's current access, posting permissions, recipient membership and keys, blocking and youth/parent approvals through the existing message services. A changed encryption roster or key holds the affected send as **Needs review**. Edit or reschedule it from an approved device to encrypt it for the current audience. A private batch keeps the selected recipients rather than silently adding new Tree or Nest members.
 
-Phone texts retain the current SMS mode and existing consent, age, suppression, Tree/Nest, spending and delivery checks. A mock schedule never becomes a live text automatically when deployment settings change. Churp generates a fresh Tree invitation at dispatch so a long-future text does not contain the original expired invitation. **Queued for phone delivery** means accepted into the existing SMS queue; check **Messages → Phone texts → Recent text batches** for delivery results. Scheduling does not enable live Twilio sending or change registration requirements.
+Phone-only contacts use [personal-phone draft reminders](PHONE-DRAFTS.md), not automatic SMS. Reminders become ready and can notify the sender, who opens each text in their own messaging app and taps Send. Phone reminder edits/cancellation are separate from in-app scheduled messages. Provider texting is retired; existing provider SMS schedules are held for cancellation and cannot dispatch.
 
 ## Running on Railway
 

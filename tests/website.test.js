@@ -18,8 +18,8 @@ test('public website and app share a service without moving the existing app ori
       const home=await get('/',host),html=await home.text();assert.equal(home.status,200);assert.match(html,/id="hero-heading"/);assert.match(html,/rel="canonical" href="https:\/\/churptree.com\//);assert.match(home.headers.get('content-security-policy'),/script-src/);
       const settings=await get('/api/site-config',host);assert.equal(settings.status,200);assert.deepEqual(await settings.json(),{appUrl:'https://app.churptree.com/',signupUrl:'https://app.churptree.com/?signup=1'});
       assert.equal((await get('/api/me',host)).status,401);
-      for(const [path,title] of [['/terms','Terms of Service'],['/privacy','Privacy Policy'],['/sms-terms','SMS Terms']]){
-        const policy=await get(path,host),page=await policy.text();assert.equal(policy.status,200);assert.match(page,new RegExp(`<h1>${title}</h1>`));assert.equal(page.includes('Draft for review'),path==='/sms-terms');assert.equal(policy.headers.get('x-robots-tag'),path==='/sms-terms'?'noindex':null);assert.match(page,/Dustin Fausett, operating as Churp/);assert.match(page,/mailto:churptree@gmail.com/);assert.doesNotMatch(page,/dustin\.fausett/);assert.match(policy.headers.get('content-security-policy'),/script-src/);
+      for(const [path,title] of [['/terms','Terms of Service'],['/privacy','Privacy Policy'],['/sms-terms','Phone Texting']]){
+        const policy=await get(path,host),page=await policy.text();assert.equal(policy.status,200);assert.match(page,new RegExp(`<h1>${title}</h1>`));assert.equal(page.includes('Draft for review'),false);assert.equal(policy.headers.get('x-robots-tag'),null);assert.match(page,/Dustin Fausett, operating as Churp/);assert.match(page,/mailto:churptree@gmail.com/);assert.doesNotMatch(page,/dustin\.fausett/);assert.match(policy.headers.get('content-security-policy'),/script-src/);
       }
 
     }

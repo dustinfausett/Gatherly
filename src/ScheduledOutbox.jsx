@@ -9,25 +9,29 @@ import {AssignmentBuilder} from './Assignments';
 import {uploadEncrypted} from './encryption/client';
 import {useScheduledSends} from './scheduled-state';
 import ScheduledActions from './ScheduledActions';
+import {PhoneDraftCards,PhoneDraftDialog,usePhoneDrafts} from './PhoneDrafts';
 const statusName=row=>row.status==='sent'&&row.entries.every(e=>e.channel==='sms')?'Queued for phone delivery':({scheduled:'Scheduled',needs_review:'Needs review',sending:'Sending',sent:'Sent',cancelled:'Cancelled',partly_sent:'Partly sent'})[row.status];
 function preview(draft){if(!draft)return 'Encrypted draft unavailable';try{return JSON.parse(draft.body).title||draft.body;}catch{return draft.body||'Attachments';}}
 export default function ScheduledOutbox({version,onClose,onRefresh}){
+ const phoneState=usePhoneDrafts(version),[phoneId,setPhoneId]=useState(null);
  const {rows,error,reload:refresh}=useScheduledSends({version}),[editor,setEditor]=useState(null),[all,setAll]=useState(false);
  const reload=()=>{refresh();onRefresh?.();};
  const done=()=>{setEditor(null);reload();};
+ if(phoneId)return <PhoneDraftDialog id={phoneId} onClose={()=>{setPhoneId(null);phoneState.reload();}} onChanged={phoneState.reload}/>;
  if(editor)return <ScheduledEditor row={editor.row} action={editor.action} onClose={()=>setEditor(null)} onSaved={done}/>;
  const visible=(rows||[]).filter(r=>all||r.parts.some(p=>['pending','held','sending'].includes(p.state))).sort((a,b)=>all?b.send_at-a.send_at:a.send_at-b.send_at);
  return <Modal title="Scheduled messages" subtitle="Your upcoming sends, across Churp." onClose={onClose} wide>
-  <p className="small-text muted">Edit, reschedule or cancel before delivery starts. If recipients or encryption keys change, the send waits here for review. Phone texts still need consent at delivery.</p>
+  <p className="small-text muted">Edit, reschedule or cancel before delivery starts. If recipients or encryption keys change, the send waits here for review. Phone reminders prepare drafts for you to send from your own messaging app.</p>
   <div className="scheduled-filter"><button className={!all?'selected':''} onClick={()=>setAll(false)}>Upcoming</button><button className={all?'selected':''} onClick={()=>setAll(true)}>All sends</button></div>
   {error&&<p className="error-banner" role="alert">{error}<button className="text-button" onClick={reload}>Retry</button></p>}
   {!rows?<p role="status">Opening your encrypted drafts…</p>:<div className="scheduled-list">{visible.map(row=><article className="scheduled-card" key={row.id}>
    <span className={`scheduled-status ${row.status}`}>{statusName(row)}</span><h3>{row.draft?.labels?.join(', ')||'Scheduled message'}</h3><small><Clock size={12}/> {scheduleLabel(row.send_at,row.time_zone)} · {row.entries.length} {row.entries.length===1?'send':'separate sends'}</small>
    <p>{row.draftError||preview(row.draft).slice(0,220)}</p>{!!row.draft?.attachments?.length&&<small>{row.draft.attachments.length} attachments</small>}
    {row.parts.filter(p=>p.error).map(p=><p key={p.id} className="error-banner">{p.error}</p>)}
-   {row.status==='sent'&&row.entries.some(e=>e.channel==='sms')&&<p className="small-text muted">Phone delivery results are in Messages → Phone texts → Recent text batches.</p>}{row.parts.some(p=>p.state==='sent')&&row.entries.length>1&&<small>{row.parts.filter(p=>p.state==='sent').length} of {row.parts.length} posted</small>}
+   {row.entries.some(e=>e.channel==='sms')&&<p className="info-banner">Provider texting has been retired. Cancel any unfinished text here, then prepare a draft under Messages → Phone drafts. No provider text will be sent.</p>}{row.parts.some(p=>p.state==='sent')&&row.entries.length>1&&<small>{row.parts.filter(p=>p.state==='sent').length} of {row.parts.length} posted</small>}
    <ScheduledActions row={row} onEdit={()=>setEditor({row,action:'edit'})} onReschedule={()=>setEditor({row,action:'reschedule'})} onChanged={reload}/>
   </article>)}{!visible.length&&<p className="personal-empty">{all?'No scheduled sends yet.':'No upcoming sends. Use the clock beside Send to plan one.'}</p>}</div>}
+  <h3>Phone draft reminders</h3><PhoneDraftCards state={phoneState} scheduledOnly all={all} onOpen={setPhoneId}/>
  </Modal>;
 }
 export function ScheduledEditor({row,action,onClose,onSaved}){

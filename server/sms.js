@@ -12,7 +12,7 @@ const clean=s=>String(s).replace(/[\r\n\[\]]/g,' ').slice(0,80);
 const ranks={queued:1,sending:2,sent:3,undelivered:4,failed:4,delivered:5};
 export function installSms({app,db,dataDir,appUrl,transaction,refreshUser,testing,config=smsConfiguration(),transport,autoProcess=true}){
  const one=(s,...a)=>db.prepare(s).get(...a),all=(s,...a)=>db.prepare(s).all(...a),run=(s,...a)=>db.prepare(s).run(...a),fail=(status,message)=>{throw Object.assign(new Error(message),{status});};
- const vault=keyVault(dataDir,!!one('SELECT 1 FROM sms_messages LIMIT 1')||!!one('SELECT 1 FROM sms_enrollment LIMIT 1')||!!one('SELECT 1 FROM e2ee_managed_keys LIMIT 1'));
+ const vault=keyVault(dataDir,!!one('SELECT 1 FROM sms_messages LIMIT 1')||!!one('SELECT 1 FROM sms_enrollment LIMIT 1')||!!one('SELECT 1 FROM e2ee_managed_keys LIMIT 1')||!!one('SELECT 1 FROM phone_drafts LIMIT 1'));
  const seal=(id,text)=>vault.seal('sms',id,text),open=(id,text)=>vault.open('sms',id,text);
  const savedMessage=one('SELECT id,body_cipher FROM sms_messages LIMIT 1'),savedEnrollment=one('SELECT token_hash,join_code_cipher FROM sms_enrollment LIMIT 1');
  try{if(savedMessage)open(savedMessage.id,savedMessage.body_cipher);else if(savedEnrollment)open(savedEnrollment.token_hash,savedEnrollment.join_code_cipher);}catch{throw new Error('Cannot unlock SMS storage. Restore the original key-vault.key or CHURP_KEY_VAULT_SECRET; do not replace the master key.');}
@@ -21,7 +21,7 @@ export function installSms({app,db,dataDir,appUrl,transaction,refreshUser,testin
  // Once a provider request may have left the process, do not retry it blindly.
  run("UPDATE sms_messages SET state='unknown',error='Server restarted during provider submission. Reconcile with Twilio before resending.' WHERE state='dispatching'");
  const mode=config.mode,ready=()=>mode==='mock'||liveReady(config,appUrl);
- const enabled=()=>{if(!ready())fail(503,mode==='live'?'Live SMS needs an approved pilot configuration. Keep SMS_MODE=mock for development.':'SMS is disabled. Set SMS_MODE=mock to test without sending texts.');};
+ const enabled=()=>{if(!ready())fail(503,config.retired?'Provider texting has been retired. Use Messages → Phone drafts.':mode==='live'?'Live SMS needs an approved pilot configuration. Keep SMS_MODE=mock for development.':'SMS is disabled. Set SMS_MODE=mock to test without sending texts.');};
  const thread=(id,uid)=>one('SELECT * FROM sms_threads WHERE id=? AND owner_id=?',id,uid)||fail(404,'Text conversation not found.');
  function sender(uid,cid){if(typeof cid!=='string')fail(400,'Choose a Tree.');const {family,membership}=permissions;family.requireReady(uid);if(family.age(uid)<18)fail(403,'External texting is limited to adult accounts in this pilot.');membership(uid,cid);if(mode==='live'&&(cid!==config.treeId||!config.senders.includes(uid)))fail(403,'This sender or Tree is not in the approved texting pilot.');}
  function contactAllowed(uid,phone){const rows=all('SELECT linked_user_id FROM personal_contacts WHERE owner_id=? AND phone=? AND linked_user_id IS NOT NULL',uid,phone);for(const r of rows){const [low,high]=[uid,r.linked_user_id].sort();if(one('SELECT 1 FROM private_conversations WHERE user_low=? AND user_high=? AND (blocked_low=1 OR blocked_high=1)',low,high))fail(403,'This linked Churp conversation is blocked.');}if(rows.some(r=>permissions.family.age(r.linked_user_id)===null||permissions.family.age(r.linked_user_id)<18||!permissions.family.pairAllowed(uid,r.linked_user_id)))fail(403,'This linked account is not eligible for the adult SMS pilot.');}

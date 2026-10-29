@@ -107,6 +107,12 @@ export function openDatabase(path) {
   addColumn('messages', 'urgent', 'INTEGER NOT NULL DEFAULT 0');
   addColumn('users','notification_previews','INTEGER NOT NULL DEFAULT 1 CHECK(notification_previews IN (0,1))');
   addColumn('users', 'google_email', 'TEXT');
+  db.exec(`CREATE TABLE IF NOT EXISTS phone_drafts (
+    id TEXT PRIMARY KEY, owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    client_id TEXT NOT NULL, request_hash TEXT NOT NULL, payload_cipher TEXT NOT NULL,
+    ready_at INTEGER NOT NULL, created_at INTEGER NOT NULL, notified_at INTEGER,
+    cancelled_at INTEGER, version INTEGER NOT NULL DEFAULT 1, UNIQUE(owner_id,client_id)
+  );`);
   db.exec(`CREATE TABLE IF NOT EXISTS google_auth_challenges (
     token_hash TEXT PRIMARY KEY,
     user_id TEXT REFERENCES users(id) ON DELETE CASCADE,

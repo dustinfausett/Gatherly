@@ -29,7 +29,7 @@ Production requires HTTPS because cookies use `Secure`. A reverse proxy must for
 
 ## Personal navigation and messaging
 
-The footer has exactly **Tree / Messages / Contacts**. Tree preserves the existing optional Branches and Nests. Messages contains encrypted private 1:1 chats and in-app Send Individually. Contacts contains owner-only Birdhouses followed by alphabetical contacts, with manual entry and selected CSV/vCard/phone-picker imports. [Delivered behavior, privacy, demo setup and deferred SMS work](docs/PERSONAL-MESSAGING.md).
+The footer has exactly **Tree / Messages / Contacts**. Tree preserves the existing optional Branches and Nests. Messages contains encrypted private 1:1 chats and Send Many Individually with personal-phone draft handoffs. Contacts contains owner-only Birdhouses followed by alphabetical contacts, with manual entry and selected CSV/vCard/phone-picker imports. [Messaging and personal-phone draft behavior](docs/PHONE-DRAFTS.md).
 
 ## Accounts, permissions, and conversations
 
@@ -182,11 +182,11 @@ Signup requires a private date of birth. Accounts under 18 link one or two paren
 
 ### Public policies
 
-Terms of Service (`/terms`), Privacy Policy (`/privacy`) and proposed SMS Terms (`/sms-terms`) are readable without signing in. Find them in Your corner → About & policies, at sign-in/signup, and in the website footer. The operator is Dustin Fausett, operating as Churp; the approved support/privacy contact is churptree@gmail.com. SMS remains disabled and its terms explicitly mark the proposed program. See [docs/LEGAL-PAGES.md](docs/LEGAL-PAGES.md).
+Terms of Service (`/terms`), Privacy Policy (`/privacy`) and Phone Texting (`/sms-terms`, retained for existing links) are public at sign-in/signup, Your corner → About & policies and the website footer. The operator is Dustin Fausett, operating as Churp; the public contact is churptree@gmail.com. See [docs/LEGAL-PAGES.md](docs/LEGAL-PAGES.md).
 
-### External phone texting (mock pilot)
+### Personal-phone text drafts
 
-Messages → Phone texts now supports owner-scoped phone conversations, public enrollment links, simulated adult consent, reviewed SMS batches, reply codes, global STOP handling, delivery simulations and durable results. Railway can retain `SMS_MODE=mock` with its existing Twilio variables: mock mode never calls Twilio. The signed webhook handlers and REST adapter are implemented, but real carrier delivery remains unverified and live mode needs additional approved-pilot settings. See [docs/SMS.md](docs/SMS.md) before changing modes or configuring webhooks. Native personal-phone texting and MMS are not included.
+Messages → Compose sends privately to Churp members and prepares separate texts for phone-only saved contacts. Messages → Phone drafts lets users review each text, open it in their own messaging app, then tap Send themselves. Replies stay in that app. Saved reminders, edits, cancellation and honest manual states are supported. **Twilio/provider sending is retired and forced disabled in production**, even if old environment variables remain. See [docs/PHONE-DRAFTS.md](docs/PHONE-DRAFTS.md).
 
 See [communication refinements](docs/communication-refinements.md) for short invitation links, Tree/Nest recipient filters, Birdhouse import destinations, mobile navigation and family action alerts.
 
