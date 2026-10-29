@@ -146,3 +146,21 @@ test('a draft-only installation refuses to replace a missing vault master on sta
   assert.notEqual(result.status, 0); assert.match(result.stderr, /vault is missing its master key/);
   assert.equal(existsSync(master), false);
 });
+
+test('phone templates personalize per recipient, keep reviewed names across restarts, and refresh names on edit',async t=>{
+  const f=await fixture(t),owner=await f.register('phone_template_owner'),avery=await f.saved(owner,'Avery Brown','+12025550123'),blake=await f.saved(owner,'Blake Rivera','+12025550124');
+  const packet=f.packet(avery,{contact_ids:[avery.id,blake.id],body:'Hi [first name],\nSee you soon, [First Name]!',ready_at:f.now+60000});
+  let row=await f.ok('/phone-drafts',owner,'POST',packet);
+  assert.equal(row.body,packet.body);assert.equal(row.personalization,'first-name');
+  await f.restart();f.advance(60001);
+  let a=await f.ok(`/phone-drafts/${row.id}/prepare`,owner,'POST',{contact_id:avery.id,expected_version:row.version}),b=await f.ok(`/phone-drafts/${row.id}/prepare`,owner,'POST',{contact_id:blake.id,expected_version:row.version});
+  assert.match(a.text,/Hi Avery,\nSee you soon, Avery!/);assert.match(b.text,/Hi Blake,\nSee you soon, Blake!/);assert.ok(!a.text.includes('[first name]'));
+  await f.ok(`/contacts/${avery.id}`,owner,'PATCH',{name:'Robin Brown'});
+  a=await f.ok(`/phone-drafts/${row.id}/prepare`,owner,'POST',{contact_id:avery.id,expected_version:row.version});assert.match(a.text,/Hi Avery,/);
+  row=await f.ok(`/phone-drafts/${row.id}`,owner,'PUT',{...packet,ready_at:null,body:'Updated for [first name].',expected_version:row.version});
+  a=await f.ok(`/phone-drafts/${row.id}/prepare`,owner,'POST',{contact_id:avery.id,expected_version:row.version});b=await f.ok(`/phone-drafts/${row.id}/prepare`,owner,'POST',{contact_id:blake.id,expected_version:row.version});
+  assert.match(a.text,/Updated for Robin\./);assert.match(b.text,/Updated for Blake\./);
+  assert.equal(f.calls,0);
+  const overflow=f.packet(avery,{body:'[first name]'.repeat(800)});await f.ok(`/contacts/${avery.id}`,owner,'PATCH',{name:'A'.repeat(80)});
+  assert.equal((await f.req('/phone-drafts',owner,'POST',overflow)).status,400);
+});

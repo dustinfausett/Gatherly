@@ -8,6 +8,8 @@ import { scheduleLabel } from './scheduled-client';
 import { phoneTextUrl, phoneDraftState } from '../shared/phone-drafts';
 import MessageText from './MessageText';
 import './phone-drafts.css';
+import PersonalizedMessageField,{RecipientMessagePreview} from './PersonalizedMessageField';
+import {hasFirstNameToken} from '../shared/personalization';
 
 export function usePhoneDrafts(version) {
   const [rows, setRows] = useState(null), [error, setError] = useState(''), [revision, setRevision] = useState(0);
@@ -59,7 +61,7 @@ export function PhoneDraftDialog({ id, onClose, onChanged }) {
     {!row ? <p role="status">Opening your saved draft…</p> : editing ? <Form submit="Save phone drafts" onSubmit={async () => {
       const result = await api(`/phone-drafts/${id}`, { method: 'PUT', body: { expected_version: row.version, body, contact_ids: row.recipients.map(r => r.contact_id), tree_id: row.tree_id, source_nest: row.source_nest, filter_nest: row.filter_nest, ready_at: when.enabled ? new Date(when.sendAt).getTime() : null } });
       setRow(result); setEditing(false); onChanged?.(); setNotice('Phone drafts updated. Nothing has been sent.');
-    }}><Field label="Phone draft message"><textarea rows={5} maxLength={10000} value={body} onChange={e => setBody(e.target.value)} enterKeyHint="enter" required/></Field><ScheduleFields value={when} onChange={setWhen} phoneDrafts/><button type="button" className="text-button" onClick={() => setEditing(false)}>Cancel edit</button></Form> : prepared ? <>
+    }}><PersonalizedMessageField label="Phone draft message" value={body} onChange={setBody} required/>{hasFirstNameToken(body)&&<div className="selection-list">{row.recipients.map(r=><div key={r.contact_id}><strong>{r.name}</strong><RecipientMessagePreview body={body} name={r.name}/></div>)}</div>}<ScheduleFields value={when} onChange={setWhen} phoneDrafts/><button type="button" className="text-button" onClick={() => setEditing(false)}>Cancel edit</button></Form> : prepared ? <>
       <p className="small-text muted">{prepared.phone} · One recipient only</p>
       <div className="message-preview phone-text-preview"><MessageText text={prepared.text}/></div>
       <p className="small-text muted">This leaves Churp. Check the recipient and text in your messaging app, then tap Send. Replies go to your own number.</p>

@@ -8,6 +8,7 @@ import {ScheduledEditor} from './ScheduledOutbox';
 import {conversationParts,useScheduledSends} from './scheduled-state';
 import {scheduleLabel} from './scheduled-client';
 import {activityArtwork} from './activityArtwork';
+import {scheduledRecipientBody} from '../shared/personalization';
 
 export default function ScheduledMessages({channel,targetId,version,enabled=true,...props}){
  const state=useScheduledSends({channel,targetId,version,enabled});
@@ -28,13 +29,14 @@ export function ScheduledPreviews({state,channel,targetId,threadId=null,search='
    const parts=conversationParts(row,channel,targetId).filter(p=>threadId===null||row.entries[p.position].request.reply_to===threadId),entry=row.entries[parts[0].position],kind=entry.request.message_kind||'chat',replyTo=entry.request.reply_to;
    const held=parts.some(p=>p.state==='held'),sending=parts.some(p=>p.state==='sending'),batch=row.entries.length>1||row.entries.some(e=>e.channel==='sms'&&e.request.thread_ids?.length>1);
    let title='';if(['poll','rsvp','assignments'].includes(kind)&&row.draft)try{title=JSON.parse(row.draft.body).title;}catch{}
-   return <MessageFocus key={row.id} copyText={row.draftError?undefined:title||row.draft?.body} actions={close=><ScheduledActions row={row} onEdit={()=>{close();setEditor({row,action:'edit'});}} onReschedule={()=>{close();setEditor({row,action:'reschedule'});}} onChanged={()=>{close();refresh();}}/>}><article className="message own scheduled-inline" data-schedule-id={row.id} aria-label="Your scheduled message">
+   let body=row.draft?.body||'',previewError=row.draftError;if(channel==='private'&&row.draft)try{body=scheduledRecipientBody(row.draft,entry.target_id);}catch(e){previewError=e.message;}
+   return <MessageFocus key={row.id} copyText={previewError?undefined:title||body} actions={close=><ScheduledActions row={row} onEdit={()=>{close();setEditor({row,action:'edit'});}} onReschedule={()=>{close();setEditor({row,action:'reschedule'});}} onChanged={()=>{close();refresh();}}/>}><article className="message own scheduled-inline" data-schedule-id={row.id} aria-label="Your scheduled message">
     <div className="message-content">
      <div className="scheduled-inline-meta"><Clock size={14}/><strong>{held?'Needs review':sending?'Sending…':'Scheduled'}</strong><span>· Only you</span><time dateTime={new Date(row.send_at).toISOString()}>{scheduleLabel(row.send_at,row.time_zone)}</time></div>
      {!!replyTo&&<div className="scheduled-thread-label"><Reply size={13}/>{onThread?<button type="button" className="text-button" onClick={()=>onThread(replyTo)}>Reply in thread</button>:'Reply in thread'}</div>}
      <div className={`message-bubble scheduled-preview ${entry.request.urgent?'urgent-message':''}`}>
       {!!entry.request.urgent&&<span className="urgent-label"><AlertCircle size={13}/>Urgent</span>}
-      {row.draftError?<p>{row.draftError}</p>:title?<div className="scheduled-activity"><img src={activityArtwork[kind]} alt=""/><div><small>{({poll:'Poll',rsvp:'RSVP',assignments:'Assignments'})[kind]}</small><strong>{title}</strong></div></div>:<p><MessageText text={row.draft?.body||''}/></p>}
+      {previewError?<p>{previewError}</p>:title?<div className="scheduled-activity"><img src={activityArtwork[kind]} alt=""/><div><small>{({poll:'Poll',rsvp:'RSVP',assignments:'Assignments'})[kind]}</small><strong>{title}</strong></div></div>:<p><MessageText text={body}/></p>}
       {row.draft?.attachments?.map(file=><span className="scheduled-attachment" key={file.id}><Paperclip size={15}/>{file.name}</span>)}
      </div>
      <small className="scheduled-not-sent">Not sent yet{channel==='sms'?' · Phone text':''}</small>

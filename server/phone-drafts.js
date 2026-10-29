@@ -5,6 +5,7 @@ import { hash } from './security.js';
 import { scheduleTime } from '../shared/scheduling.js';
 import { phoneDraftText } from '../shared/phone-drafts.js';
 import { nestRecipientIds } from './recipient-scopes.js';
+import { personalizeMessage } from '../shared/personalization.js';
 
 export function installPhoneDrafts({ app, db, dataDir, appUrl, family, membership, group, groupAdmin, invitations, transaction, refreshUser, notifyReady, testing, now = Date.now, autoProcess = true }) {
   const one = (sql, ...a) => db.prepare(sql).get(...a), all = (sql, ...a) => db.prepare(sql).all(...a), run = (sql, ...a) => db.prepare(sql).run(...a);
@@ -37,17 +38,18 @@ export function installPhoneDrafts({ app, db, dataDir, appUrl, family, membershi
     let problem = ''; try { sender(row.owner_id, packet); } catch (e) { problem = e.message; }
     const recipients = packet.recipients.map(r => { let reason = problem; if (!reason) try { contact(row.owner_id, packet, r); } catch (e) { reason = e.message; } return { ...r, reason }; });
     const complete = recipients.every(r => ['done', 'skipped'].includes(r.state)), needsReview = !!problem || recipients.some(r => r.reason && !['done', 'skipped'].includes(r.state));
-    return { id: row.id, version: row.version, created_at: row.created_at, ready_at: row.ready_at, reminder: !!packet.reminder, cancelled: !!row.cancelled_at, notified: !!row.notified_at, body: packet.body, tree_id: packet.tree_id, source_nest: packet.source_nest, filter_nest: packet.filter_nest, recipients, status: row.cancelled_at ? 'cancelled' : complete ? 'complete' : !ready ? 'scheduled' : needsReview ? 'needs_review' : 'ready' };
+    return { id: row.id, version: row.version, created_at: row.created_at, ready_at: row.ready_at, reminder: !!packet.reminder, cancelled: !!row.cancelled_at, notified: !!row.notified_at, body: packet.body, personalization:packet.personalization||null, tree_id: packet.tree_id, source_nest: packet.source_nest, filter_nest: packet.filter_nest, recipients, status: row.cancelled_at ? 'cancelled' : complete ? 'complete' : !ready ? 'scheduled' : needsReview ? 'needs_review' : 'ready' };
   }
   function values(req) {
     const body = req.body, ids = body.contact_ids;
     if (typeof body.body !== 'string' || !body.body.trim() || body.body.length > 10000) fail(400, 'Write a message up to 10,000 characters.');
     if (!Array.isArray(ids) || !ids.length || ids.length > 50 || ids.some(id => typeof id !== 'string' || id.length > 100) || new Set(ids).size !== ids.length) fail(400, 'Choose between 1 and 50 saved phone contacts.');
     for (const field of ['tree_id', 'source_nest', 'filter_nest']) if (body[field] != null && (typeof body[field] !== 'string' || !body[field] || body[field].length > 100)) fail(400, 'Choose a valid Tree or Nest.');
-    const packet = { body: body.body.trim(), reminder: body.ready_at != null, tree_id: body.tree_id || null, source_nest: body.source_nest || null, filter_nest: body.filter_nest || null };
+    const packet = { body: body.body.trim(), personalization:'first-name', reminder: body.ready_at != null, tree_id: body.tree_id || null, source_nest: body.source_nest || null, filter_nest: body.filter_nest || null };
     sender(req.user.id, packet);
     const seen = new Set();
     packet.recipients = ids.map(id => contact(req.user.id, packet, { contact_id: id })).filter(c => { if (seen.has(c.phone)) return false; seen.add(c.phone); return true; }).map(c => ({ contact_id: c.id, name: c.name, phone: c.phone, state: 'ready' }));
+    try{for(const r of packet.recipients)personalizeMessage(packet.body,r.name);}catch(e){fail(400,e.message);}
     let readyAt = now(); if (body.ready_at != null) try { readyAt = scheduleTime(body.ready_at, now()); } catch (e) { fail(400, e.message); }
     return { packet, readyAt };
   }
@@ -84,7 +86,7 @@ export function installPhoneDrafts({ app, db, dataDir, appUrl, family, membershi
     if (row.cancelled_at || row.version !== req.body.expected_version) fail(409, 'This phone draft changed. Refresh it before opening.');
     contact(req.user.id, packet, r);
     const senderName = one('SELECT name FROM users WHERE id=?', req.user.id).name, treeName = packet.tree_id ? one('SELECT name FROM communities WHERE id=?', packet.tree_id)?.name : null;
-    res.json({ contact_id: r.contact_id, name: r.name, phone: r.phone, text: phoneDraftText(packet.body, senderName, treeName, invitation), version: row.version });
+    res.json({ contact_id: r.contact_id, name: r.name, phone: r.phone, text: phoneDraftText(packet.personalization==='first-name'?personalizeMessage(packet.body,r.name):packet.body, senderName, treeName, invitation), version: row.version });
   });
   app.patch('/api/phone-drafts/:id/recipient', limited, (req, res) => {
     const row = owned(req.params.id, req.user.id); if (row.cancelled_at || row.ready_at > now()) fail(409, 'This draft is not available to send.');

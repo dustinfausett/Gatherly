@@ -10,6 +10,12 @@ The review shows exactly how many messages go through Churp and how many become 
 
 Tree filters apply to known Churp memberships and supply invitation context for phone contacts. Unlinked saved phone contacts have no known Tree/Nest membership: they can appear under Contacts/Birdhouses when a Tree is selected, but a Nest filter excludes them. Phone numbers are never guessed into Churp identities.
 
+## First-name personalization
+
+Write `Hi [first name], ...` in Send Many Individually, or use **Insert first name** at the cursor. Review shows a separate expanded message for each recipient before sending. Churp uses the first word of the member’s display name or the saved phone contact’s name, preserving spelling, accents and punctuation; an unavailable/blank name uses `there`. Case and spacing variants such as `[First Name]`, `[firstname]` and `[first_name]` work too. Other bracketed text remains literal. Check previews for names that begin with a title or a family/group label.
+
+Churp messages are personalized in the browser before each independently encrypted send. New scheduled batches retain the original template and a conversation-to-name snapshot inside the sender-only encrypted draft, so editing/rescheduling regenerates each recipient’s correct ciphertext and faded preview. Phone drafts store the template and reviewed recipient-name snapshots under the existing managed vault and expand at handoff. Editing a phone draft refreshes those snapshots from the saved contacts. Existing pre-feature queued ciphertext and phone drafts remain unchanged unless edited; no migration rewrites previously prepared messages. Expanded messages must remain within the existing 10,000-character limit.
+
 ## Phone handoff
 
 Open **Messages → Phone drafts**, or select **Open phone drafts** in the compose results. Saved cards survive refresh and device changes. Review a recipient to see the complete text, their phone number, the sender's name and the short Tree invitation (or Churp sign-in URL when no Tree was selected). Tree invitations reuse Churp's existing service, including member-invitation admin approval and admin invitation privileges. A fresh invitation is made at review so a future reminder does not reuse an expired original link.

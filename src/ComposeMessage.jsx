@@ -6,6 +6,8 @@ import { ScheduleFields, ScheduleSummary, initialSchedule } from './ScheduleCont
 import { queueScheduled, localDate } from './scheduled-client';
 import { scheduleTime } from '../shared/scheduling';
 import { sealPrivate } from './encryption/client';
+import { hasFirstNameToken, personalizeMessage } from '../shared/personalization';
+import PersonalizedMessageField from './PersonalizedMessageField';
 
 export default function ComposeMessage({ user, source, single, phoneFirst, onClose, onStart, onDone, onPhoneDraft }) {
   const [when, setWhen] = useState(() => initialSchedule());
@@ -37,16 +39,16 @@ export default function ComposeMessage({ user, source, single, phoneFirst, onClo
         phoneResult.current = await post('/phone-drafts', phoneRequest.current); setPhoneId(phoneResult.current.id);
       }
       if (when.enabled && eligible.length && !scheduled.current) {
-        const entries = [];
-        for (const r of eligible) { const c = await post('/private/conversations', { user_id: r.id }); entries.push({ channel: 'private', target_id: c.conversation.id, request: await sealPrivate(c.conversation.id, body, [], undefined, source?.id || null) }); }
-        await queueScheduled(entries, { body, attachments: [], labels: eligible.map(r => r.name) }, when); scheduled.current = true;
+        const entries = [], names = {};
+        for (const r of eligible) { const c = await post('/private/conversations', { user_id: r.id }); names[c.conversation.id] = r.name; entries.push({ channel: 'private', target_id: c.conversation.id, request: await sealPrivate(c.conversation.id, personalizeMessage(body,r.name), [], undefined, source?.id || null) }); }
+        await queueScheduled(entries, { body, attachments: [], labels: eligible.map(r => r.name), personalization: {kind:'first-name',names} }, when); scheduled.current = true;
       }
       for (const recipient of eligible) {
         if (outcome.some(r => r.key === recipient.key)) continue;
         if (when.enabled) { outcome.push({ ...recipient, status: 'Scheduled' }); continue; }
         try {
           let draft = pending.current.get(recipient.key);
-          if (!draft) { const c = await post('/private/conversations', { user_id: recipient.id }); draft = { id: c.conversation.id, sealed: await sealPrivate(c.conversation.id, body, [], undefined, source?.id || null) }; pending.current.set(recipient.key, draft); }
+          if (!draft) { const c = await post('/private/conversations', { user_id: recipient.id }); draft = { id: c.conversation.id, sealed: await sealPrivate(c.conversation.id, personalizeMessage(body,recipient.name), [], undefined, source?.id || null) }; pending.current.set(recipient.key, draft); }
           await post(`/private/conversations/${draft.id}/messages`, draft.sealed); outcome.push({ ...recipient, status: 'Sent' });
         } catch (e) { outcome.push({ ...recipient, status: 'Failed', error: e.message }); }
         setResults([...outcome]);
@@ -70,14 +72,15 @@ export default function ComposeMessage({ user, source, single, phoneFirst, onClo
       {!single && <div className="personal-actions"><span>{chosen.length} selected</span><button className="button primary" disabled={!chosen.length} onClick={() => setStep(1)}>Next</button></div>}
     </> : step === 1 ? <>
       <p>{eligible.length} via Churp · {phones.length} phone drafts. Each person receives a separate message.</p>
-      <Field label="Your message"><textarea enterKeyHint="enter" value={body} onChange={e => { setBody(e.target.value); change(); }} maxLength={10000} rows={5}/></Field>
+      <PersonalizedMessageField label="Your message" value={body} onChange={value => { setBody(value); change(); }}/>
       <ScheduleFields value={when} onChange={v => { setWhen(v); change(); }} phoneDrafts={phones.length > 0}/>
-      <div className="personal-actions"><button className="button secondary" onClick={() => setStep(0)}>Back</button><button className="button primary" disabled={!body.trim()} onClick={() => setStep(2)}>Review</button></div>
+      <div className="personal-actions"><button className="button secondary" onClick={() => setStep(0)}>Back</button><button className="button primary" disabled={!body.trim()} onClick={() => {try{chosen.filter(r=>!r.blocked).forEach(r=>personalizeMessage(body,r.name));setError('');setStep(2);}catch(e){setError(e.message);}}}>Review</button></div>
     </> : step === 2 ? <>
       <p className="info-banner">{eligible.length} via Churp · {phones.length} drafts for your phone{unavailable.length ? ` · ${unavailable.length} unavailable` : ''}.</p><ScheduleSummary value={when}/>
+      {hasFirstNameToken(body)&&<p className="small-text muted">Your template · each person’s version is shown below.</p>}
       <div className="message-preview">{body}</div>
       {phones.length > 0 && <p className="small-text muted">Phone drafts add your name and {tree ? 'a short invitation to the selected Tree' : 'a Churp sign-in link'}. You review each full text before opening Messages and tap Send yourself. Replies stay in your phone’s messaging app.{when.enabled ? ' At the scheduled time, Churp reminds you to open these drafts; it cannot send them automatically.' : ''}</p>}
-      <div className="selection-list">{chosen.map(r => <div key={r.key}><strong>{r.name}</strong><small>{r.reason || (r.id ? 'Private Churp message' : 'Phone draft · manual Send required')}</small></div>)}</div>
+      <div className="selection-list">{chosen.map(r => <div key={r.key}><strong>{r.name}</strong><small>{r.reason || (r.id ? 'Private Churp message' : 'Phone draft · manual Send required')}</small>{hasFirstNameToken(body)&&!r.blocked&&<p className="message-preview personalized-recipient-preview">{personalizeMessage(body,r.name)}</p>}</div>)}</div>
       <div className="personal-actions"><button className="button secondary" disabled={busy || !!phoneResult.current} onClick={() => setStep(1)}>Edit</button><button className="button primary" disabled={busy || (!eligible.length && !phones.length)} onClick={send}>{busy ? 'Preparing…' : phones.length ? when.enabled ? 'Schedule messages & phone reminders' : 'Send Churp messages & prepare phone drafts' : `${when.enabled ? 'Schedule' : 'Send'} ${eligible.length} private messages`}</button></div>
       <p className="small-text muted">Sent means saved in the recipient’s Churp conversation. A phone draft is not a sent or delivered text.</p>
     </> : <>

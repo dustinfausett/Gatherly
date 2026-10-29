@@ -3,6 +3,7 @@ import * as enc from '../shared/encryption.js';
 import {scheduleProof,scheduleTime} from '../shared/scheduling';
 import {getCurrent,sealMessage,sealPrivate,signAssignmentRequest} from './encryption/client';
 import {assignmentSetup,validateAssignments} from '../shared/assignments';
+import {scheduledRecipientBody} from '../shared/personalization';
 export const localDate=value=>{const d=new Date(value);return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}T${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;};
 export const scheduleZone=()=>Intl.DateTimeFormat().resolvedOptions().timeZone||'UTC';
 export const scheduleLabel=(time,zone)=>new Date(time).toLocaleString([],{month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit',timeZone:zone||undefined,timeZoneName:'short'});
@@ -48,7 +49,7 @@ export async function rebuildScheduled(row,draft,when){
    if(kind==='rsvp')request.response_deadline=JSON.parse(draft.body).responseDeadline;
    if(kind==='assignments'){const setup=assignmentSetup(validateAssignments(JSON.parse(draft.body)));request={...await signAssignmentRequest(request,null,setup,'assignment-setup'),assignment_setup:setup};}
    entries.push({...entry,request});
-  }else if(entry.channel==='private')entries.push({...entry,request:await sealPrivate(entry.target_id,draft.body,draft.attachments||[],undefined,entry.request.sourceNest??null)});
+  }else if(entry.channel==='private')entries.push({...entry,request:await sealPrivate(entry.target_id,scheduledRecipientBody(draft,entry.target_id),draft.attachments||[],undefined,entry.request.sourceNest??null)});
   else{const invite=await post('/invitations',{community_id:entry.target_id});entries.push({...entry,request:{...entry.request,text:draft.body,client_id:crypto.randomUUID(),invitation_url:invite.short_url||invite.url}});}
  }
  return queueScheduled(entries,draft,when,row);
