@@ -27,13 +27,13 @@ async function fixture(t){
  }
  const owner=await actor('push_owner'),member=await actor('push_member',true),tree=(await ok('/communities',owner,'POST',{name:'Notification Tree'})).community,invite=await ok('/invitations',owner,'POST',{community_id:tree.id});await ok('/invitations/accept',member,'POST',{token:invite.code});
  const nest=(await ok(`/communities/${tree.id}/circles`,owner,'POST',{name:'First Nest'})).group;await ok(`/groups/${nest.id}/join`,member,'POST');
- async function prepare(body,channel='nest',target=nest.id){const rs=await ok(channel==='nest'?`/groups/${target}/e2ee/roster`:`/private/conversations/${target}/roster`,owner),clientId=randomUUID(),notificationPreviews=await sealNotificationPreviews(owner.privateKey,rs.readers,{senderId:owner.id,clientId,channel,body});
+ async function prepare(body,channel='nest',target=nest.id,withPreview=true){const rs=await ok(channel==='nest'?`/groups/${target}/e2ee/roster`:`/private/conversations/${target}/roster`,owner),clientId=randomUUID(),notificationPreviews=withPreview?await sealNotificationPreviews(owner.privateKey,rs.readers,{senderId:owner.id,clientId,channel,body}):undefined;
   const contents=channel==='nest'?{version:1,kind:'nest-message',groupId:target,clientId,senderId:owner.id,signerId:owner.id,rosterHash:rs.roster_hash,replyTo:null,migrated:false,selfEncrypted:rs.self_encrypted,contentType:'chat',body,attachments:[]}:{version:1,kind:'private-message',conversationId:target,clientId,senderId:owner.id,rosterHash:rs.roster_hash,selfEncrypted:rs.self_encrypted,body,attachments:[]};
   const ciphertext=await enc.seal(owner.privateKey,rs.readers.map(r=>r.public_key),contents),hash=await previewProof(notificationPreviews),proof=channel==='nest'?enc.sendPayload({groupId:target,clientId,rosterHash:rs.roster_hash,cipherHash:await enc.digest(ciphertext),files:[],replyTo:null,...hash}):{conversationId:target,clientId,rosterHash:rs.roster_hash,cipherHash:await enc.digest(ciphertext),files:[],sourceNest:null,...hash};
   return {notificationPreviews,clientId,ciphertext,rosterHash:rs.roster_hash,files:[],signature:await enc.sign(owner.privateKey,channel==='nest'?'send':'private-send',proof)};
  }
  for(const device of ['phone','tablet'])await ok('/push/subscribe',member,'POST',{subscription:{endpoint:`https://fcm.googleapis.com/${device}`,keys:{p256dh:'fixture',auth:'fixture'}}});
- return {req,ok,owner,member,nest,tree,prepare,deliveries,restart:async()=>{await stop();await start();},setTime:value=>time=value,get time(){return time;},get runtime(){return runtime;},get db(){return runtime.db;}};
+ return {req,ok,actor,owner,member,nest,tree,prepare,deliveries,restart:async()=>{await stop();await start();},setTime:value=>time=value,get time(){return time;},get runtime(){return runtime;},get db(){return runtime.db;}};
 }
 test('default encrypted previews, account privacy, durable 30-second coalescing and current message access',async t=>{
  const f=await fixture(t),{owner,member,nest}=f;
@@ -48,7 +48,7 @@ test('default encrypted previews, account privacy, durable 30-second coalescing 
  await f.ok('/me/notification-privacy',member,'PATCH',{show_previews:false});assert.equal((await f.ok('/push/privacy'+q,member)).show_previews,false);
  const cid=(await f.ok('/private/conversations',owner,'POST',{user_id:member.id})).conversation.id;await send('Private secret in another channel','private',cid);assert.equal(f.deliveries.length,4,'Cooldown is shared across Nests and private chats');f.setTime(1060000);await f.runtime.push.processDue();assert.equal(f.deliveries.length,6);assert.equal(f.deliveries[4].payload.preview,undefined);assert.equal(f.deliveries[4].payload.body,'You have a private message.');
  await f.ok('/me/notification-privacy',member,'PATCH',{show_previews:true});const read=await send('Read this before the queued alert');await f.ok(`/groups/${nest.id}/membership`,member,'PATCH',{read_to:read.id});f.setTime(1090000);await f.runtime.push.processDue();assert.equal(f.deliveries.length,6,'Read pending messages do not alert');
- const muted=await send('Before muting');assert.equal(f.deliveries.length,8);await send('Do not alert after muting');await f.ok(`/groups/${nest.id}/membership`,member,'PATCH',{muted:true});f.setTime(1120000);await f.runtime.push.processDue();assert.equal(f.deliveries.length,8);assert.equal((await f.ok('/push/privacy'+q,member)).can_preview,false);
+ const muted=await send('Before muting');assert.equal(f.deliveries.length,8);await send('Do not alert after muting');await f.ok(`/groups/${nest.id}/membership`,member,'PATCH',{muted:true});f.setTime(1120000);await f.runtime.push.processDue();assert.equal(f.deliveries.length,8);assert.equal((await f.ok('/push/privacy'+q,member)).can_preview,true,'Muting stops new dispatches without revoking access to an already delivered message');
  await f.ok(`/messages/${muted.id}`,owner,'DELETE');assert.deepEqual(f.db.prepare('PRAGMA foreign_key_check').all(),[]);
 });
 test('preview packets reject foreign recipients and tampering before any notification is sent',async t=>{
@@ -63,4 +63,24 @@ test('failed or expired subscriptions do not consume cooldown; simultaneous send
  // Exercise failed delivery through the same live dispatcher, without contacting a provider.
  const dir=mkdtempSync(join(tmpdir(),'churp-push-fail-'));const dispatcher=createPushNotifications({db:f.db,dataDir:dir,enabled:true,badge:()=>1,now:()=>time,autoProcess:false,send:async()=>{count++;throw Object.assign(new Error('Gone'),{statusCode:410});}});t.after(()=>{dispatcher.close();rmSync(dir,{recursive:true,force:true});});
  await Promise.all([dispatcher.notify(member.id,{title:'First'}),dispatcher.notify(member.id,{title:'Second'})]);assert.equal(count,2);assert.equal(f.db.prepare('SELECT COUNT(*) AS n FROM push_subscriptions').get().n,0);assert.equal(f.db.prepare('SELECT COUNT(*) AS n FROM push_alert_windows').get().n,0);
+});
+
+test('phone preview recovery handles old senders and read races without exposing plaintext, revoked access or private alerts',async t=>{
+ const f=await fixture(t),{owner,member,nest}=f;
+ const sent=await f.ok(`/groups/${nest.id}/messages`,owner,'POST',await f.prepare('A message without its own compact preview','nest',nest.id,false));
+ assert.equal(f.deliveries[0].payload.preview,undefined);
+ const query=`/push/message?channel=nest&message_id=${sent.id}`;
+ let details=await f.ok(query,member);assert.equal(details.can_preview,true);assert.equal(details.context.sender_name,owner.name);assert.equal(details.context.context_name,nest.name);assert.equal(details.device_approved,true);assert.ok(!JSON.stringify(details).includes('A message without'));
+ assert.equal((await enc.open(member.privateKey,details.message.signer_key,details.message.ciphertext)).body,'A message without its own compact preview');
+ await f.ok(`/groups/${nest.id}/membership`,member,'PATCH',{read_to:sent.id});details=await f.ok(query,member);assert.equal(details.can_preview,true,'Reading is not an authorization failure');
+ const noDevice=await f.ok(query,{...member,deviceId:randomUUID()});assert.equal(noDevice.device_approved,false);assert.equal(noDevice.message,undefined);assert.equal(noDevice.context.sender_name,owner.name);
+ const outsider=await f.actor('preview_outsider');assert.equal((await f.ok(query,outsider)).can_preview,false);
+ const cid=(await f.ok('/private/conversations',owner,'POST',{user_id:member.id})).conversation.id;
+ const privateMessage=await f.ok(`/private/conversations/${cid}/messages`,owner,'POST',await f.prepare('Private fallback content','private',cid,false));
+ const privateQuery=`/push/message?channel=private&message_id=${privateMessage.id}`;
+ await f.ok(`/private/conversations/${cid}/read`,member,'POST',{through:privateMessage.id});const privateDetails=await f.ok(privateQuery,member);assert.equal(privateDetails.can_preview,true);assert.equal(privateDetails.context.context_name,null);assert.equal((await enc.open(member.privateKey,privateDetails.message.signer_key,privateDetails.message.ciphertext)).body,'Private fallback content');
+ await f.ok('/me/notification-privacy',member,'PATCH',{show_previews:false});details=await f.ok(query,member);assert.equal(details.show_previews,false);assert.equal(details.context,undefined);assert.equal(details.message,undefined);
+ await f.ok('/me/notification-privacy',member,'PATCH',{show_previews:true});
+ await f.ok(`/private/conversations/${cid}/block`,member,'PATCH',{blocked:true});assert.equal((await f.ok(privateQuery,member)).can_preview,false);
+ await f.ok(`/groups/${nest.id}/join`,member,'DELETE');assert.equal((await f.ok(query,member)).can_preview,false);
 });

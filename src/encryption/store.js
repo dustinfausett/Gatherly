@@ -22,6 +22,9 @@ export async function loadKey(name){
   const text=new TextDecoder().decode(data),payload=text.startsWith('{') ? JSON.parse(text) : {privateKey:text,previousKeys:[]};
   return {...r,privateKey:await readPrivate(payload.privateKey),previousKeys:payload.previousKeys || []};
 }
+export async function loadDeviceInfo(name){
+  const r=await request('keys','readonly',s=>s.get(name));return r?{deviceId:r.deviceId}:null;
+}
 export async function removeKey(name){await request('keys','readwrite',s=>s.delete(name));}
 export async function confirmRecovery(name){const r=await loadKey(name);await saveKey(name,r.privateKey,{deviceId:r.deviceId,deviceName:r.deviceName,recoveryConfirmed:true,previousKeys:r.previousKeys});}
 export const contactIdentity=(selfId,userId)=>request('contacts','readonly',s=>s.get(`${selfId}:${userId}`));

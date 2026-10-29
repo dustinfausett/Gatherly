@@ -233,10 +233,21 @@ export function createApp(options = {}) {
     if(source.channel==='sms')return sms.mode!=='disabled'&&!!one("SELECT 1 FROM sms_messages m JOIN sms_threads t ON t.id=m.thread_id JOIN community_members cm ON cm.community_id=t.community_id AND cm.user_id=t.owner_id WHERE m.id=? AND t.owner_id=? AND m.direction='inbound' AND m.created_at>t.read_through",source.messageId,uid);
     return false;
   }
-  function pushPreviewAllowed(uid,source,preview){
-    if(!source||!pushEligible(uid,source))return false;
-    if(source.channel==='sms')return true;
+  function previewMessage(uid,source){
+    if(!source||!['nest','private'].includes(source.channel)||!Number.isSafeInteger(source.messageId)||source.messageId<1)return null;
     const m=one(`SELECT * FROM ${source.channel==='nest'?'messages':'private_messages'} WHERE id=?`,source.messageId);
+    if(!m)return null;
+    if(source.channel==='nest'){
+      if(m.deleted||!one('SELECT 1 FROM group_members gm JOIN groups g ON g.id=gm.group_id JOIN community_members cm ON cm.community_id=g.community_id AND cm.user_id=gm.user_id WHERE gm.group_id=? AND gm.user_id=?',m.group_id,uid)||encryptionRequired&&!encryption.canRead(uid,m))return null;
+    }else{
+      const c=one('SELECT * FROM private_conversations WHERE id=?',m.conversation_id);
+      if(!c||![c.user_low,c.user_high].includes(uid)||c.blocked_low||c.blocked_high||!family.pairAllowed(c.user_low,c.user_high))return null;
+    }
+    return m;
+  }
+  function pushPreviewAllowed(uid,source,preview){
+    if(source?.channel==='sms')return pushEligible(uid,source);
+    const m=previewMessage(uid,source);
     return !!m&&m.client_id===preview.client_id&&m.user_id===preview.sender_id&&(!m.edit_version||m.edit_version===0);
   }
   const push=createPushNotifications({db,dataDir,enabled:pushEnabled,badge:uid=>badges.snapshot(uid).count,eligible:pushEligible,canPreview:pushPreviewAllowed,
@@ -248,6 +259,19 @@ export function createApp(options = {}) {
     return packet&&identity?{ciphertext:packet.ciphertext,client_id:context.clientId,channel,sender_id:context.sender.id,sender_name:context.sender.name,context_name:contextName,signer_key:identity.public_key,signer_fingerprint:identity.fingerprint}:null;
   }
   app.get('/api/push/privacy',(req,res)=>{res.set('Cache-Control','no-store');res.json({user_id:req.user.id,show_previews:!!req.user.notification_previews,device_approved:!!one('SELECT 1 FROM e2ee_devices WHERE id=? AND user_id=?',req.get('x-churp-device')||'',req.user.id),can_preview:['nest','private','sms'].includes(req.query.channel)&&pushPreviewAllowed(req.user.id,{channel:req.query.channel,messageId:req.query.channel==='sms'?req.query.message_id:Number(req.query.message_id)},{client_id:req.query.client_id,sender_id:req.query.sender_id})});});
+  app.get('/api/push/message',(req,res)=>{
+    res.set('Cache-Control','no-store');
+    const source={channel:req.query.channel,messageId:Number(req.query.message_id)},approved=!!one('SELECT 1 FROM e2ee_devices WHERE id=? AND user_id=?',req.get('x-churp-device')||'',req.user.id);
+    const result={user_id:req.user.id,show_previews:!!req.user.notification_previews,device_approved:approved,can_preview:false};
+    if(!result.show_previews)return res.json(result);
+    const m=previewMessage(req.user.id,source);if(!m)return res.json(result);
+    const signerId=m.encrypted_by||m.user_id,identity=encryption.identity(signerId),historical=one('SELECT public_key FROM e2ee_key_history WHERE user_id=? AND fingerprint=?',signerId,m.signer_fingerprint||'');
+    const sender=one('SELECT name FROM users WHERE id=?',m.user_id),nest=source.channel==='nest'?one('SELECT name FROM groups WHERE id=?',m.group_id):null;
+    result.can_preview=true;
+    result.context={channel:source.channel,message_id:m.id,client_id:m.client_id,sender_id:m.user_id,signer_id:signerId,sender_name:sender?.name||'Someone',context_name:nest?.name||null,group_id:m.group_id||null,conversation_id:m.conversation_id||null,content_type:m.message_kind||'chat',recipient_hash:m.recipient_hash,reply_to:m.reply_to??null,self_encrypted:!!m.self_encrypted,edit_version:m.edit_version||0,edit_client_id:m.edit_client_id||null};
+    if(approved&&m.ciphertext&&identity)result.message={ciphertext:m.ciphertext,signer_key:historical?.public_key||identity.public_key,signer_fingerprint:m.signer_fingerprint||identity.fingerprint};
+    res.json(result);
+  });
   app.patch('/api/me/notification-privacy',(req,res)=>{
     if(typeof req.body.show_previews!=='boolean')fail(400,'Choose whether to show message previews.');
     run('UPDATE users SET notification_previews=? WHERE id=?',Number(req.body.show_previews),req.user.id);refreshUser(req.user.id);

@@ -1,4 +1,4 @@
-// This generated, same-origin helper decrypts notification snippets on the phone.
+// Preview resolver v2: fresh access checks and encrypted-message recovery.
 if(typeof importScripts==='function')try{importScripts('/push-preview.js');}catch{}
 self.addEventListener('install',event=>event.waitUntil(self.skipWaiting()));
 self.addEventListener('activate',event=>event.waitUntil(self.clients.claim()));
