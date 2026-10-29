@@ -864,8 +864,19 @@ export function createApp(options = {}) {
     const host = url.hostname;
     const allowedHosts = ['fcm.googleapis.com', 'updates.push.services.mozilla.com', 'web.push.apple.com', 'wns2-par02p.notify.windows.com'];
     if (url.protocol !== 'https:' || url.port || url.username || url.password || !(allowedHosts.includes(host) || host.endsWith('.notify.windows.com') || host.endsWith('.push.apple.com') || host.endsWith('.push.services.mozilla.com'))) fail(400, 'Unsupported push provider.');
+    if(one('SELECT 1 FROM push_subscriptions WHERE endpoint=? AND user_id<>?',s.endpoint,req.user.id))run('DELETE FROM push_presence WHERE endpoint=?',s.endpoint);
     run('INSERT INTO push_subscriptions VALUES (?,?,?) ON CONFLICT(endpoint) DO UPDATE SET user_id=excluded.user_id,subscription=excluded.subscription', s.endpoint, req.user.id, JSON.stringify(s));
     res.json({ ok: true });
+  });
+  app.post('/api/push/presence',(req,res)=>{
+    const {endpoint,client_id,visible}=req.body;
+    if(typeof endpoint!=='string'||typeof client_id!=='string'||!/^[0-9a-f-]{36}$/i.test(client_id)||typeof visible!=='boolean')fail(400,'Invalid device presence.');
+    if(!one('SELECT 1 FROM push_subscriptions WHERE endpoint=? AND user_id=?',endpoint,req.user.id))fail(404,'Device subscription not found.');
+    const time=options.testing&&options.pushNow?options.pushNow():Date.now();
+    run('DELETE FROM push_presence WHERE visible_until<=?',time);
+    if(visible)run('INSERT INTO push_presence VALUES (?,?,?) ON CONFLICT(endpoint,client_id) DO UPDATE SET visible_until=excluded.visible_until',endpoint,client_id,time+45000);
+    else run('DELETE FROM push_presence WHERE endpoint=? AND client_id=?',endpoint,client_id);
+    res.json({ok:true});
   });
   app.delete('/api/push/subscribe', (req, res) => {
     if (typeof req.body.endpoint === 'string') run('DELETE FROM push_subscriptions WHERE endpoint=? AND user_id=?', req.body.endpoint, req.user.id);

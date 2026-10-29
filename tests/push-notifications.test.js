@@ -35,21 +35,20 @@ async function fixture(t){
  for(const device of ['phone','tablet'])await ok('/push/subscribe',member,'POST',{subscription:{endpoint:`https://fcm.googleapis.com/${device}`,keys:{p256dh:'fixture',auth:'fixture'}}});
  return {req,ok,actor,owner,member,nest,tree,prepare,deliveries,restart:async()=>{await stop();await start();},setTime:value=>time=value,get time(){return time;},get runtime(){return runtime;},get db(){return runtime.db;}};
 }
-test('default encrypted previews, account privacy, durable 30-second coalescing and current message access',async t=>{
+test('every message dispatches immediately; visible devices alone are suppressed until hidden or presence expires',async t=>{
  const f=await fixture(t),{owner,member,nest}=f;
- assert.equal((await f.ok('/me',member)).user.notification_previews,true);assert.equal(f.db.prepare('SELECT COUNT(*) AS n FROM e2ee_managed_keys WHERE user_id=?').get(member.id).n,0,'Self-managed preview keys never go to Churp');
- const send=async(body,channel='nest',id=nest.id)=>f.ok(channel==='nest'?`/groups/${id}/messages`:`/private/conversations/${id}/messages`,owner,'POST',await f.prepare(body,channel,id));
- const first=await send('First secret message for the lock screen');assert.equal(f.deliveries.length,2);const packet=f.deliveries[0].payload;assert.equal(packet.unread_count,1);assert.equal(packet.title,'New message on Churp');assert.equal(JSON.stringify(packet).includes('First secret'),false);assert.equal(packet.preview.sender_name,owner.name);
- assert.equal((await enc.open(member.privateKey,packet.preview.signer_key,packet.preview.ciphertext)).text,'First secret message for the lock screen');
- const q=`?channel=nest&message_id=${first.id}&client_id=${packet.preview.client_id}&sender_id=${owner.id}`;assert.equal((await f.ok('/push/privacy'+q,member)).can_preview,true);
- f.setTime(f.time+1000);await send('Second secret');await send('Third secret');assert.equal(f.deliveries.length,2);assert.equal(f.db.prepare('SELECT COUNT(*) AS n FROM pending_push_alerts').get().n,1);assert.equal(f.db.prepare('SELECT payload FROM pending_push_alerts').get().payload.includes('Third secret'),false);
- await f.restart();f.setTime(1029999);await f.runtime.push.processDue();assert.equal(f.deliveries.length,2);f.setTime(1030000);await f.runtime.push.processDue();assert.equal(f.deliveries.length,4);assert.equal(f.deliveries[2].payload.unread_count,3);assert.equal((await enc.open(member.privateKey,f.deliveries[2].payload.preview.signer_key,f.deliveries[2].payload.preview.ciphertext)).text,'Third secret');
- assert.equal((await f.req('/me/notification-privacy',member,'PATCH',{show_previews:'false'})).status,400);
- await f.ok('/me/notification-privacy',member,'PATCH',{show_previews:false});assert.equal((await f.ok('/push/privacy'+q,member)).show_previews,false);
- const cid=(await f.ok('/private/conversations',owner,'POST',{user_id:member.id})).conversation.id;await send('Private secret in another channel','private',cid);assert.equal(f.deliveries.length,4,'Cooldown is shared across Nests and private chats');f.setTime(1060000);await f.runtime.push.processDue();assert.equal(f.deliveries.length,6);assert.equal(f.deliveries[4].payload.preview,undefined);assert.equal(f.deliveries[4].payload.body,'You have a private message.');
- await f.ok('/me/notification-privacy',member,'PATCH',{show_previews:true});const read=await send('Read this before the queued alert');await f.ok(`/groups/${nest.id}/membership`,member,'PATCH',{read_to:read.id});f.setTime(1090000);await f.runtime.push.processDue();assert.equal(f.deliveries.length,6,'Read pending messages do not alert');
- const muted=await send('Before muting');assert.equal(f.deliveries.length,8);await send('Do not alert after muting');await f.ok(`/groups/${nest.id}/membership`,member,'PATCH',{muted:true});f.setTime(1120000);await f.runtime.push.processDue();assert.equal(f.deliveries.length,8);assert.equal((await f.ok('/push/privacy'+q,member)).can_preview,true,'Muting stops new dispatches without revoking access to an already delivered message');
- await f.ok(`/messages/${muted.id}`,owner,'DELETE');assert.deepEqual(f.db.prepare('PRAGMA foreign_key_check').all(),[]);
+ const send=async body=>f.ok(`/groups/${nest.id}/messages`,owner,'POST',await f.prepare(body));
+ await send('First');await send('Second');assert.equal(f.deliveries.length,4);
+ assert.equal((await enc.open(member.privateKey,f.deliveries[2].payload.preview.signer_key,f.deliveries[2].payload.preview.ciphertext)).text,'Second');
+ const client_id=randomUUID(),endpoint='https://fcm.googleapis.com/phone';
+ await f.ok('/push/presence',member,'POST',{endpoint,client_id,visible:true});await send('Only tablet');assert.equal(f.deliveries.length,5);assert.equal(f.deliveries[4].subscription.endpoint,'https://fcm.googleapis.com/tablet');
+ const other=randomUUID();await f.ok('/push/presence',member,'POST',{endpoint,client_id:other,visible:true});await f.ok('/push/presence',member,'POST',{endpoint,client_id,visible:false});await send('Another visible tab');assert.equal(f.deliveries.length,6);
+ await f.ok('/push/presence',member,'POST',{endpoint,client_id:other,visible:false});await send('Background phone');assert.equal(f.deliveries.length,8);
+ await f.ok('/push/presence',member,'POST',{endpoint,client_id,visible:true});f.setTime(f.time+45001);await send('Expired presence');assert.equal(f.deliveries.length,10);
+ assert.equal((await f.req('/push/presence',owner,'POST',{endpoint,client_id,visible:true})).status,404);
+ await f.ok('/me/notification-privacy',member,'PATCH',{show_previews:false});await send('Private alert');assert.equal(f.deliveries[10].payload.preview,undefined);
+ await f.ok(`/groups/${nest.id}/membership`,member,'PATCH',{muted:true});await send('Muted');assert.equal(f.deliveries.length,12);
+ assert.equal(f.db.prepare('SELECT COUNT(*) AS n FROM pending_push_alerts').get().n,0);assert.equal(f.db.prepare('SELECT COUNT(*) AS n FROM push_alert_windows').get().n,0);
 });
 test('preview packets reject foreign recipients and tampering before any notification is sent',async t=>{
  const f=await fixture(t),draft=await f.prepare('A signed secret');
@@ -57,12 +56,12 @@ test('preview packets reject foreign recipients and tampering before any notific
  const foreign=await enc.generateIdentity('outsider');const bad=structuredClone(draft);bad.notificationPreviews[0].ciphertext=await enc.seal(f.owner.privateKey,[foreign.publicKey],{text:'wrong audience'});
  assert.equal((await f.req(`/groups/${f.nest.id}/messages`,f.owner,'POST',bad)).status,400);assert.equal(f.deliveries.length,0);
 });
-test('failed or expired subscriptions do not consume cooldown; simultaneous sends coalesce',async t=>{
+test('expired subscriptions are removed and simultaneous sends are attempted immediately',async t=>{
  const f=await fixture(t),{member}=f;let time=2000000,count=0;
  const push=createPushNotifications({db:f.db,dataDir:join(tmpdir(),'unused'),enabled:false,send:async()=>{}});await push.notify(member.id,{});assert.equal(f.db.prepare('SELECT COUNT(*) AS n FROM push_alert_windows').get().n,0);
  // Exercise failed delivery through the same live dispatcher, without contacting a provider.
  const dir=mkdtempSync(join(tmpdir(),'churp-push-fail-'));const dispatcher=createPushNotifications({db:f.db,dataDir:dir,enabled:true,badge:()=>1,now:()=>time,autoProcess:false,send:async()=>{count++;throw Object.assign(new Error('Gone'),{statusCode:410});}});t.after(()=>{dispatcher.close();rmSync(dir,{recursive:true,force:true});});
- await Promise.all([dispatcher.notify(member.id,{title:'First'}),dispatcher.notify(member.id,{title:'Second'})]);assert.equal(count,2);assert.equal(f.db.prepare('SELECT COUNT(*) AS n FROM push_subscriptions').get().n,0);assert.equal(f.db.prepare('SELECT COUNT(*) AS n FROM push_alert_windows').get().n,0);
+ await Promise.all([dispatcher.notify(member.id,{title:'First'}),dispatcher.notify(member.id,{title:'Second'})]);assert.equal(count,4);assert.equal(f.db.prepare('SELECT COUNT(*) AS n FROM push_subscriptions').get().n,0);assert.equal(f.db.prepare('SELECT COUNT(*) AS n FROM push_alert_windows').get().n,0);
 });
 
 test('phone preview recovery handles old senders and read races without exposing plaintext, revoked access or private alerts',async t=>{

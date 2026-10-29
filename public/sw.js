@@ -1,4 +1,4 @@
-// Preview resolver v3: restore approved managed identities for background snippets.
+// Notifications v4: immediate background alerts; suppress visible-app alerts.
 if(typeof importScripts==='function')try{importScripts('/push-preview.js');}catch{}
 self.addEventListener('install',event=>event.waitUntil(self.skipWaiting()));
 self.addEventListener('activate',event=>event.waitUntil(self.clients.claim()));
@@ -18,27 +18,22 @@ async function refreshBadge(fallback){
   const badge=await response.json();await applyBadge(badge.count);
  }catch{await applyBadge(fallback);}finally{clearTimeout(timeout);}
 }
-// Late or retried provider deliveries update the existing tray item quietly.
-async function quietAlert(userId){
- if(!userId||typeof indexedDB==='undefined')return false;
- let db;
- try{
-  db=await new Promise((resolve,reject)=>{const request=indexedDB.open('churp-push-alerts',1);request.onupgradeneeded=()=>request.result.createObjectStore('alerts');request.onsuccess=()=>resolve(request.result);request.onerror=()=>reject(request.error);});
-  return await new Promise((resolve,reject)=>{const transaction=db.transaction('alerts','readwrite'),store=transaction.objectStore('alerts'),request=store.get(userId);let quiet=false;
-   request.onsuccess=()=>{const now=Date.now();quiet=typeof request.result==='number'&&now-request.result<30000;if(!quiet)store.put(now,userId);};transaction.oncomplete=()=>resolve(quiet);transaction.onerror=()=>reject(transaction.error);transaction.onabort=()=>reject(transaction.error);
-  });
- }catch{return false;}finally{db?.close();}
+// The server normally avoids pushes to visible devices. Check again for a
+// window opened after dispatch, before decrypting or displaying an alert.
+async function appVisible(){
+ try{return (await self.clients.matchAll({type:'window',includeUncontrolled:true})).some(c=>c.visibilityState==='visible'&&new URL(c.url).origin===self.location.origin&&new URL(c.url).pathname==='/');}catch{return false;}
 }
 self.addEventListener('push',event=>{
  let payload;try{payload=event.data?.json();}catch{return;}if(!payload||typeof payload!=='object')return;
- // Keep a visible notification for every message push: iOS does not support
- // using silent pushes solely to change a badge.
+ // Presence prevents foreground provider sends; this check also covers
+ // notifications already in flight when Churp becomes visible.
  event.waitUntil((async()=>{
+  if(await appVisible()){await refreshBadge(payload.unread_count);return;}
   const display=self.churpPushPreview?await self.churpPushPreview(payload):{title:payload.title||'Churp',body:payload.body};
-  const quiet=await quietAlert(payload.recipient_id);
+  if(await appVisible()){await refreshBadge(payload.unread_count);return;}
   await Promise.allSettled([
   self.registration.showNotification(display.title,{
-   body:display.body,icon:'/icons/churp-home-192.png',data:{url:payload.url||'/'},tag:'gatherly-message',renotify:!quiet,silent:quiet,
+   body:display.body,icon:'/icons/churp-home-192.png',data:{url:payload.url||'/'},tag:`churp-${payload.source?.channel||'alert'}-${payload.source?.messageId||crypto.randomUUID()}`,renotify:false,silent:false,
   }),refreshBadge(payload.unread_count),
  ]);
  })());

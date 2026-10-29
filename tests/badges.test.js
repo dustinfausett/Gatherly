@@ -31,10 +31,10 @@ test('badges count messages across joined Trees, respecting mute, read, membersh
  await f.ok(`/groups/${nestB.id}/messages`,owner,'POST',{body:'Not a member anymore'});await f.ok(`/groups/${nestB.id}/join`,bob,'DELETE');assert.equal((await f.ok('/badges',bob)).count,0);assert.ok(first.id<second.id);
  const youth=await f.actor('youth','2011-01-01');assert.equal((await f.ok('/badges',youth)).count,0);
 });
-async function worker({count=4,offline=false,status=200,fallback=9,unsupported=false,denied=false}={}){
+async function worker({visible=false,count=4,offline=false,status=200,fallback=9,unsupported=false,denied=false}={}){
  const handlers={},calls={set:[],clear:0,notifications:[]};let waited;
- const self={navigator:unsupported?{}:{setAppBadge:async n=>{if(denied)throw new Error('Denied');calls.set.push(n);},clearAppBadge:async()=>{calls.clear++;}},registration:{showNotification:async(...a)=>calls.notifications.push(a)},addEventListener:(name,fn)=>handlers[name]=fn};
- runInNewContext(readFileSync(new URL('../public/sw.js',import.meta.url),'utf8'),{self,URL,AbortController,setTimeout,clearTimeout,fetch:async(path,options)=>{assert.equal(path,'/api/badges');assert.equal(options.credentials,'include');assert.equal(options.cache,'no-store');if(offline)throw new Error('Offline');return {ok:status===200,status,json:async()=>({count})};}});
+ const self={location:{origin:'https://app.churptree.com'},clients:{matchAll:async()=>visible?[{visibilityState:'visible',url:'https://app.churptree.com/'}]:[]},navigator:unsupported?{}:{setAppBadge:async n=>{if(denied)throw new Error('Denied');calls.set.push(n);},clearAppBadge:async()=>{calls.clear++;}},registration:{showNotification:async(...a)=>calls.notifications.push(a)},addEventListener:(name,fn)=>handlers[name]=fn};
+ runInNewContext(readFileSync(new URL('../public/sw.js',import.meta.url),'utf8'),{self,crypto:{randomUUID:()=> 'test-alert'},URL,AbortController,setTimeout,clearTimeout,fetch:async(path,options)=>{assert.equal(path,'/api/badges');assert.equal(options.credentials,'include');assert.equal(options.cache,'no-store');if(offline)throw new Error('Offline');return {ok:status===200,status,json:async()=>({count})};}});
  handlers.push({data:{json:()=>({title:'Churp',body:'A new message',unread_count:fallback})},waitUntil:p=>waited=p});await waited;return calls;
 }
 test('closed-app push badges use authoritative totals; offline uses payload, expired login clears, notifications remain visible',async()=>{
@@ -43,6 +43,9 @@ test('closed-app push badges use authoritative totals; offline uses payload, exp
  calls=await worker({status:401});assert.equal(calls.clear,1);assert.deepEqual(calls.set,[]);
  calls=await worker({count:0});assert.equal(calls.clear,1);
  for(const options of [{unsupported:true},{denied:true},{offline:true,fallback:-1}]){calls=await worker(options);assert.equal(calls.notifications.length,1);assert.deepEqual(calls.set,[]);}
+});
+test('visible Churp suppresses push alerts while keeping unread badges current',async()=>{
+ const calls=await worker({visible:true});assert.equal(calls.notifications.length,0);assert.deepEqual(calls.set,[4]);
 });
 test('fresh Home Screen assets have real icon dimensions and opaque backgrounds; installed app identity is retained',()=>{
  const manifest=JSON.parse(readFileSync(new URL('../public/manifest.webmanifest',import.meta.url)));assert.equal(manifest.id,'/');assert.equal(manifest.start_url,'/');

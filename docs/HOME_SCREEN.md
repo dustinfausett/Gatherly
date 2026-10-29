@@ -30,4 +30,4 @@ The new app icon, Apple touch icon and push notification icon share the same gre
 
 Tests cover totals, authorization, mute/read/delete/leave behavior, private and SMS unread state, service-worker push/offline/session handling, icon dimensions, feature fallback, browser reads and logout. Browser tests mock the platform Badging API; physical iPhone/Home Screen display still needs verification on a device with push permission.
 
-Phone alerts now show sender/message previews by default. Turn off **Your corner → Security → Show message previews** for generic private alerts. Bursts are coalesced on the server into at most one alert every 30 seconds, and the worker quietly replaces delayed duplicates. See [push notification privacy and cooldown](PUSH-NOTIFICATIONS.md).
+Phone alerts now show sender/message previews by default. Turn off **Your corner → Security → Show message previews** for generic private alerts. Push alerts are suppressed while Churp is visible on that device. Background and closed devices receive eligible messages without a cooldown. See [push notification privacy and foreground behavior](PUSH-NOTIFICATIONS.md).

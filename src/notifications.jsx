@@ -32,8 +32,22 @@ function useDeviceNotifications(user){
  const [state,setState]=useState({loaded:false,subscribed:false,preferred:notificationPreferred(user.id),dismissed:!!read(user.id).dismissed});
  useEffect(()=>{let active=true;const update=async()=>{let subscription=null;try{subscription=await (await navigator.serviceWorker?.getRegistration())?.pushManager?.getSubscription();}catch{}if(active)setState({loaded:true,subscribed:!!subscription,preferred:notificationPreferred(user.id),dismissed:!!read(user.id).dismissed});};update();window.addEventListener(event,update);return()=>{active=false;window.removeEventListener(event,update);};},[user.id]);return state;
 }
+function useForegroundPresence(user,subscribed){
+ useEffect(()=>{
+  if(!subscribed)return;let endpoint,stopped=false;const client_id=crypto.randomUUID();
+  const update=()=>{if(!endpoint)return;const body={endpoint,client_id,visible:!stopped&&document.visibilityState==='visible'};
+   if(!body.visible&&navigator.sendBeacon?.('/api/push/presence',new Blob([JSON.stringify(body)],{type:'application/json'})))return;
+   post('/push/presence',body).catch(()=>{});
+  };
+  const hide=()=>{stopped=true;update();},show=()=>{stopped=false;update();};
+  navigator.serviceWorker.getRegistration().then(r=>r?.pushManager.getSubscription()).then(s=>{if(!stopped&&s){endpoint=s.endpoint;update();}}).catch(()=>{});
+  document.addEventListener('visibilitychange',update);window.addEventListener('pagehide',hide);window.addEventListener('pageshow',show);const timer=setInterval(update,15000);
+  return()=>{stopped=true;update();clearInterval(timer);document.removeEventListener('visibilitychange',update);window.removeEventListener('pagehide',hide);window.removeEventListener('pageshow',show);};
+ },[user.id,subscribed]);
+}
 export function DeviceNotifications({user,config}){
  const state=useDeviceNotifications(user),[busy,setBusy]=useState(false),[error,setError]=useState('');
+ useForegroundPresence(user,state.subscribed);
  useEffect(()=>{if(config.vapidPublicKey&&supported()&&notificationPreferred(user.id)&&Notification.permission==='granted')enableDeviceNotifications(user,config).catch(()=>{});},[user.id,config.vapidPublicKey]);
  if(!state.loaded||!state.preferred||state.subscribed||state.dismissed||!config.vapidPublicKey||!supported()||Notification.permission==='denied')return null;
  return <aside className="device-notification-prompt" aria-label="Enable device notifications"><p>Keep up with your Nests. Allow notifications on this device; you can mute any Nest.</p><div className="button-row"><button className="button primary small" disabled={busy} onClick={async()=>{setBusy(true);setError('');try{await enableDeviceNotifications(user,config,true);}catch(e){setError(e.message);}finally{setBusy(false);}}}><Bell size={16}/>{busy?'Enabling…':'Enable notifications'}</button><button className="text-button" onClick={()=>save(user.id,{dismissed:true})}>Not now</button></div>{error&&<p role="status">{error}</p>}</aside>;
@@ -46,5 +60,5 @@ export function NotificationScreen({user,config}){
 export function NotificationPrivacySettings({user,onAccountUpdate}){
  const [enabled,setEnabled]=useState(user.notification_previews!==false),[busy,setBusy]=useState(false),[error,setError]=useState('');
  useEffect(()=>setEnabled(user.notification_previews!==false),[user.notification_previews]);
- return <section className="settings-section notification-privacy"><h4>Notification privacy</h4><label className="toggle-row"><span><strong>Show message previews</strong><small>Show who sent a message and its first few words in phone notifications. Turn this off to keep those details private.</small></span><input className="visually-hidden" type="checkbox" aria-label="Show message previews" checked={enabled} disabled={busy} onChange={async event=>{const next=event.target.checked;setEnabled(next);setBusy(true);setError('');try{const result=await api('/me/notification-privacy',{method:'PATCH',body:{show_previews:next}});onAccountUpdate(result.user);}catch(e){setEnabled(!next);setError(e.message);}finally{setBusy(false);}}}/><span className={`toggle ${enabled?'checked':''}`} aria-hidden="true"><span/></span></label><p className="small-text muted">Applies to future alerts on all your devices. Alerts are limited to one every 30 seconds; messages arriving together are combined into the next alert. Messages still arrive in your chats immediately.</p>{error&&<p className="error-banner" role="alert">{error}</p>}</section>;
+ return <section className="settings-section notification-privacy"><h4>Notification privacy</h4><label className="toggle-row"><span><strong>Show message previews</strong><small>Show who sent a message and its first few words in phone notifications. Turn this off to keep those details private.</small></span><input className="visually-hidden" type="checkbox" aria-label="Show message previews" checked={enabled} disabled={busy} onChange={async event=>{const next=event.target.checked;setEnabled(next);setBusy(true);setError('');try{const result=await api('/me/notification-privacy',{method:'PATCH',body:{show_previews:next}});onAccountUpdate(result.user);}catch(e){setEnabled(!next);setError(e.message);}finally{setBusy(false);}}}/><span className={`toggle ${enabled?'checked':''}`} aria-hidden="true"><span/></span></label><p className="small-text muted">Applies to future alerts on all your devices. Push alerts are hidden while Churp is visible on this device. When Churp is in the background or closed, each new message can notify you without a cooldown.</p>{error&&<p className="error-banner" role="alert">{error}</p>}</section>;
 }

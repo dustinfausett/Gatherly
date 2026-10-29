@@ -26,3 +26,9 @@ test('already-approved devices connect automatically; explicit device opt-out pr
 test('a saved opt-out is respected even with browser permission granted',async({page})=>{
  await setup(page,'granted',true);await settings(page);await expect(page.getByRole('button',{name:'Enable device notifications',exact:true})).toBeVisible();expect(await page.evaluate(()=>window.pushFixture)).toMatchObject({requests:0,subscriptions:0,posts:0});
 });
+test('a subscribed device reports visible, hidden and visible-again presence without changing other devices',async({page})=>{
+ const updates=[];await page.route('**/api/push/presence',async route=>{updates.push(route.request().postDataJSON());await route.fulfill({json:{ok:true}});});
+ await setup(page,'granted');await expect.poll(()=>updates.at(-1)?.visible).toBe(true);expect(updates[0].endpoint).toBe('https://fcm.googleapis.com/fake-churp-device');
+ const client=updates[0].client_id;await page.evaluate(()=>{Object.defineProperty(document,'visibilityState',{configurable:true,value:'hidden'});document.dispatchEvent(new Event('visibilitychange'));});await expect.poll(()=>updates.at(-1)?.visible).toBe(false);
+ await page.evaluate(()=>{Object.defineProperty(document,'visibilityState',{configurable:true,value:'visible'});document.dispatchEvent(new Event('visibilitychange'));});await expect.poll(()=>updates.at(-1)?.visible).toBe(true);expect(updates.every(x=>x.client_id===client)).toBe(true);
+});

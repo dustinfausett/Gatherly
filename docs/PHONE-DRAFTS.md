@@ -30,7 +30,7 @@ Opening the link records only **Opening requested · send not confirmed**. **I s
 
 ## Scheduling
 
-Churp messages retain automatic scheduled delivery and faded sender-only previews in their conversations. Phone-only destinations instead have **reminders**: the saved draft becomes ready at the chosen time and Churp queues one generic device notification through the existing notification preferences and 30-second cooldown. Notification delivery depends on normal browser/device support, permissions and server availability. No provider text is sent and no phone messaging app is opened automatically. Reminders persist across server restarts and are also shown under **Your corner → Scheduled messages → Phone draft reminders**. Edit, reschedule or cancel there or from Phone drafts. The user still reviews and sends manually.
+Churp messages retain automatic scheduled delivery and faded sender-only previews in their conversations. Phone-only destinations instead have **reminders**: the saved draft becomes ready at the chosen time and Churp queues one generic device notification through the existing notification preferences and per-device foreground suppression. Notification delivery depends on normal browser/device support, permissions and server availability. No provider text is sent and no phone messaging app is opened automatically. Reminders persist across server restarts and are also shown under **Your corner → Scheduled messages → Phone draft reminders**. Edit, reschedule or cancel there or from Phone drafts. The user still reviews and sends manually.
 
 ## Permissions and storage
 

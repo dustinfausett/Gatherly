@@ -1,5 +1,4 @@
 import * as enc from './encryption.js';
-export const PUSH_COOLDOWN_MS=30000;
 export function previewText(body,attachments=[],kind='chat'){
  let text=typeof body==='string'?body:'';
  if(['poll','rsvp','assignments'].includes(kind)){try{text=`${{poll:'Poll',rsvp:'RSVP',assignments:'Assignments'}[kind]}: ${JSON.parse(text).title||''}`;}catch{text='New shared item';}}

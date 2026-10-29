@@ -428,6 +428,10 @@ export function openDatabase(path) {
   db.exec(`CREATE TABLE IF NOT EXISTS push_alert_windows (
     user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,last_alert_at INTEGER NOT NULL,token TEXT NOT NULL
   );
+  CREATE TABLE IF NOT EXISTS push_presence (
+    endpoint TEXT NOT NULL REFERENCES push_subscriptions(endpoint) ON DELETE CASCADE,
+    client_id TEXT NOT NULL,visible_until INTEGER NOT NULL,PRIMARY KEY(endpoint,client_id)
+  );
   CREATE TABLE IF NOT EXISTS pending_push_alerts (
     user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,due_at INTEGER NOT NULL,payload TEXT NOT NULL
   );`);
