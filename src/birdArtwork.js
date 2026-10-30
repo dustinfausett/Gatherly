@@ -26,7 +26,7 @@ export function birdFrame(bird, pose) {
   const [left,top,right,bottom] = HOLIDAY_ART[bird.id]?.frames[col] || sheets[bird.collection][bird.row][col];
   // The long hummingbird beak reaches into its neighbor's square; keep its
   // outline while excluding the neighboring wing and beak respectively.
-  const clip = bird.id !== 'hummingbird' ? null : col === 1
+  const clip = bird.id==='goose' ? (col===1?'M414 109H860V320H814V612H414Z':col===2?'M860 200H1254V660H810V330H860Z':null) : bird.id !== 'hummingbird' ? null : col === 1
     ? 'M326 945H626V1008H670V1040H626V1201H326Z'
     : col === 2 ? 'M670 998H966V1208H623V1044H670Z' : null;
   return { src:HOLIDAY_ART[bird.id]?.src || `/brand/birds/${bird.collection}.png`, x:left-2, y:top-2, width:right-left+4, height:bottom-top+4, clip };

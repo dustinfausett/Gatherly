@@ -16,3 +16,5 @@ Each transparent 1254 × 1254 sheet has perched, wings-up, wings-down and landin
 | [thanksgiving.png](thanksgiving.png) | Gold, autumn leaves, russet vest and scarf | Pumpkin pie |
 
 Pose viewports and food/beak/feet coordinates live in `src/holidayArtwork.js`. The existing flight and continuous feeding animations consume the same sheet. Annual availability are documented in [PET-FEEDING.md](../../../docs/PET-FEEDING.md).
+
+`goose.png` is the intact generated transparent atlas for the secret Goose pet: standing, wings-up, wings-down and landing poses, plus a lettuce-and-pea bowl and a lettuce bite. The existing SVG viewports, flight and continuous feeding motion consume it. It is not seasonal. Only the exact `Goose` code reveals and unlocks this pet for the account; the normal collection code excludes it.

@@ -33,7 +33,7 @@ test('account bird selection, protected code unlocks and photo migration persist
   await ok(`/groups/${nest.id}/join`,member,'POST');
 
   await t.test('only included birds are available until a valid account unlock',async()=>{
-    assert.equal(BIRDS.length,18);assert.equal(new Set(BIRDS.map(b=>b.id)).size,18);
+    assert.equal(BIRDS.length,19);assert.equal(new Set(BIRDS.map(b=>b.id)).size,19);
     assert.equal(owner.bird_id,'blue');assert.equal(owner.avatar_style,'portrait');assert.deepEqual(owner.unlocked_birds,['blue','gold','christmas']);
     assert.equal((await req('/me',owner,'PATCH',{bird_id:'parrot',avatar_style:'bird',unlocked_birds:['parrot']})).status,403);
     assert.equal((await req('/me',owner,'PATCH',{bird_id:'not-a-bird'})).status,400);
@@ -108,4 +108,17 @@ test('account bird selection, protected code unlocks and photo migration persist
     assert.deepEqual((await ok('/me',member)).user.unlocked_birds,['blue','gold','christmas']);
     assert.deepEqual(runtime.db.prepare('PRAGMA foreign_key_check').all(),[]);
   });
+  await t.test('Goose stays absent until its own exact code is redeemed and persists only for that account',async()=>{
+    const keeper=await register('goose_keeper');
+    assert.equal(keeper.visible_birds.includes('goose'),false);
+    assert.equal((await req('/me',keeper,'PATCH',{bird_id:'goose',unlocked_birds:['goose'],visible_birds:['goose']})).status,403);
+    await ok('/me/birds/unlock',keeper,'POST',{code:'Churp'});assert.equal((await ok('/me',keeper)).user.visible_birds.includes('goose'),false);
+    assert.equal((await req('/me/birds/unlock',keeper,'POST',{code:'goose'})).status,400);
+    for(let i=0;i<2;i++){const u=(await ok('/me/birds/unlock',keeper,'POST',{code:'Goose'})).user;assert.equal(u.visible_birds.includes('goose'),true);assert.equal(u.unlocked_birds.includes('goose'),true);}
+    assert.equal(runtime.db.prepare("SELECT COUNT(*) AS n FROM bird_unlocks WHERE user_id=? AND bird_id='goose'").get(keeper.id).n,1);
+    assert.equal((await ok('/me',keeper,'PATCH',{bird_id:'goose'})).user.bird_id,'goose');
+    await stop();await start();const saved=(await ok('/me',keeper)).user;assert.equal(saved.bird_id,'goose');assert.equal(saved.visible_birds.includes('goose'),true);
+    assert.equal((await ok('/me',member)).user.visible_birds.includes('goose'),false);
+  });
+
 });

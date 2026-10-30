@@ -38,3 +38,7 @@ Only one feeding runs at a time. Animations stop cleanly on resize, a motion pre
 ## Checks
 
 `e2e/pet-feeding.spec.js` exercises the publicly available pets, intermediate animation transforms, snack artwork, repeat feeding, keyboard access, minimum touch size, reduced motion, absence of visible captions and navigation cleanup across desktop and phone layouts. It captures the bluebird, parrot, owl, hummingbird and Christmas Bird while eating. The existing bird collection and flight checks cover unlocks, independent avatars, flights and accurate Nest landings. `e2e/holiday-pets.spec.js` separately checks currently available holiday birds through an ordinary account: visible enabled choices, saved selection, all flight poses, Nest residency, smooth feeding, matching food, reload persistence and phone layout.
+
+## Secret Goose
+
+The Goose is hidden from the pet picker until that account enters `Goose` in **Your corner → My pet → Unlock with a code**. The normal collection code does not unlock it. The account-specific unlock persists across sign-ins and restarts, and selection is enforced by the server. Once unlocked it is available year-round, flies into Nests, and eats generated lettuce and peas with the existing smooth feeding animation. `public/brand/birds/goose.png` is the original generated atlas, stored intact in GitHub.

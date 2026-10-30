@@ -12,6 +12,7 @@ export const BIRDS = [
   { id: 'robin', name: 'Robin', collection: 'woodland', row: 1 },
   { id: 'cardinal', name: 'Cardinal', collection: 'woodland', row: 2 },
   { id: 'hummingbird', name: 'Hummingbird', collection: 'woodland', row: 3 },
+  { id: 'goose', name: 'Goose', collection: 'goose', row: 0, secret: true },
   { id: 'christmas', name: 'Christmas Bird', free: true, collection: 'christmas', row: 0, seasonal: true },
   { id: 'valentine', name: 'Valentine Bird', free: true, collection: 'valentine', row: 0, seasonal: true },
   { id: 'st-patrick', name: 'St. Patrick’s Bird', free: true, collection: 'st-patrick', row: 0, seasonal: true },
@@ -61,12 +62,12 @@ export function seasonalLabel(bird,date=new Date()) {
  const format=value=>new Intl.DateTimeFormat('en-US',{timeZone:'UTC',month:'short',day:'numeric'}).format(new Date(value));
  return `${format(window.start)}–${format(window.end)}`;
 }
-export function birdStatus(bird,date=new Date()) {
- if(!bird)return 'hidden';
+export function birdStatus(bird,date=new Date(),earned=[]) {
+ if(!bird||bird.secret&&!earned.includes(bird.id))return 'hidden';
  if(!bird.seasonal)return 'available';
  const window=seasonalWindow(bird,date),today=dateKey(localCalendar(date));
  if(!window||today<window.preview||today>window.end)return 'hidden';
  return today<window.start?'preview':'available';
 }
-export const birdIsAvailable=(bird,date=new Date())=>birdStatus(bird,date)==='available';
-export const birdIsVisible=(bird,date=new Date())=>birdStatus(bird,date)!=='hidden';
+export const birdIsAvailable=(bird,date=new Date(),earned=[])=>birdStatus(bird,date,earned)==='available';
+export const birdIsVisible=(bird,date=new Date(),earned=[])=>birdStatus(bird,date,earned)!=='hidden';

@@ -77,15 +77,16 @@ export function createApp(options = {}) {
   const all = (sql, ...args) => db.prepare(sql).all(...args);
   const run = (sql, ...args) => db.prepare(sql).run(...args);
   const birdNow=()=>options.testing&&options.birdNow?options.birdNow():new Date();
-  const birdAvailable=bird=>birdIsAvailable(bird,birdNow());
-  const activeBird=id=>birdAvailable(getBird(id))?id:'blue';
+  const earnedBirds=userId=>all('SELECT bird_id FROM bird_unlocks WHERE user_id=?',userId).map(b=>b.bird_id);
+  const birdAvailable=(bird,userId)=>birdIsAvailable(bird,birdNow(),bird?.secret&&userId?earnedBirds(userId):[]);
+  const activeBird=(id,userId)=>birdAvailable(getBird(id),userId)?id:'blue';
   const unlockedBirds = userId => {
     const earned = new Set(all('SELECT bird_id FROM bird_unlocks WHERE user_id=?', userId).map(b => b.bird_id));
-    return BIRDS.filter(b => birdAvailable(b)&&(b.free || earned.has(b.id))).map(b => b.id);
+    return BIRDS.filter(b => birdAvailable(b,userId)&&(b.free || earned.has(b.id))).map(b => b.id);
   };
   let family;
   const publicUser = u => ({ family:family?.summary(u.id), has_password:!!u.password,has_google:!!u.google_id,google_email:u.google_email || null,recovery_email:u.email || null,recovery_email_verified:!!u.email_verified_at,pending_recovery_email:u.pending_email || null,notification_previews:!!u.notification_previews,id: u.id, username: u.username, name: u.name, avatar_id: u.avatar_id,
-    bird_id: activeBird(u.bird_id), visible_birds:BIRDS.filter(b=>birdIsVisible(b,birdNow())).map(b=>b.id), bird_seasons:Object.fromEntries(BIRDS.filter(b=>b.seasonal).map(b=>[b.id,seasonalLabel(b,birdNow())])), avatar_choice:u.avatar_choice, avatar_style: u.avatar_style, unlocked_birds: unlockedBirds(u.id), last_community_id: u.last_community_id });
+    bird_id: activeBird(u.bird_id,u.id), visible_birds:BIRDS.filter(b=>birdIsVisible(b,birdNow(),b.secret?earnedBirds(u.id):[])).map(b=>b.id), bird_seasons:Object.fromEntries(BIRDS.filter(b=>b.seasonal).map(b=>[b.id,seasonalLabel(b,birdNow())])), avatar_choice:u.avatar_choice, avatar_style: u.avatar_style, unlocked_birds: unlockedBirds(u.id), last_community_id: u.last_community_id });
   const transaction = fn => {
     db.exec('BEGIN');
     try { const result = fn(); db.exec('COMMIT'); return result; }
@@ -291,9 +292,10 @@ export function createApp(options = {}) {
   const assignments=installAssignments({app,db,encryption,encryptionRequired,visibleCircle,joined,groupAdmin,transaction,refresh,testing:options.testing});
   app.post('/api/me/birds/unlock', rateLimit({ windowMs: 15 * 60 * 1000, limit: options.testing ? 1000 : 10,
     keyGenerator: req => req.user.id, message: { error: 'Too many code attempts. Please try again in 15 minutes.' } }), (req, res) => {
-    if (typeof req.body.code !== 'string' || req.body.code.trim() !== (process.env.BIRD_UNLOCK_CODE || 'Churp')) fail(400, 'That code was not recognized. Please try again.');
+    const code=typeof req.body.code==='string'?req.body.code.trim():null;
+    if(code!=='Goose'&&code!==(process.env.BIRD_UNLOCK_CODE||'Churp'))fail(400,'That code was not recognized. Please try again.');
     transaction(() => {
-      for (const bird of BIRDS.filter(b => !b.free)) run("INSERT OR IGNORE INTO bird_unlocks(user_id,bird_id,source) VALUES (?,?,'code')",req.user.id,bird.id);
+      for (const bird of BIRDS.filter(b => code==='Goose'?b.id==='goose':!b.free&&!b.secret)) run("INSERT OR IGNORE INTO bird_unlocks(user_id,bird_id,source) VALUES (?,?,'code')",req.user.id,bird.id);
     });
     refreshUser(req.user.id);
     res.json({ user: publicUser(req.user) });
@@ -301,9 +303,9 @@ export function createApp(options = {}) {
   app.patch('/api/me', (req, res) => {
     const name = req.body.name === undefined ? req.user.name : text(req.body.name, 'Display name');
     const avatarId = req.body.avatar_id === undefined ? req.user.avatar_id : avatar(req.user.id, req.body.avatar_id);
-    const birdId = req.body.bird_id === undefined ? activeBird(req.user.bird_id) : req.body.bird_id;
+    const birdId = req.body.bird_id === undefined ? activeBird(req.user.bird_id,req.user.id) : req.body.bird_id;
     if (!getBird(birdId)) fail(400, 'Choose a bird from the collection.');
-    if (!birdAvailable(getBird(birdId))) fail(403,`${getBird(birdId).name} is not currently available. Its holiday season is ${seasonalLabel(getBird(birdId),birdNow())}.`);
+    if (!birdAvailable(getBird(birdId),req.user.id)) fail(403,`${getBird(birdId).name} is not currently available. Its holiday season is ${seasonalLabel(getBird(birdId),birdNow())}.`);
     if (!unlockedBirds(req.user.id).includes(birdId)) fail(403, 'Unlock this bird before selecting it.');
     const style = req.body.avatar_style ?? (req.body.avatar_id === undefined ? req.user.avatar_style : 'photo');
     // Older open clients may still send 'bird'; keep their pet separate from the portrait.
