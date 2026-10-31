@@ -2,9 +2,9 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Modal,Field } from './components';
 import { api } from './api';
 import { useEncryption } from './encryption/EncryptionGate';
-import { sealEdit } from './encryption/client';
+import { sealEdit,sealPrivateEdit } from './encryption/client';
 
-export default function MessageEditor({ message,onClose,onSaved }) {
+export default function MessageEditor({ message,onClose,onSaved,privateChat=false }) {
   const {enabled}=useEncryption();
   const [body,setBody]=useState(message.body),[busy,setBusy]=useState(false),[error,setError]=useState('');
   const editor=useRef(null),prepared=useRef(null);
@@ -14,8 +14,8 @@ export default function MessageEditor({ message,onClose,onSaved }) {
     event?.preventDefault();if(busy || !canSave)return;
     setBusy(true);setError('');
     try{
-      if(prepared.current?.body!==body)prepared.current={body,request:enabled ? await sealEdit(message,body) : {body,expectedVersion:message.edit_version || 0}};
-      await api(`/messages/${message.id}/content`,{method:'PUT',body:prepared.current.request});
+      if(prepared.current?.body!==body)prepared.current={body,request:enabled ? await (privateChat?sealPrivateEdit:sealEdit)(message,body) : {body,expectedVersion:message.edit_version || 0}};
+      await api(`${privateChat?'/private':''}/messages/${message.id}/content`,{method:'PUT',body:prepared.current.request});
       await onSaved();onClose();
     }catch(e){if(e.status===409)prepared.current=null;setError(e.message);}
     finally{setBusy(false);}

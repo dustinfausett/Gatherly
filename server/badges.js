@@ -12,7 +12,7 @@ export function createBadges({db,family,encryptionRequired,smsUnread}){
    WHERE gm.user_id=? AND gm.muted=0`).get(uid,uid,uid).n;
   const conversations=db.prepare(`SELECT c.*,COUNT(m.id) AS unread FROM private_conversations c
    JOIN private_messages m ON m.conversation_id=c.id AND (m.user_id<>? OR c.user_low=c.user_high) AND m.id>CASE WHEN c.user_low=? THEN c.read_low ELSE c.read_high END
-   WHERE (c.user_low=? OR c.user_high=?) AND c.blocked_low=0 AND c.blocked_high=0 AND m.removed_by IS NULL GROUP BY c.id`).all(uid,uid,uid,uid);
+   WHERE (c.user_low=? OR c.user_high=?) AND c.blocked_low=0 AND c.blocked_high=0 AND m.removed_by IS NULL AND m.deleted=0 GROUP BY c.id`).all(uid,uid,uid,uid);
   const privateCount=conversations.filter(c=>!family.parentBlocked(c)&&family.pairAllowed(c.user_low,c.user_high)).reduce((n,c)=>n+c.unread,0);
   const sms=smsUnread(uid);
   return {count:nests+privateCount+sms,nests,private:privateCount,sms};

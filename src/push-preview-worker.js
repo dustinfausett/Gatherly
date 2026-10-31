@@ -92,7 +92,7 @@ self.churpPushPreview=async payload=>{
   }
   const value=await decrypt(message.signer_key,message.ciphertext);
   if(value.version!==1||value.clientId!==c.client_id||value.senderId!==c.sender_id||value.rosterHash!==c.recipient_hash||typeof value.body!=='string'||value.body.length>10000||!Array.isArray(value.attachments)||value.attachments.length>5)return display;
-  if(c.channel==='nest'?(value.kind!=='nest-message'||value.groupId!==c.group_id||value.signerId!==c.signer_id||value.replyTo!==c.reply_to||!!value.migrated!==c.client_id.startsWith('legacy-')||(value.editVersion||0)!==c.edit_version||(c.edit_version>0&&(value.editMessageId!==c.message_id||value.editClientId!==c.edit_client_id))):(value.kind!=='private-message'||value.conversationId!==c.conversation_id||value.selfEncrypted!==c.self_encrypted))return display;
+  if(c.channel==='nest'?(value.kind!=='nest-message'||value.groupId!==c.group_id||value.signerId!==c.signer_id||value.replyTo!==c.reply_to||!!value.migrated!==c.client_id.startsWith('legacy-')||(value.editVersion||0)!==c.edit_version||(c.edit_version>0&&(value.editMessageId!==c.message_id||value.editClientId!==c.edit_client_id))):(value.kind!=='private-message'||value.conversationId!==c.conversation_id||value.selfEncrypted!==c.self_encrypted||(value.editVersion||0)!==c.edit_version||(c.edit_version>0&&(value.editMessageId!==c.message_id||value.editClientId!==c.edit_client_id))))return display;
   return {...display,body:previewText(value.body,value.attachments,value.contentType||c.content_type)||'New message'};
  }catch{return display;}finally{clearTimeout(timer);}
 };

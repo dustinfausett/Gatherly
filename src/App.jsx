@@ -1,3 +1,4 @@
+import useMobileKeyboard from './useMobileKeyboard';
 import {useAppBadge} from './app-badge';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Asterisk, ArrowRight, BellOff, Check, ChevronDown, ChevronRight, Info, ClipboardCheck, Heart, Link, Menu, Plus, Search, Settings2, Sprout, Users, X } from 'lucide-react';
@@ -30,6 +31,7 @@ const invited = initialParams.get('invite');
 if (invited) sessionStorage.setItem('gatherly_invite', invited);
 
 export default function App() {
+  const keyboard=useMobileKeyboard();
   const [accountAction,setAccountAction]=useState(()=>initialParams.get('reset_password')?{kind:'reset',token:initialParams.get('reset_password')}:initialParams.get('verify_email')?{kind:'verify',token:initialParams.get('verify_email')}:null);
   const [user, setUser] = useState(null), [booting, setBooting] = useState(true), [config, setConfig] = useState({});
   const [communities, setCommunities] = useState([]), [community, setCommunity] = useState(null);
@@ -155,7 +157,7 @@ export default function App() {
   if (!user && error) return <div className="boot-screen"><Logo /><p className="error-banner">{error}</p><button className="button primary" onClick={boot}>Try again</button></div>;
   if(accountAction)return <AccountLink action={accountAction} onDone={async reset=>{setAccountAction(null);if(reset)setUser(null);await boot();}}/>;
   if (!user) return <Auth config={config} onLogin={(u,notice) => { if(notice)notify(notice);setUser(u); setView({ cid: u.last_community_id, gid: null }); }} />;
-  return <EncryptionGate key={user.id} user={user} required={!!config.encryptionRequired} onLogout={logout}><FamilyGate user={user} onUser={setUser} onLogout={logout}><div className={`app phase-one ${tab==='tree'&&group ? 'showing-chat' : ''} ${journey ? 'bird-in-transit' : ''}`} style={{'--nest-entry-duration':`${NEST_MOTION.slide}ms`}}>
+  return <EncryptionGate key={user.id} user={user} required={!!config.encryptionRequired} onLogout={logout}><FamilyGate user={user} onUser={setUser} onLogout={logout}><div className={`app phase-one ${keyboard.open?'keyboard-open':''} ${tab==='tree'&&group ? 'showing-chat' : ''} ${journey ? 'bird-in-transit' : ''}`} style={{'--nest-entry-duration':`${NEST_MOTION.slide}ms`,'--keyboard-viewport-height':`${keyboard.height}px`,'--keyboard-top':`${keyboard.top}px`}}>
     <DeviceNotifications user={user} config={config}/>
     <header className="topbar"><div className="brand-zone"><button className="icon-button mobile-only" aria-label="Open navigation" onClick={() => setMobileNav(true)}><Menu size={22} /></button><span className={community&&tab==='tree' ? 'desktop-logo' : ''}><Logo /></span>{community&&tab==='tree' && <div className="mobile-community-switcher" ref={mobileSwitcherRef}>
         <button className="mobile-community-button" aria-label="My Orchard" aria-expanded={mobileSwitcher} onClick={() => setMobileSwitcher(!mobileSwitcher)}><Avatar name={community.name} id={community.avatar_id} size={30} square /><span><strong>{community.name}</strong><small>YOUR TREE</small></span><ChevronDown size={13} /></button>

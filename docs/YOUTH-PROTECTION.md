@@ -66,3 +66,9 @@ New adult–youth conversations, in either direction, allow one first message fo
 Parents can block and unblock a conversation. A parent block stops new sends and hides that child's conversation history, attachments and shared-item access; parents retain review access. A child's own block remains independent and is not cleared by parent unblocking. Parents can also hold a message and choose **Remove from conversation**: participants see a removed-content placeholder and lose attachment access, while parent review retains the original content. Previously downloaded copies cannot be recalled. Parent powers and blocks stop applying once the child turns 18.
 
 Member lists in Trees, Nests and the Tree contact picker can open direct conversations, including protected accounts. Nest member counts use the branded member artwork and open the actual Nest roster. Self-notes are allowed; youth self-notes retain linked-parent access.
+
+## Private edits and deletion
+
+Authors can edit their own approved, unblocked private messages using signed, versioned updates that preserve attachments and current authorized readers. First messages awaiting parent approval cannot be edited during review. Edits do not send another push alert. Deleting replaces a message with a tombstone for participants and removes participant access to its attachments unless another authorized message shares the file.
+
+For supervised conversations, deleted content remains readable to linked parents. Earlier edited versions are retained encrypted with their original signatures and per-parent copies. Hold an edited message in parent review and choose **View edit history**. Active family links and per-version reader permissions still apply. Parents cannot send or edit as the child. Already downloaded content cannot be recalled.

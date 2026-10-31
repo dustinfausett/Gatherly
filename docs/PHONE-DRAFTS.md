@@ -4,7 +4,7 @@ Twilio/provider sending is retired. Production forces the old SMS integration to
 
 ## Compose
 
-**Messages → Compose → New Message / Send Many Individually** reuses the existing Tree, optional Nest, Contacts and Birdhouse selectors. Linked, authorized Churp members receive separate encrypted private messages through the existing private-chat service. Phone-only saved contacts get separate drafts, not automatic sends. A linked Churp contact never falls back to phone texting after an error, block or missing parent approval. Recipients do not see the other selected people. The combined composition supports up to 50 recipients.
+**Messages → Compose → New Message / Send Many Individually** reuses the existing Tree, optional Nest, Contacts and Birdhouse selectors. Linked, authorized Churp members receive separate encrypted private messages through the existing private-chat service. Phone-only saved contacts get separate drafts, not automatic sends. A linked Churp contact never falls back to phone texting after an error, block or missing parent approval. Recipients do not see the other selected people. The combined composition supports up to 500 recipients.
 
 The review shows exactly how many messages go through Churp and how many become phone drafts. Churp recipients retain the usual per-person send results and idempotent retries. Phone results say **Phone draft ready** or **Phone reminder scheduled**, never Sent. Phone drafts are saved first with an idempotent request ID; a failed in-app send does not create duplicate phone drafts when retried. Churp sends and phone reminders are separate saved operations; editing one later does not change the other.
 

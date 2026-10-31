@@ -92,10 +92,11 @@ export function installFamily({app,db,encryption,transaction,refreshUser,publicU
     touch(l.parent_id,l.child_id);res.json({ok:true});
   });
   const requestConversation=(child,peer)=>one('SELECT * FROM private_conversations WHERE (user_low=? AND user_high=?) OR (user_low=? AND user_high=?)',child,peer,peer,child)||fail(404,'Conversation not found.');
-  app.get('/api/family/requests/:child/:peer',(req,res)=>{
+  app.get('/api/family/requests/:child/:peer',async(req,res)=>{
     encryption.device(req);if(!guardian(req.user.id,req.params.child))fail(404,'Message request not found.');
-    const c=requestConversation(req.params.child,req.params.peer),messages=all(`SELECT m.*,COALESCE(h.public_key,i.public_key) AS signer_key,u.name FROM private_messages m JOIN users u ON u.id=m.user_id LEFT JOIN e2ee_identities i ON i.user_id=m.user_id LEFT JOIN e2ee_key_history h ON h.user_id=m.user_id AND h.fingerprint=m.signer_fingerprint WHERE m.conversation_id=? AND m.intro=1 AND EXISTS(SELECT 1 FROM private_message_readers r WHERE r.message_id=m.id AND r.user_id=?)`,c.id,req.user.id).map(m=>({...m,files:all('SELECT file_id AS id FROM private_message_files WHERE message_id=?',m.id)}));
-    const recipients=[...new Set([c.user_low,c.user_high])].map(id=>({id,...encryption.identity(id)})).map(({id,public_key,fingerprint})=>({id,public_key,fingerprint}));res.json({conversation:c,messages,recipients});
+    const c=requestConversation(req.params.child,req.params.peer),messages=all(`SELECT m.*,COALESCE(h.public_key,i.public_key) AS signer_key,u.name FROM private_messages m JOIN users u ON u.id=m.user_id LEFT JOIN e2ee_identities i ON i.user_id=m.user_id LEFT JOIN e2ee_key_history h ON h.user_id=m.user_id AND h.fingerprint=m.signer_fingerprint WHERE m.conversation_id=? AND m.intro=1 AND EXISTS(SELECT 1 FROM private_message_readers r WHERE r.message_id=m.id AND r.user_id=?)`,c.id,req.user.id).map(m=>({...m,retained_for_parent:true,files:all('SELECT file_id AS id FROM private_message_files WHERE message_id=?',m.id)}));
+    const ids=[...new Set([c.user_low,c.user_high])];for(const id of ids)await encryption.ensureManaged(id);
+    const recipients=ids.map(id=>({id,...encryption.identity(id)})).map(({id,public_key,fingerprint})=>({id,public_key,fingerprint}));res.json({conversation:c,messages,recipients});
   });
   app.post('/api/family/approvals',limit,async(req,res)=>{const {child_id,adult_id,decision,delivery_copies=[]}=req.body;
     encryption.device(req);if(!guardian(req.user.id,child_id))fail(403,'Only a linked parent can review this request.');

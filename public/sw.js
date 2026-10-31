@@ -1,4 +1,4 @@
-// Notifications v4: immediate background alerts; suppress visible-app alerts.
+// Notifications v5: validate private edits; immediate background alerts and visible-app suppression.
 if(typeof importScripts==='function')try{importScripts('/push-preview.js');}catch{}
 self.addEventListener('install',event=>event.waitUntil(self.skipWaiting()));
 self.addEventListener('activate',event=>event.waitUntil(self.clients.claim()));

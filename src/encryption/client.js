@@ -264,12 +264,22 @@ export async function sealPrivate(conversationId,body,attachments=[],clientId=cr
  return {notificationPreviews,ciphertext,clientId,rosterHash:rs.roster_hash,files,sourceNest,signature:await enc.sign(self.privateKey,'private-send',payload)};
 }
 export async function decryptPrivate(conversationId,messages){
- const self=getCurrent();return Promise.all(messages.map(async m=>{if(m.removed)return {...m,body:'Message removed by a linked parent.',files:[],removed:true};try{
+ const self=getCurrent();return Promise.all(messages.map(async m=>{if(m.deleted&&!m.retained_for_parent)return {...m,body:'This message was deleted.',files:[]};if(m.removed)return {...m,body:'Message removed by a linked parent.',files:[],removed:true};try{
   const signer=await trustedReader({id:m.user_id,public_key:m.signer_key,fingerprint:m.signer_fingerprint});let value;
   for(const key of [self.privateKey,...self.previousPrivateKeys]){try{value=await enc.open(key,signer.public_key,m.ciphertext);break;}catch{}}
   if(!value||value.version!==1||value.kind!=='private-message'||value.conversationId!==conversationId||value.clientId!==(m.content_client_id||m.client_id)||value.senderId!==m.user_id||value.rosterHash!==m.recipient_hash||value.selfEncrypted!==!!m.self_encrypted||typeof value.body!=='string'||value.body.length>10000||!Array.isArray(value.attachments)||enc.canonical(value.attachments.map(f=>f.id).sort())!==enc.canonical(m.files.map(f=>f.id).sort()))throw new Error('Private context changed.');
+  if((value.editVersion||0)!==(m.edit_version||0)||(m.edit_version>0&&(value.editMessageId!==m.id||value.editClientId!==m.edit_client_id)))throw new Error('Private edit context changed.');
   return {...m,body:cleanMessageBody(value.body,value.contentType||'chat'),files:value.attachments};
  }catch{return {...m,body:'This private message could not be decrypted or verified.',files:[],decryptionError:true};}}));
+}
+
+export async function sealPrivateEdit(message,body){
+ const self=getCurrent(),rs=await api(`/private/messages/${message.id}/edit-roster`),expectedVersion=message.edit_version||0;
+ if(rs.edit_version!==expectedVersion)throw Object.assign(new Error('This message changed. Reopen the editor.'),{status:409});
+ const readers=await Promise.all(rs.readers.map(trustedReader)),clientId=crypto.randomUUID(),files=message.files.map(f=>f.id),conversationId=message.conversation_id;
+ const contents={version:1,kind:'private-message',conversationId,clientId:message.client_id,senderId:message.user_id,rosterHash:rs.roster_hash,selfEncrypted:rs.self_encrypted,body,attachments:message.files,editVersion:expectedVersion+1,editMessageId:message.id,editClientId:clientId};
+ validateContents(contents);const ciphertext=await enc.seal(self.privateKey,readers.map(r=>r.public_key),contents),payload={messageId:message.id,conversationId,expectedVersion,clientId,rosterHash:rs.roster_hash,cipherHash:await enc.digest(ciphertext),files};
+ return {expectedVersion,clientId,ciphertext,rosterHash:rs.roster_hash,files,signature:await enc.sign(self.privateKey,'private-edit',payload)};
 }
 
 export async function shareGuardianHistory(onProgress=()=>{}) {

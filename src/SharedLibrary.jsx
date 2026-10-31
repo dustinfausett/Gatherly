@@ -106,7 +106,7 @@ export default function SharedLibrary({ conversationId, group, user, version, on
         const messages = enabled ? (conversationId?await decryptPrivate(conversationId,result.messages):await decryptMessages(group.id, result.messages)) : result.messages;
         if (!current) return;
         for (const message of messages) {
-          if(message.removed)continue;
+          if(message.removed||message.deleted)continue;
           if (message.decryptionError) { invalid++; continue; }
           const common = { message, messageId: message.id, createdAt: message.created_at, sender: message.user_id === user.id ? 'You' : message.name||group.name };
           if (message.message_kind === 'poll') {

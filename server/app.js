@@ -231,7 +231,7 @@ export function createApp(options = {}) {
     }
     if(source.channel==='private'){
       const m=one('SELECT * FROM private_messages WHERE id=?',source.messageId),c=m&&one('SELECT * FROM private_conversations WHERE id=?',m.conversation_id);
-      return !!c&&[c.user_low,c.user_high].includes(uid)&&(m.user_id!==uid||c.user_low===c.user_high)&&!m.removed_by&&!family.parentBlocked(c)&&!c.blocked_low&&!c.blocked_high&&m.id>(c.user_low===uid?c.read_low:c.read_high)&&family.pairAllowed(c.user_low,c.user_high);
+      return !!c&&[c.user_low,c.user_high].includes(uid)&&(m.user_id!==uid||c.user_low===c.user_high)&&!m.removed_by&&!m.deleted&&!family.parentBlocked(c)&&!c.blocked_low&&!c.blocked_high&&m.id>(c.user_low===uid?c.read_low:c.read_high)&&family.pairAllowed(c.user_low,c.user_high);
     }
     if(source.channel==='sms')return sms.mode!=='disabled'&&!!one("SELECT 1 FROM sms_messages m JOIN sms_threads t ON t.id=m.thread_id JOIN community_members cm ON cm.community_id=t.community_id AND cm.user_id=t.owner_id WHERE m.id=? AND t.owner_id=? AND m.direction='inbound' AND m.created_at>t.read_through",source.messageId,uid);
     return false;
@@ -244,7 +244,7 @@ export function createApp(options = {}) {
       if(m.deleted||!one('SELECT 1 FROM group_members gm JOIN groups g ON g.id=gm.group_id JOIN community_members cm ON cm.community_id=g.community_id AND cm.user_id=gm.user_id WHERE gm.group_id=? AND gm.user_id=?',m.group_id,uid)||encryptionRequired&&!encryption.canRead(uid,m))return null;
     }else{
       const c=one('SELECT * FROM private_conversations WHERE id=?',m.conversation_id);
-      if(!c||![c.user_low,c.user_high].includes(uid)||c.blocked_low||c.blocked_high||m.removed_by||family.parentBlocked(c)||!family.pairAllowed(c.user_low,c.user_high))return null;
+      if(!c||![c.user_low,c.user_high].includes(uid)||c.blocked_low||c.blocked_high||m.removed_by||m.deleted||family.parentBlocked(c)||!family.pairAllowed(c.user_low,c.user_high))return null;
     }
     return m;
   }

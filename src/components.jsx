@@ -15,7 +15,7 @@ export function Avatar({ name = '?', id, birdId, portrait, size = 40, className 
   </span>;
 }
 export function Modal({ title, subtitle, children, onClose, wide = false }) {
-  const ref = useRef();
+  const ref = useRef(),titleId=useId();
   useEffect(() => {
     const previous = document.activeElement;
     const focusable = () => [...ref.current.querySelectorAll('button,input,textarea,select,a[href]')].filter(x => !x.disabled && x.offsetParent !== null);
@@ -32,9 +32,9 @@ export function Modal({ title, subtitle, children, onClose, wide = false }) {
     return () => { document.removeEventListener('keydown', key); previous?.focus(); };
   }, []);
   return <div className="modal-backdrop" onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }}>
-    <section className={`modal ${wide ? 'wide' : ''}`} role="dialog" aria-modal="true" aria-labelledby="dialog-title" ref={ref}>
+    <section className={`modal ${wide ? 'wide' : ''}`} role="dialog" aria-modal="true" aria-labelledby={titleId} ref={ref}>
       <button className="icon-button modal-close" aria-label="Close dialog" onClick={onClose}><X size={20} /></button>
-      <h2 id="dialog-title">{title}</h2>{subtitle && <p className="muted modal-subtitle">{subtitle}</p>}{children}
+      <h2 id={titleId}>{title}</h2>{subtitle && <p className="muted modal-subtitle">{subtitle}</p>}{children}
     </section>
   </div>;
 }
