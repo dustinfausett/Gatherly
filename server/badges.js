@@ -10,9 +10,9 @@ export function createBadges({db,family,encryptionRequired,smsUnread}){
     ${encryptionRequired?"AND m.e2ee_version=1 AND m.id>mine.joined_after AND EXISTS(SELECT 1 FROM e2ee_recipients er WHERE er.message_id=m.id AND er.user_id=mine.user_id)":''}
     GROUP BY m.group_id) unread ON unread.group_id=gm.group_id
    WHERE gm.user_id=? AND gm.muted=0`).get(uid,uid,uid).n;
-  const conversations=db.prepare(`SELECT c.*,COUNT(m.id) AS unread FROM private_conversations c
-   JOIN private_messages m ON m.conversation_id=c.id AND (m.user_id<>? OR c.user_low=c.user_high) AND m.id>CASE WHEN c.user_low=? THEN c.read_low ELSE c.read_high END
-   WHERE (c.user_low=? OR c.user_high=?) AND c.blocked_low=0 AND c.blocked_high=0 AND m.removed_by IS NULL AND m.deleted=0 GROUP BY c.id`).all(uid,uid,uid,uid);
+  const conversations=db.prepare(`SELECT c.*,MAX(COUNT(m.id),EXISTS(SELECT 1 FROM private_read_markers r WHERE r.user_id=? AND r.conversation_id=c.id)) AS unread FROM private_conversations c
+   LEFT JOIN private_messages m ON m.conversation_id=c.id AND (m.user_id<>? OR c.user_low=c.user_high) AND m.id>CASE WHEN c.user_low=? THEN c.read_low ELSE c.read_high END AND m.removed_by IS NULL AND m.deleted=0
+   WHERE (c.user_low=? OR c.user_high=?) AND c.blocked_low=0 AND c.blocked_high=0 GROUP BY c.id`).all(uid,uid,uid,uid,uid);
   const privateCount=conversations.filter(c=>!family.parentBlocked(c)&&family.pairAllowed(c.user_low,c.user_high)).reduce((n,c)=>n+c.unread,0);
   const sms=smsUnread(uid);
   return {count:nests+privateCount+sms,nests,private:privateCount,sms};

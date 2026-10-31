@@ -476,6 +476,7 @@ export function openDatabase(path) {
   addColumn('private_messages','edited_at','TEXT');
   addColumn('private_messages','deleted','INTEGER NOT NULL DEFAULT 0');
   db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS private_edit_nonce ON private_messages(edit_client_id) WHERE edit_client_id IS NOT NULL;
+    CREATE TABLE IF NOT EXISTS private_read_markers(user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,conversation_id TEXT NOT NULL REFERENCES private_conversations(id) ON DELETE CASCADE,token TEXT NOT NULL,PRIMARY KEY(user_id,conversation_id));
     CREATE TABLE IF NOT EXISTS private_conversation_pins(user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,conversation_id TEXT NOT NULL REFERENCES private_conversations(id) ON DELETE CASCADE,position INTEGER NOT NULL,PRIMARY KEY(user_id,conversation_id));
     CREATE TABLE IF NOT EXISTS private_message_versions(message_id INTEGER NOT NULL REFERENCES private_messages(id) ON DELETE CASCADE,version INTEGER NOT NULL,record TEXT NOT NULL,PRIMARY KEY(message_id,version));`);
   db.exec(`CREATE TABLE IF NOT EXISTS phone_draft_series(id TEXT PRIMARY KEY,owner_id TEXT NOT NULL REFERENCES users(id),active INTEGER NOT NULL DEFAULT 1);
