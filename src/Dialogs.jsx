@@ -77,22 +77,23 @@ function DeleteSpaceForm({ type, entity, onCancel, onDeleted }) {
 }
 export { InviteDialog,JoinDialog } from './Invitations';
 export { default as ProfileDialog } from './ProfileSettings';
-export function MembersDialog({ community, user, onClose, onRefresh, notify }) {
+export function MembersDialog({ community, nest, onMessage, user, onClose, onRefresh, notify }) {
   const [members, setMembers] = useState([]), [assignments, setAssignments] = useState([]), [error, setError] = useState(''), [busy, setBusy] = useState(false);
   const [target, setTarget] = useState(null), [scope, setScope] = useState('community'), [confirm, setConfirm] = useState(null);
   const scopes = [...community.circles.filter(g => !g.subcommunity_id).map(g => ({ type: 'group', id: g.id, name: g.name, can: community.is_admin })), ...community.subcommunities.flatMap(s => [{ type: 'subcommunity', id: s.id, name: s.name, can: community.is_admin }, ...s.groups.map(g => ({ type: 'group', id: g.id, name: `${s.name} / ${g.name}`, can: s.is_admin }))])];
-  async function load() { try { const data = await api(`/communities/${community.id}/members`); setMembers(data.members); setAssignments(data.assignments); } catch (err) { setError(err.message); } }
-  useEffect(() => { load(); }, [community.id]);
+  async function load() { try { const data = await api(nest?`/groups/${nest.id}/members`:`/communities/${community.id}/members`); setMembers(data.members); setAssignments(data.assignments||[]); } catch (err) { setError(err.message); } }
+  useEffect(() => { load(); }, [community.id,nest?.id]);
   async function action(fn, message) {
     setBusy(true); setError(''); try { await fn(); await load(); await onRefresh(); notify(message); setConfirm(null); } catch (err) { setError(err.message); } finally { setBusy(false); }
   }
   const currentTarget = members.find(m => m.id === target);
-  return <Modal title="The people make the place." subtitle={`${community.name} · ${members.length} ${members.length === 1 ? 'member' : 'members'}`} onClose={onClose} wide>
+  return <Modal title={nest?'Nest members':'The people make the place.'} subtitle={`${nest?.name||community.name} · ${members.length} ${members.length === 1 ? 'member' : 'members'}`} onClose={onClose} wide>
     {error && <div className="error-banner" role="alert">{error}</div>}
     <div className="member-list">{members.map(m => <div className="member-row" key={m.id}>
       <Avatar name={m.name} id={m.avatar_id} portrait={m.avatar_style !== 'photo' ? m.avatar_choice || 'blue' : undefined} /><div className="member-name"><strong>{m.name} {m.id === user.id && <small>(you)</small>}</strong><small>@{m.username}</small></div>
       <span className={`role-badge ${m.role}`}>{m.role === 'owner' ? <Crown size={12} /> : m.role === 'admin' ? <Shield size={12} /> : null}{m.role}</span>
-      {(community.is_admin || scopes.some(s => s.can)) && m.role !== 'owner' && m.id !== user.id && <button className="button secondary small" onClick={() => { setTarget(m.id); setScope(community.role === 'owner' ? 'community' : scopes.find(s => s.can) ? `${scopes.find(s => s.can).type}:${scopes.find(s => s.can).id}` : ''); }}>Manage</button>}
+      {onMessage&&<button className="button secondary small" onClick={()=>onMessage(m.id)}>{m.id===user.id?'Message myself':'Message'}</button>}
+      {!nest&&(community.is_admin || scopes.some(s => s.can)) && m.role !== 'owner' && m.id !== user.id && <button className="button secondary small" onClick={() => { setTarget(m.id); setScope(community.role === 'owner' ? 'community' : scopes.find(s => s.can) ? `${scopes.find(s => s.can).type}:${scopes.find(s => s.can).id}` : ''); }}>Manage</button>}
     </div>)}</div>
     {!members.length && !error && <p className="muted">Loading members…</p>}
     {currentTarget && <div className="member-management"><h4>Manage {currentTarget.name}</h4><Field label="Admin scope"><select value={scope} onChange={e => setScope(e.target.value)}>

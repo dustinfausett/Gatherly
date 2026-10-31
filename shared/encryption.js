@@ -1,3 +1,4 @@
+import {cleanMessageBody} from './bird-words.js';
 import * as pgp from 'openpgp';
 
 export const VERSION = 1;
@@ -60,6 +61,7 @@ export async function verify(publicKey,operation,payload,signature) {
   await result.signatures[0].verified;
 }
 export async function seal(privateKey,publicKeys,payload) {
+  if(['nest-message','private-message'].includes(payload?.kind)&&typeof payload.body==='string')payload={...payload,body:cleanMessageBody(payload.body,payload.contentType||'chat')};
   const encrypted=await pgp.encrypt({message:await pgp.createMessage({text:canonical(payload)}),
     encryptionKeys:await Promise.all(publicKeys.map(readPublic)),signingKeys:privateKey,format:'binary',config});
   return toBase64(encrypted);

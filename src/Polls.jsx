@@ -18,7 +18,7 @@ export const messagePreview = m => m?.message_kind === 'poll' ? parsePoll(m.body
 
 export function PollBuilder({ group, onClose, onSent, initialValue=null, scheduledRecord=null }) {
   const { enabled } = useEncryption();
-  const [when,setWhen]=useState(()=>initialSchedule(scheduledRecord?.send_at));
+  const [when,setWhen]=useState(()=>initialSchedule(scheduledRecord?.next_at||scheduledRecord?.send_at,scheduledRecord?.recurrence));
   const [title, setTitle] = useState(initialValue?.title||''), [questions, setQuestions] = useState(initialValue?.questions?.map(q=>({...q,options:q.options.map(o=>typeof o==='string'?o:o.text)}))||[newQuestion()]);
   const [busy, setBusy] = useState(false), [error, setError] = useState('');
   const prepared = useRef(null), submitted = useRef(false);

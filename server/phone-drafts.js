@@ -1,3 +1,5 @@
+import {normalizeRecurrence,nextOccurrence} from '../shared/recurrence.js';
+import {birdWords} from '../shared/bird-words.js';
 import { randomUUID } from 'node:crypto';
 import { rateLimit } from 'express-rate-limit';
 import { keyVault } from './key-vault.js';
@@ -38,19 +40,20 @@ export function installPhoneDrafts({ app, db, dataDir, appUrl, family, membershi
     let problem = ''; try { sender(row.owner_id, packet); } catch (e) { problem = e.message; }
     const recipients = packet.recipients.map(r => { let reason = problem; if (!reason) try { contact(row.owner_id, packet, r); } catch (e) { reason = e.message; } return { ...r, reason }; });
     const complete = recipients.every(r => ['done', 'skipped'].includes(r.state)), needsReview = !!problem || recipients.some(r => r.reason && !['done', 'skipped'].includes(r.state));
-    return { id: row.id, version: row.version, created_at: row.created_at, ready_at: row.ready_at, reminder: !!packet.reminder, cancelled: !!row.cancelled_at, notified: !!row.notified_at, body: packet.body, personalization:packet.personalization||null, tree_id: packet.tree_id, source_nest: packet.source_nest, filter_nest: packet.filter_nest, recipients, status: row.cancelled_at ? 'cancelled' : complete ? 'complete' : !ready ? 'scheduled' : needsReview ? 'needs_review' : 'ready' };
+    return { id: row.id, version: row.version, created_at: row.created_at, ready_at: row.ready_at, reminder: !!packet.reminder, cancelled: !!row.cancelled_at, notified: !!row.notified_at, body: birdWords(packet.body), recurrence:packet.recurrence||null,series_id:row.series_id,time_zone:packet.time_zone||null,personalization:packet.personalization||null, tree_id: packet.tree_id, source_nest: packet.source_nest, filter_nest: packet.filter_nest, recipients, status: row.cancelled_at ? 'cancelled' : complete ? 'complete' : !ready ? 'scheduled' : needsReview ? 'needs_review' : 'ready' };
   }
   function values(req) {
     const body = req.body, ids = body.contact_ids;
     if (typeof body.body !== 'string' || !body.body.trim() || body.body.length > 10000) fail(400, 'Write a message up to 10,000 characters.');
-    if (!Array.isArray(ids) || !ids.length || ids.length > 50 || ids.some(id => typeof id !== 'string' || id.length > 100) || new Set(ids).size !== ids.length) fail(400, 'Choose between 1 and 50 saved phone contacts.');
+    if (!Array.isArray(ids) || !ids.length || ids.length > 500 || ids.some(id => typeof id !== 'string' || id.length > 100) || new Set(ids).size !== ids.length) fail(400, 'Choose between 1 and 500 saved phone contacts.');
     for (const field of ['tree_id', 'source_nest', 'filter_nest']) if (body[field] != null && (typeof body[field] !== 'string' || !body[field] || body[field].length > 100)) fail(400, 'Choose a valid Tree or Nest.');
-    const packet = { body: body.body.trim(), personalization:'first-name', reminder: body.ready_at != null, tree_id: body.tree_id || null, source_nest: body.source_nest || null, filter_nest: body.filter_nest || null };
+    const packet = { body: birdWords(body.body.trim()), personalization:'first-name', reminder: body.ready_at != null, tree_id: body.tree_id || null, source_nest: body.source_nest || null, filter_nest: body.filter_nest || null };
     sender(req.user.id, packet);
     const seen = new Set();
     packet.recipients = ids.map(id => contact(req.user.id, packet, { contact_id: id })).filter(c => { if (seen.has(c.phone)) return false; seen.add(c.phone); return true; }).map(c => ({ contact_id: c.id, name: c.name, phone: c.phone, state: 'ready' }));
     try{for(const r of packet.recipients)personalizeMessage(packet.body,r.name);}catch(e){fail(400,e.message);}
     let readyAt = now(); if (body.ready_at != null) try { readyAt = scheduleTime(body.ready_at, now()); } catch (e) { fail(400, e.message); }
+    try{packet.recurrence=normalizeRecurrence(body.recurrence);packet.time_zone=body.time_zone||'UTC';new Intl.DateTimeFormat('en',{timeZone:packet.time_zone});if(packet.recurrence){if(!packet.reminder)throw new Error('Choose a scheduled date for recurring phone reminders.');packet.series_start=readyAt;readyAt=nextOccurrence(readyAt,packet.recurrence,packet.time_zone);if(!readyAt)throw new Error('This reminder has no matching dates.');}}catch(e){fail(400,e.message);}
     return { packet, readyAt };
   }
   app.get('/api/phone-drafts', (req, res) => res.json({ drafts: all('SELECT * FROM phone_drafts WHERE owner_id=? ORDER BY created_at DESC LIMIT 200', req.user.id).map(view) }));
@@ -62,6 +65,7 @@ export function installPhoneDrafts({ app, db, dataDir, appUrl, family, membershi
     const { packet, readyAt } = values(req), id = randomUUID();
     if (one('SELECT COUNT(*) n FROM phone_drafts WHERE owner_id=? AND cancelled_at IS NULL', req.user.id).n >= 500) fail(400, 'Cancel older phone drafts before preparing more.');
     run('INSERT INTO phone_drafts(id,owner_id,client_id,request_hash,payload_cipher,ready_at,created_at,notified_at) VALUES (?,?,?,?,?,?,?,?)', id, req.user.id, req.body.client_id, digest, seal(id, packet), readyAt, now(), readyAt <= now() ? now() : null);
+    if(packet.recurrence){run('INSERT INTO phone_draft_series VALUES (?,?,1)',id,req.user.id);run('UPDATE phone_drafts SET series_id=? WHERE id=?',id,id);}
     refreshUser(req.user.id); res.status(201).json(view(owned(id, req.user.id)));
   });
   app.put('/api/phone-drafts/:id', limited, (req, res) => {
@@ -70,10 +74,12 @@ export function installPhoneDrafts({ app, db, dataDir, appUrl, family, membershi
     if (old.cancelled_at || original.recipients.some(r => r.state === 'done' || r.state === 'opened')) fail(409, 'A phone handoff has already started. Create a new draft to change its text.');
     const { packet, readyAt } = values(req);
     run('UPDATE phone_drafts SET payload_cipher=?,ready_at=?,notified_at=?,version=version+1 WHERE id=?', seal(old.id, packet), readyAt, readyAt <= now() ? now() : null, old.id);
+    if(packet.recurrence&&!old.series_id){run('INSERT INTO phone_draft_series VALUES (?,?,1)',old.id,req.user.id);run('UPDATE phone_drafts SET series_id=? WHERE id=?',old.id,old.id);}
     refreshUser(req.user.id); res.json(view(owned(old.id, req.user.id)));
   });
   app.post('/api/phone-drafts/:id/cancel', limited, (req, res) => {
     const old = owned(req.params.id, req.user.id); if (req.body.expected_version !== old.version) fail(409, 'This phone draft changed. Refresh before cancelling.');
+    if(old.series_id){run('UPDATE phone_draft_series SET active=0 WHERE id=? AND owner_id=?',old.series_id,req.user.id);run('UPDATE phone_drafts SET cancelled_at=?,version=version+1 WHERE series_id=? AND ready_at>=?',now(),old.series_id,now());}
     run('UPDATE phone_drafts SET cancelled_at=?,version=version+1 WHERE id=?', now(), old.id); refreshUser(req.user.id); res.json(view(owned(old.id, req.user.id)));
   });
   app.post('/api/phone-drafts/:id/prepare', limited, async (req, res) => {
@@ -86,7 +92,7 @@ export function installPhoneDrafts({ app, db, dataDir, appUrl, family, membershi
     if (row.cancelled_at || row.version !== req.body.expected_version) fail(409, 'This phone draft changed. Refresh it before opening.');
     contact(req.user.id, packet, r);
     const senderName = one('SELECT name FROM users WHERE id=?', req.user.id).name, treeName = packet.tree_id ? one('SELECT name FROM communities WHERE id=?', packet.tree_id)?.name : null;
-    res.json({ contact_id: r.contact_id, name: r.name, phone: r.phone, text: phoneDraftText(packet.personalization==='first-name'?personalizeMessage(packet.body,r.name):packet.body, senderName, treeName, invitation), version: row.version });
+    res.json({ contact_id: r.contact_id, name: r.name, phone: r.phone, text: phoneDraftText(packet.personalization==='first-name'?personalizeMessage(birdWords(packet.body),r.name):birdWords(packet.body), senderName, treeName, invitation), version: row.version });
   });
   app.patch('/api/phone-drafts/:id/recipient', limited, (req, res) => {
     const row = owned(req.params.id, req.user.id); if (row.cancelled_at || row.ready_at > now()) fail(409, 'This draft is not available to send.');
@@ -102,8 +108,18 @@ export function installPhoneDrafts({ app, db, dataDir, appUrl, family, membershi
   async function tick() {
     if (closed) return;
     for (const row of all('SELECT * FROM phone_drafts WHERE cancelled_at IS NULL AND notified_at IS NULL AND ready_at<=? LIMIT 50', now())) {
-      run('UPDATE phone_drafts SET notified_at=? WHERE id=? AND notified_at IS NULL', now(), row.id);
-      if (canNotify(row.owner_id, row.id)) await notifyReady?.(row.owner_id, row.id);
+      const eligible=canNotify(row.owner_id,row.id),packet=open(row);
+      transaction(()=>{
+        const claimed=run('UPDATE phone_drafts SET notified_at=? WHERE id=? AND notified_at IS NULL AND cancelled_at IS NULL',now(),row.id);if(!claimed.changes)return;
+        if(eligible&&row.series_id&&packet.recurrence&&one('SELECT 1 FROM phone_draft_series WHERE id=? AND active=1',row.series_id)){
+          const next=nextOccurrence(packet.series_start,packet.recurrence,packet.time_zone,Math.max(now(),row.ready_at));
+          if(next&&!one('SELECT 1 FROM phone_drafts WHERE series_id=? AND ready_at=?',row.series_id,next)){
+            const id=randomUUID(),following={...packet,recipients:packet.recipients.map(r=>({...r,state:'ready'}))};
+            run('INSERT INTO phone_drafts(id,owner_id,client_id,request_hash,payload_cipher,ready_at,created_at,series_id) VALUES (?,?,?,?,?,?,?,?)',id,row.owner_id,randomUUID(),hash(`${row.series_id}:${next}`),seal(id,following),next,now(),row.series_id);
+          }
+        }
+      });
+      if(eligible)await notifyReady?.(row.owner_id,row.id);
       refreshUser(row.owner_id);
     }
   }

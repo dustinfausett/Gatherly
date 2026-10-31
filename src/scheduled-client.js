@@ -1,3 +1,4 @@
+import {normalizeRecurrence} from '../shared/recurrence';
 import {api,post} from './api';
 import * as enc from '../shared/encryption.js';
 import {scheduleProof,scheduleTime} from '../shared/scheduling';
@@ -15,12 +16,13 @@ export async function cancelScheduled(row){const result=await post(`/scheduled/$
 export async function queueScheduled(entries,draft,when,existing=null){
  const self=getCurrent(),client_id=existing?.client_id||when.requestId||crypto.randomUUID(),send_at=scheduleTime(new Date(when.sendAt).getTime()),time_zone=scheduleZone();
  if(localDate(send_at)!==when.sendAt.slice(0,16))throw new Error('That local time does not exist because the clocks change. Choose another time.');
- const cacheId=`${self.userId}:${when.requestId||client_id}:${existing?.version??'new'}`,logical=await enc.digest(enc.canonical({draft,intent:intent(entries),send_at,time_zone}));
+ const recurrence=normalizeRecurrence(when.recurrence);
+ const cacheId=`${self.userId}:${when.requestId||client_id}:${existing?.version??'new'}`,logical=await enc.digest(enc.canonical({draft,intent:intent(entries),send_at,time_zone,recurrence}));
  let cached=requests.get(cacheId);
  if(cached&&cached.logical!==logical)throw new Error('A previous scheduling request may have been saved. Check Scheduled messages before creating another.');
  if(!cached){
-  const value={kind:'churp-scheduled-draft',senderId:self.userId,clientId:client_id,sendAt:send_at,intent:intent(entries),draft};
-  const draft_ciphertext=await enc.seal(self.privateKey,[self.publicKey],value),packet={client_id,send_at,time_zone,entries,draft_ciphertext};
+  const value={kind:'churp-scheduled-draft',senderId:self.userId,clientId:client_id,sendAt:send_at,recurrence,intent:intent(entries),draft};
+  const draft_ciphertext=await enc.seal(self.privateKey,[self.publicKey],value),packet={client_id,send_at,time_zone,entries,draft_ciphertext,...(recurrence?{recurrence}:{})};
   packet.signature=await enc.sign(self.privateKey,'scheduled-send',scheduleProof(packet));
   cached={logical,packet};requests.set(cacheId,cached);
  }
@@ -33,7 +35,7 @@ export async function queueScheduled(entries,draft,when,existing=null){
 export async function readScheduled(row){
  const self=getCurrent(),keys=[self.privateKey,...self.previousPrivateKeys],signer=await enc.readPublic(row.signer_key);
  if(!keys.some(k=>k.getFingerprint()===signer.getFingerprint()))throw new Error('Restore your earlier key to open this scheduled draft.');
- for(const key of keys){try{const value=await enc.open(key,row.signer_key,row.draft_ciphertext);if(value.kind!=='churp-scheduled-draft'||value.senderId!==self.userId||value.clientId!==row.client_id||value.sendAt!==row.send_at||enc.canonical(value.intent)!==enc.canonical(intent(row.entries)))throw new Error('Scheduled details changed.');return value.draft;}catch{}}
+ for(const key of keys){try{const value=await enc.open(key,row.signer_key,row.draft_ciphertext);if(value.kind!=='churp-scheduled-draft'||value.senderId!==self.userId||value.clientId!==row.client_id||value.sendAt!==row.send_at||enc.canonical(value.recurrence||null)!==enc.canonical(row.recurrence||null)||enc.canonical(value.intent)!==enc.canonical(intent(row.entries)))throw new Error('Scheduled details changed.');return value.draft;}catch{}}
  throw new Error('This scheduled draft could not be unlocked or verified.');
 }
 export async function publishNest(group,request,draft,when,existing=null){

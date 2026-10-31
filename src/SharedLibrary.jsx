@@ -3,7 +3,7 @@ import { ArrowLeft, Download, File, FileText, Image as ImageIcon, Mail, Vote, Cl
 import { Modal } from './components';
 import { api } from './api';
 import { useEncryption } from './encryption/EncryptionGate';
-import { attachmentUrl, decryptMessages } from './encryption/client';
+import { attachmentUrl, decryptMessages, decryptPrivate } from './encryption/client';
 import { parsePoll } from '../shared/polls';
 import { PollCard } from './Polls';
 import './shared-library.css';
@@ -77,7 +77,7 @@ function DownloadRow({ item, getUrl }) {
   return <div className="shared-download"><button type="button" disabled={busy} onClick={download}><span className="shared-file-icon"><Icon size={24} /></span><span><strong>{item.file.name}</strong><small>{item.sender} · {dateLabel(item.createdAt)} · {sizeLabel(item.file.size)}</small></span><Download size={18} />{busy && <span className="visually-hidden">Preparing download…</span>}</button>{error && <p role="alert" className="field-error">{error} Tap the file to try again.</p>}</div>;
 }
 
-export default function SharedLibrary({ group, user, version, onClose, onOpenPoll, onOpenRsvp, onOpenAssignments, suspended = false }) {
+export default function SharedLibrary({ conversationId, group, user, version, onClose, onOpenPoll, onOpenRsvp, onOpenAssignments, suspended = false }) {
   const { enabled } = useEncryption();
   const [items, setItems] = useState([]), [loading, setLoading] = useState(true), [error, setError] = useState(''), [unverified, setUnverified] = useState(0);
   const [category, setCategory] = useState(null), [picture, setPicture] = useState(null), [retry, setRetry] = useState(0);
@@ -101,13 +101,14 @@ export default function SharedLibrary({ group, user, version, onClose, onOpenPol
     (async () => {
       const found = []; let before = '', invalid = 0, more;
       do {
-        const result = await api(`/groups/${group.id}/shared${before ? `?before=${before}` : ''}`);
+        const result = await api(conversationId?`/private/conversations/${conversationId}/messages${before?`?before=${before}`:''}`:`/groups/${group.id}/shared${before ? `?before=${before}` : ''}`);
         if (!current) return;
-        const messages = enabled ? await decryptMessages(group.id, result.messages) : result.messages;
+        const messages = enabled ? (conversationId?await decryptPrivate(conversationId,result.messages):await decryptMessages(group.id, result.messages)) : result.messages;
         if (!current) return;
         for (const message of messages) {
+          if(message.removed)continue;
           if (message.decryptionError) { invalid++; continue; }
-          const common = { message, messageId: message.id, createdAt: message.created_at, sender: message.user_id === user.id ? 'You' : message.name };
+          const common = { message, messageId: message.id, createdAt: message.created_at, sender: message.user_id === user.id ? 'You' : message.name||group.name };
           if (message.message_kind === 'poll') {
             const poll = parsePoll(message.body);
             if (poll) found.push({ ...common, id: `poll:${message.id}`, category: 'polls', title: poll.title, index: -1 }); else invalid++;
@@ -122,7 +123,7 @@ export default function SharedLibrary({ group, user, version, onClose, onOpenPol
           }
           message.files.forEach((file, index) => found.push({ ...common, id: `file:${file.id}`, category: fileCategory(file), file, index }));
         }
-        more = result.has_more && messages.length > 0; before = result.messages[0]?.id;
+        more = (result.has_more||result.more) && !!(result.next_before||result.messages.length); before = result.next_before||result.messages[0]?.id;
       } while (more);
       if (current) {
         found.sort((a, b) => b.messageId - a.messageId || a.index - b.index);
@@ -130,22 +131,22 @@ export default function SharedLibrary({ group, user, version, onClose, onOpenPol
       }
     })().catch(e => { if (current) { setError(e.message); if ([403, 404].includes(e.status)) { setItems([]); setPicture(null); } } }).finally(() => { if (current) setLoading(false); });
     return () => { current = false; };
-  }, [group.id, enabled, user.id, version, retry]);
+  }, [group.id, conversationId, enabled, user.id, version, retry]);
   useEffect(() => {
     if (suspended) return;
     if (category || picture) backButton.current?.focus(); else if (lastCategory.current) categoryButtons.current[lastCategory.current]?.focus();
   }, [category, picture, suspended]);
   if (suspended) return null;
   const activeCategory = categories.find(c => c.id === category), shown = items.filter(item => item.category === category);
-  return <Modal title={picture ? picture.file.name : activeCategory ? activeCategory.label : 'Shared in this Nest'} subtitle={group.name} onClose={onClose} wide>
+  return <Modal title={picture ? picture.file.name : activeCategory ? activeCategory.label : conversationId?'Shared in this conversation':'Shared in this Nest'} subtitle={group.name} onClose={onClose} wide>
     <div className="shared-library">
       {(category || picture) && <button ref={backButton} className="text-button shared-back" type="button" onClick={() => picture ? setPicture(null) : setCategory(null)}><ArrowLeft size={17} />{picture ? 'Back to Pictures' : 'All shared items'}</button>}
       {error && <div className="error-banner" role="alert">{error}<button className="text-button" type="button" onClick={() => setRetry(n => n + 1)}>Try again</button></div>}
       {loading && <p className="shared-loading" role="status">Loading shared items…</p>}
       {!!unverified && <p className="field-error" role="alert">Some shared items could not be decrypted or verified and aren’t shown.</p>}
-      {picture ? <PictureView item={picture} getUrl={getUrl} /> : !category ? <div className="shared-categories">{categories.filter(c => c.always || items.some(item => item.category === c.id)).map(({ id, label, Icon, art }) => <button key={id} type="button" ref={el => { categoryButtons.current[id] = el; }} onClick={() => { lastCategory.current = id; setCategory(id); }}><>{art ? <img className="shared-activity-art" src={art} alt="" width="48" height="48" /> : <Icon size={27} />}</><span>{label}</span>{!loading && <small>{items.filter(item => item.category === id).length}</small>}</button>)}</div> : <>
+      {picture ? <PictureView item={picture} getUrl={getUrl} /> : !category ? <div className="shared-categories">{categories.filter(c => (!conversationId||!['polls','rsvps','assignments'].includes(c.id))&&(c.always || items.some(item => item.category === c.id))).map(({ id, label, Icon, art }) => <button key={id} type="button" ref={el => { categoryButtons.current[id] = el; }} onClick={() => { lastCategory.current = id; setCategory(id); }}><>{art ? <img className="shared-activity-art" src={art} alt="" width="48" height="48" /> : <Icon size={27} />}</><span>{label}</span>{!loading && <small>{items.filter(item => item.category === id).length}</small>}</button>)}</div> : <>
         <p className="shared-sort">Newest first</p>
-        {!loading && !shown.length && !error && <p className="shared-empty">No {activeCategory.label.toLowerCase()} have been shared with you in this Nest yet.</p>}
+        {!loading && !shown.length && !error && <p className="shared-empty">No {activeCategory.label.toLowerCase()} have been shared with you in this conversation yet.</p>}
         <div className={category === 'pictures' ? 'shared-pictures' : 'shared-items'}>{shown.map(item => category === 'pictures' ? <PictureTile key={item.id} item={item} getUrl={getUrl} onOpen={setPicture} /> : category === 'polls' ? <div className="shared-poll" key={item.id}><PollCard message={item.message} group={group} user={user} version={version} onOpen={onOpenPoll} /><p className="shared-item-meta">{item.sender} · {dateLabel(item.createdAt)}</p></div> : category === 'rsvps' ? <div className="shared-poll" key={item.id}><RsvpEnvelope message={item.message} group={group} user={user} version={version} onOpen={onOpenRsvp} /><p className="shared-item-meta">{item.sender} · {dateLabel(item.createdAt)}</p></div> : category === 'assignments' ? <div className="shared-poll" key={item.id}><AssignmentCard message={item.message} group={group} user={user} version={version} onOpen={onOpenAssignments} /><p className="shared-item-meta">{item.sender} · {dateLabel(item.createdAt)}</p></div> : <DownloadRow key={item.id} item={item} getUrl={getUrl} />)}</div>
       </>}
     </div>

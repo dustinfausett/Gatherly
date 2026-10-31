@@ -435,5 +435,43 @@ export function openDatabase(path) {
   CREATE TABLE IF NOT EXISTS pending_push_alerts (
     user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,due_at INTEGER NOT NULL,payload TEXT NOT NULL
   );`);
+  // Permit a real self conversation, preserving existing conversation IDs and
+  // every foreign-key reference. Never rename the old table (SQLite would
+  // rewrite child references to the temporary name).
+  const conversationSchema=db.prepare("SELECT sql FROM sqlite_master WHERE name='private_conversations'").get().sql;
+  if(conversationSchema.includes('CHECK(user_low<user_high)')){
+    db.exec('PRAGMA foreign_keys=OFF; BEGIN IMMEDIATE');
+    try{db.exec(conversationSchema.replace('CREATE TABLE private_conversations','CREATE TABLE private_conversations_next').replace('CHECK(user_low<user_high)','CHECK(user_low<=user_high)'));
+      db.exec('INSERT INTO private_conversations_next SELECT * FROM private_conversations; DROP TABLE private_conversations; ALTER TABLE private_conversations_next RENAME TO private_conversations; COMMIT');
+    }catch(e){db.exec('ROLLBACK');throw e;}finally{db.exec('PRAGMA foreign_keys=ON');}
+  }
+  addColumn('private_conversations','created_by','TEXT');
+  addColumn('private_messages','intro','INTEGER NOT NULL DEFAULT 0');
+  addColumn('private_messages','removed_by','TEXT');
+  addColumn('private_messages','removed_at','INTEGER');
+  addColumn('private_messages','content_client_id','TEXT');
+  addColumn('messages','content_client_id','TEXT');
+  addColumn('scheduled_sends','next_at','INTEGER');
+  // Recurring sends reuse the same encrypted attachment. Access remains tied
+  // to each message's readers, while the message/file pair stays unique.
+  if(db.prepare("SELECT sql FROM sqlite_master WHERE name='message_files'").get().sql.includes('file_id TEXT UNIQUE')){
+    db.exec(`BEGIN IMMEDIATE;
+      CREATE TABLE message_files_next(message_id INTEGER REFERENCES messages(id) ON DELETE CASCADE,file_id TEXT REFERENCES files(id),PRIMARY KEY(message_id,file_id));
+      INSERT INTO message_files_next SELECT * FROM message_files;
+      DROP TABLE message_files;
+      ALTER TABLE message_files_next RENAME TO message_files;
+      COMMIT;`);
+  }
+  db.exec(`CREATE TABLE IF NOT EXISTS private_parent_blocks(
+    conversation_id TEXT NOT NULL REFERENCES private_conversations(id) ON DELETE CASCADE,
+    child_id TEXT NOT NULL REFERENCES users(id),parent_id TEXT NOT NULL REFERENCES users(id),
+    active INTEGER NOT NULL DEFAULT 1,PRIMARY KEY(conversation_id,child_id));
+    CREATE TABLE IF NOT EXISTS private_delivery_copies(
+    message_id INTEGER NOT NULL REFERENCES private_messages(id) ON DELETE CASCADE,user_id TEXT NOT NULL REFERENCES users(id),
+    ciphertext TEXT NOT NULL,shared_by TEXT NOT NULL REFERENCES users(id),signature TEXT NOT NULL,
+    PRIMARY KEY(message_id,user_id));`);
+  addColumn('phone_drafts','series_id','TEXT');
+  db.exec(`CREATE TABLE IF NOT EXISTS phone_draft_series(id TEXT PRIMARY KEY,owner_id TEXT NOT NULL REFERENCES users(id),active INTEGER NOT NULL DEFAULT 1);
+    CREATE UNIQUE INDEX IF NOT EXISTS phone_series_occurrence ON phone_drafts(series_id,ready_at) WHERE series_id IS NOT NULL;`);
   return db;
 }

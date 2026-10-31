@@ -281,7 +281,7 @@ export function installEncryption({app,db,uploadDir,enabled,transaction,refresh,
     try{await validateCiphertext(ciphertext,rs.readers.map(u=>u.public_key));}catch(e){fail(400,e.message);}
     const files=req.body.files ?? [];
     if(!Array.isArray(files) || files.length>5 || files.some(id=>!uuid(id)) || new Set(files).size!==files.length)fail(400,'Attach up to five encrypted files.');
-    for(const id of files)if(!one('SELECT 1 FROM files WHERE id=? AND user_id=? AND encrypted=1',id,req.user.id) || one('SELECT 1 FROM message_files WHERE file_id=?',id))fail(400,'An encrypted attachment is unavailable. Upload it again.');
+    for(const id of files)if(!one('SELECT 1 FROM files WHERE id=? AND user_id=? AND encrypted=1',id,req.user.id) || !req.recurringDelivery&&one('SELECT 1 FROM message_files WHERE file_id=?',id))fail(400,'An encrypted attachment is unavailable. Upload it again.');
     try{await validateNotificationPreviews(req.body.notificationPreviews,rs.readers,req.user.id);}catch(e){fail(400,e.message);}
     const payload=sendPayload({groupId:gid,clientId,rosterHash,cipherHash:await digest(ciphertext),files,replyTo:req.body.reply_to ?? null,...await previewProof(req.body.notificationPreviews)});
     await proof(req,legacyId ? 'migrate' : 'send',legacyId ? {...payload,legacyId} : payload,signature);

@@ -3,7 +3,7 @@ import { api, post } from './api';
 import { Field, Modal } from './components';
 import { useNestScope, NestFilter } from './RecipientFilters';
 import { ScheduleFields, ScheduleSummary, initialSchedule } from './ScheduleControls';
-import { queueScheduled, localDate } from './scheduled-client';
+import { queueScheduled, localDate,scheduleZone } from './scheduled-client';
 import { scheduleTime } from '../shared/scheduling';
 import { sealPrivate } from './encryption/client';
 import { hasFirstNameToken, personalizeMessage } from '../shared/personalization';
@@ -21,7 +21,7 @@ export default function ComposeMessage({ user, source, single, phoneFirst, onClo
   const confirmButton=useRef(null);
   useEffect(()=>{if(step===2&&!isMobileMessagingDevice())confirmButton.current?.focus({preventScroll:true});},[step]);
   useEffect(() => { let active = true; Promise.all([api('/private/people'), api('/contacts'), source ? api(`/groups/${source.id}/individual-recipients`) : Promise.resolve(null)]).then(([p, c, s]) => { if (active) { setPeople(p.people); setTrees(p.trees || []); setContacts(c); if (s) setSelected(s.people.map(p => `u:${p.id}`)); } }).catch(e => { if (active) setError(e.message); }); return () => { active = false; }; }, [source?.id]);
-  const all = new Map((people || []).map(p => [`u:${p.id}`, { key: `u:${p.id}`, id: p.id, name: p.name, channel: 'Churp', tree_ids: p.tree_ids, blocked: !!p.requires_parent_approval, reason: p.requires_parent_approval ? 'Parent approval required' : '' }]));
+  const all = new Map((people || []).map(p => [`u:${p.id}`, { key: `u:${p.id}`, id: p.id, name: p.name, channel: 'Churp', tree_ids: p.tree_ids, blocked: !!p.messaging_blocked||!!p.requires_parent_approval&&!p.can_introduce, reason: p.messaging_blocked?'Conversation blocked':p.requires_parent_approval ? p.can_introduce?'First message goes to linked parents for review':'Awaiting parent approval' : '' }]));
   for (const c of contacts?.contacts || []) {
     const key = c.linked_user_id ? `u:${c.linked_user_id}` : `c:${c.id}`;
     if (!all.has(key)) all.set(key, c.linked_user_id ? { key, name: c.name, blocked: true, reason: 'Churp account setup required', channel: 'Unavailable' } : { key, contactId: c.id, name: c.name, phone: c.phone, channel: 'Phone', blocked: !c.phone || !!user.family?.protected, reason: user.family?.protected ? 'Phone drafts are for adult accounts' : !c.phone ? 'Add a phone number first' : '' });
@@ -35,12 +35,12 @@ export default function ComposeMessage({ user, source, single, phoneFirst, onClo
   function review(){try{chosen.filter(r=>!r.blocked).forEach(r=>personalizeMessage(body,r.name));setError('');setStep(2);}catch(e){setError(e.message);}}
   async function send() {
     setBusy(true); setError('');
-    const outcome = results.filter(r => ['Sent', 'Scheduled'].includes(r.status) && r.id);
+    const outcome = results.filter(r => ['Sent', 'Scheduled','Awaiting parent approval'].includes(r.status) && r.id);
     try {
       const readyAt = when.enabled ? scheduleTime(new Date(when.sendAt).getTime()) : null;
       if (when.enabled && localDate(readyAt) !== when.sendAt.slice(0, 16)) throw new Error('That local time does not exist because the clocks change. Choose another time.');
       if (phones.length && !phoneResult.current) {
-        if (!phoneRequest.current) phoneRequest.current = { client_id: crypto.randomUUID(), contact_ids: phones.map(r => r.contactId), body, tree_id: tree || null, source_nest: source?.id || null, filter_nest: nest || null, ready_at: readyAt };
+        if (!phoneRequest.current) phoneRequest.current = { client_id: crypto.randomUUID(), contact_ids: phones.map(r => r.contactId), body, tree_id: tree || null, source_nest: source?.id || null, filter_nest: nest || null, ready_at: readyAt,recurrence:when.recurrence||null,time_zone:scheduleZone() };
         phoneResult.current = await post('/phone-drafts', phoneRequest.current); setPhoneId(phoneResult.current.id);
       }
       if (when.enabled && eligible.length && !scheduled.current) {
@@ -54,7 +54,7 @@ export default function ComposeMessage({ user, source, single, phoneFirst, onClo
         try {
           let draft = pending.current.get(recipient.key);
           if (!draft) { const c = await post('/private/conversations', { user_id: recipient.id }); draft = { id: c.conversation.id, sealed: await sealPrivate(c.conversation.id, personalizeMessage(body,recipient.name), [], undefined, source?.id || null) }; pending.current.set(recipient.key, draft); }
-          await post(`/private/conversations/${draft.id}/messages`, draft.sealed); outcome.push({ ...recipient, status: 'Sent' });
+          const stored=await post(`/private/conversations/${draft.id}/messages`, draft.sealed); outcome.push({ ...recipient, status: stored.status==='pending_approval'?'Awaiting parent approval':'Sent' });
         } catch (e) { outcome.push({ ...recipient, status: 'Failed', error: e.message }); }
         setResults([...outcome]);
       }
@@ -73,7 +73,8 @@ export default function ComposeMessage({ user, source, single, phoneFirst, onClo
       <div className="recipient-filters"><Field label="Tree"><select value={tree} onChange={e => { setTree(e.target.value); setNest(''); setSelected([]); change(); }}><option value="">All my Trees</option>{trees.map(t => <option value={t.id} key={t.id}>{t.name}</option>)}</select></Field>{tree && <NestFilter scope={scope} nest={nest} onChange={n => { setNest(n); setSelected([]); change(); }}/>}</div>
       <div className="recipient-categories"><button className={category === 'members' ? 'selected' : ''} onClick={() => setCategory('members')}>Members</button><button className={category === 'contacts' ? 'selected' : ''} onClick={() => setCategory('contacts')}>Contacts</button>{contacts?.birdhouses.map(b => <button className={category === b.id ? 'selected' : ''} key={b.id} onClick={() => setCategory(b.id)}>{b.name}</button>)}</div>
       <Field label="Find recipients" value={search} onChange={e => setSearch(e.target.value)}/>
-      <div className="selection-list">{rows.map(r => single ? <button key={r.key} className="personal-contact" disabled={r.blocked && !r.id} onClick={() => { if (r.id) onStart(r.id); else { setSelected([r.key]); setStep(1); } }}><strong>{r.name}</strong><small>{r.reason || (r.id ? 'Message in Churp' : 'Draft for your phone')}</small></button> : <label key={r.key}><input type="checkbox" disabled={r.blocked || (!selected.includes(r.key) && selected.length >= 50)} checked={selected.includes(r.key)} onChange={e => { setSelected(v => e.target.checked ? [...v, r.key] : v.filter(k => k !== r.key)); change(); }}/><span><strong>{r.name}</strong><small>{r.reason || (r.id ? 'Churp' : 'Your phone · you tap Send')}</small></span></label>)}</div>
+      {!single&&<button type="button" className="text-button select-all-recipients" disabled={!rows.some(r=>!r.blocked)} onClick={()=>{const keys=rows.filter(r=>!r.blocked).map(r=>r.key);if(keys.length>500){setError('Choose a smaller set: you can send to 500 people at a time.');return;}setSelected(keys);setError('');change();}}>Select All</button>}
+      <div className="selection-list">{rows.map(r => single ? <button key={r.key} className="personal-contact" disabled={r.blocked && !r.id} onClick={() => { if (r.id) onStart(r.id); else { setSelected([r.key]); setStep(1); } }}><strong>{r.name}</strong><small>{r.reason || (r.id ? 'Message in Churp' : 'Draft for your phone')}</small></button> : <label key={r.key}><input type="checkbox" disabled={r.blocked || (!selected.includes(r.key) && selected.length >= 500)} checked={selected.includes(r.key)} onChange={e => { setSelected(v => e.target.checked ? [...v, r.key] : v.filter(k => k !== r.key)); change(); }}/><span><strong>{r.name}</strong><small>{r.reason || (r.id ? 'Churp' : 'Your phone · you tap Send')}</small></span></label>)}</div>
       {!rows.length && <p className="personal-empty">No matching people. Add contacts or choose a different filter.</p>}
       {!single && <div className="personal-actions"><span>{chosen.length} selected</span><button className="button primary" disabled={!chosen.length} onClick={() => setStep(1)}>Next</button></div>}
     </> : step === 1 ? <>
@@ -88,7 +89,7 @@ export default function ComposeMessage({ user, source, single, phoneFirst, onClo
       {phones.length > 0 && <p className="small-text muted">Phone drafts add your name and {tree ? 'a short invitation to the selected Tree' : 'a Churp sign-in link'}. You review each full text before opening Messages and tap Send yourself. Replies stay in your phone’s messaging app.{when.enabled ? ' At the scheduled time, Churp reminds you to open these drafts; it cannot send them automatically.' : ''}</p>}
       <div className="selection-list">{chosen.map(r => <div key={r.key}><strong>{r.name}</strong><small>{r.reason || (r.id ? 'Private Churp message' : 'Phone draft · manual Send required')}</small>{hasFirstNameToken(body)&&!r.blocked&&<p className="message-preview personalized-recipient-preview">{personalizeMessage(body,r.name)}</p>}</div>)}</div>
       <div className="personal-actions"><button className="button secondary" disabled={busy || !!phoneResult.current} onClick={() => setStep(1)}>Edit</button><button ref={confirmButton} className="button primary" disabled={busy || (!eligible.length && !phones.length)} onKeyDown={event=>{if(event.key==='Enter'&&event.repeat)event.preventDefault();}} onClick={send}>{busy ? 'Preparing…' : phones.length ? when.enabled ? 'Schedule messages & phone reminders' : 'Send Churp messages & prepare phone drafts' : `${when.enabled ? 'Schedule' : 'Send'} ${eligible.length} private messages`}</button></div>
-      <p className="small-text muted">Sent means saved in the recipient’s Churp conversation. A phone draft is not a sent or delivered text.</p>
+      <p className="small-text muted">Sent means saved in the recipient’s Churp conversation. Awaiting parent approval means only the sender and linked parents can read the first message until approval. A phone draft is not a sent or delivered text.</p>
     </> : <>
       <div className="selection-list">{results.map(r => <div key={r.key}><strong>{r.name} · {r.status}</strong>{r.error && <small>{r.error}</small>}</div>)}</div>
       {results.some(r => r.status === 'Failed') && <button className="button secondary" disabled={busy} onClick={send}>Retry failed messages</button>}

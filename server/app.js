@@ -22,6 +22,7 @@ import { installAssignments } from './assignments.js';
 import { installAccountSecurity,accountMailer,normalizeEmail } from './account-security.js';
 import { parseRsvp, deadline } from '../shared/rsvps.js';
 import { parsePoll } from '../shared/polls.js';
+import {cleanMessageBody} from '../shared/bird-words.js';
 import { BIRDS, getBird, birdIsAvailable, birdIsVisible, seasonalLabel } from '../shared/birds.js';
 import { getAvatar } from '../shared/avatars.js';
 import { installInvitations } from './invitations.js';
@@ -153,8 +154,8 @@ export function createApp(options = {}) {
       imgSrc: ["'self'", 'data:', 'blob:'], upgradeInsecureRequests: null,
     },
   } : false, crossOriginOpenerPolicy: { policy: 'same-origin-allow-popups' }, strictTransportSecurity: production }));
-  // A scheduled batch contains up to 50 separately encrypted message packets.
-  app.use('/api/scheduled', express.json({ limit: '4mb' }));
+  // A scheduled batch contains up to 500 separately encrypted message packets.
+  app.use('/api/scheduled', express.json({ limit: '32mb' }));
   app.use(express.json({ limit: '1mb' }));
   app.use(cookieParser());
   app.use('/api', (req, res, next) => {
@@ -216,12 +217,13 @@ export function createApp(options = {}) {
     try{family.requireReady(req.user.id);next();}catch(e){next(e);}
   });
   const encryption = installEncryption({app,db,uploadDir,enabled:encryptionRequired,transaction,refresh,refreshUser,group,membership,visibleCircle,testing:options.testing});
-  family=installFamily({app,db,encryption,transaction,refreshUser,publicUser,testing:options.testing});
+  family=installFamily({app,db,encryption,transaction,refreshUser,publicUser,testing:options.testing,onApproved:(m,c)=>{run("UPDATE scheduled_parts SET receipt=json_set(receipt,'$.status','stored') WHERE json_extract(receipt,'$.channel')='private' AND json_extract(receipt,'$.status')='pending_approval' AND json_extract(receipt,'$.id')=?",m.id);notifyDevice(m.user_id===c.user_low?c.user_high:c.user_low,{title:'New private message on Churp',body:'You have a private message.',url:`/?conversation=${c.id}`},null,{channel:'private',messageId:m.id});}});
   const badges=createBadges({db,family,encryptionRequired,smsUnread:uid=>sms.unread(uid)});
   app.get('/api/badges',(req,res)=>{res.set('Cache-Control','no-store');res.json(badges.snapshot(req.user.id));});
   function pushEligible(uid,source){
     if(!family.ready(uid))return false;
     if(!source)return true;
+    if(source.channel==='family-review'){const m=one('SELECT conversation_id FROM private_messages WHERE id=? AND intro=1',source.messageId),c=m&&one('SELECT * FROM private_conversations WHERE id=?',m.conversation_id);return !!c&&(family.guardian(uid,c.user_low)||family.guardian(uid,c.user_high));}
     if(source.channel==='phone-draft')return phoneDrafts.canNotify(uid,source.messageId);
     if(source.channel==='nest'){
       const m=one('SELECT * FROM messages WHERE id=? AND deleted=0',source.messageId);
@@ -229,7 +231,7 @@ export function createApp(options = {}) {
     }
     if(source.channel==='private'){
       const m=one('SELECT * FROM private_messages WHERE id=?',source.messageId),c=m&&one('SELECT * FROM private_conversations WHERE id=?',m.conversation_id);
-      return !!c&&[c.user_low,c.user_high].includes(uid)&&m.user_id!==uid&&!c.blocked_low&&!c.blocked_high&&m.id>(c.user_low===uid?c.read_low:c.read_high)&&family.pairAllowed(c.user_low,c.user_high);
+      return !!c&&[c.user_low,c.user_high].includes(uid)&&(m.user_id!==uid||c.user_low===c.user_high)&&!m.removed_by&&!family.parentBlocked(c)&&!c.blocked_low&&!c.blocked_high&&m.id>(c.user_low===uid?c.read_low:c.read_high)&&family.pairAllowed(c.user_low,c.user_high);
     }
     if(source.channel==='sms')return sms.mode!=='disabled'&&!!one("SELECT 1 FROM sms_messages m JOIN sms_threads t ON t.id=m.thread_id JOIN community_members cm ON cm.community_id=t.community_id AND cm.user_id=t.owner_id WHERE m.id=? AND t.owner_id=? AND m.direction='inbound' AND m.created_at>t.read_through",source.messageId,uid);
     return false;
@@ -242,14 +244,14 @@ export function createApp(options = {}) {
       if(m.deleted||!one('SELECT 1 FROM group_members gm JOIN groups g ON g.id=gm.group_id JOIN community_members cm ON cm.community_id=g.community_id AND cm.user_id=gm.user_id WHERE gm.group_id=? AND gm.user_id=?',m.group_id,uid)||encryptionRequired&&!encryption.canRead(uid,m))return null;
     }else{
       const c=one('SELECT * FROM private_conversations WHERE id=?',m.conversation_id);
-      if(!c||![c.user_low,c.user_high].includes(uid)||c.blocked_low||c.blocked_high||!family.pairAllowed(c.user_low,c.user_high))return null;
+      if(!c||![c.user_low,c.user_high].includes(uid)||c.blocked_low||c.blocked_high||m.removed_by||family.parentBlocked(c)||!family.pairAllowed(c.user_low,c.user_high))return null;
     }
     return m;
   }
   function pushPreviewAllowed(uid,source,preview){
     if(source?.channel==='sms')return pushEligible(uid,source);
     const m=previewMessage(uid,source);
-    return !!m&&m.client_id===preview.client_id&&m.user_id===preview.sender_id&&(!m.edit_version||m.edit_version===0);
+    return !!m&&(m.content_client_id||m.client_id)===preview.client_id&&m.user_id===preview.sender_id&&(!m.edit_version||m.edit_version===0);
   }
   const push=createPushNotifications({db,dataDir,enabled:pushEnabled,badge:uid=>badges.snapshot(uid).count,eligible:pushEligible,canPreview:pushPreviewAllowed,
     now:options.testing&&options.pushNow?options.pushNow:Date.now,autoProcess:!(options.testing&&options.pushAutoProcess===false),
@@ -269,9 +271,10 @@ export function createApp(options = {}) {
     const signerId=m.encrypted_by||m.user_id,identity=encryption.identity(signerId),historical=one('SELECT public_key FROM e2ee_key_history WHERE user_id=? AND fingerprint=?',signerId,m.signer_fingerprint||'');
     const sender=one('SELECT name FROM users WHERE id=?',m.user_id),nest=source.channel==='nest'?one('SELECT name FROM groups WHERE id=?',m.group_id):null;
     result.can_preview=true;
-    result.context={channel:source.channel,message_id:m.id,client_id:m.client_id,sender_id:m.user_id,signer_id:signerId,sender_name:sender?.name||'Someone',context_name:nest?.name||null,group_id:m.group_id||null,conversation_id:m.conversation_id||null,content_type:m.message_kind||'chat',recipient_hash:m.recipient_hash,reply_to:m.reply_to??null,self_encrypted:!!m.self_encrypted,edit_version:m.edit_version||0,edit_client_id:m.edit_client_id||null};
+    result.context={channel:source.channel,message_id:m.id,client_id:m.content_client_id||m.client_id,sender_id:m.user_id,signer_id:signerId,sender_name:sender?.name||'Someone',context_name:nest?.name||null,group_id:m.group_id||null,conversation_id:m.conversation_id||null,content_type:m.message_kind||'chat',recipient_hash:m.recipient_hash,reply_to:m.reply_to??null,self_encrypted:!!m.self_encrypted,edit_version:m.edit_version||0,edit_client_id:m.edit_client_id||null};
     if(approved&&m.ciphertext&&identity){
-      result.message={ciphertext:m.ciphertext,signer_key:historical?.public_key||identity.public_key,signer_fingerprint:m.signer_fingerprint||identity.fingerprint};
+      const delivered=source.channel==='private'?one('SELECT ciphertext FROM private_delivery_copies WHERE message_id=? AND user_id=?',m.id,req.user.id):null;
+      result.message={ciphertext:delivered?.ciphertext||m.ciphertext,signer_key:historical?.public_key||identity.public_key,signer_fingerprint:m.signer_fingerprint||identity.fingerprint};
       const recipient=encryption.identity(req.user.id);result.recipient_identity={fingerprint:recipient?.fingerprint,custody:recipient?.custody};
     }
     res.json(result);
@@ -285,7 +288,7 @@ export function createApp(options = {}) {
   app.get('/api/me', (req,res)=>res.json({user:publicUser(req.user)}));
   installContacts({app,db,transaction,refreshUser,family,testing:options.testing});
   installRecipientScopes({app,db,groupAdmin,membership});
-  const privateMessages=installPrivateMessages({app,db,encryption,family,transaction,refreshUser,group,groupAdmin,testing:options.testing,notifyPrivate:(uid,id,context)=>notifyDevice(uid,{title:'New private message on Churp',body:'You have a private message.',url:`/?conversation=${id}`},encryptedPreview(uid,context,'private'),{channel:'private',messageId:context.id})});
+  const privateMessages=installPrivateMessages({app,db,encryption,family,transaction,refreshUser,group,groupAdmin,testing:options.testing,notifyIntro:(c,id)=>{for(const parent of new Set([...family.parents(c.user_low),...family.parents(c.user_high)].map(p=>p.parent_id)))notifyDevice(parent,{title:'New message request',body:'Review a first message in Family & youth protection.',url:'/'},null,{channel:'family-review',messageId:id});},notifyPrivate:(uid,id,context)=>notifyDevice(uid,{title:'New private message on Churp',body:'You have a private message.',url:`/?conversation=${id}`},encryptedPreview(uid,context,'private'),{channel:'private',messageId:context.id})});
   installReactions({app,db,encryption,encryptionRequired,family,visibleCircle,joined,transaction,refresh,refreshUser,testing:options.testing});
   installPolls({app,db,encryption,encryptionRequired,visibleCircle,joined,groupAdmin,transaction,refresh,testing:options.testing});
   installRsvps({app,db,encryption,encryptionRequired,visibleCircle,joined,groupAdmin,transaction,refresh,testing:options.testing});
@@ -674,6 +677,10 @@ export function createApp(options = {}) {
   }
   app.get('/api/groups/:id/messages', (req, res) => res.json(messagePage(req)));
   app.get('/api/groups/:id/shared', (req, res) => res.json(messagePage(req, true)));
+  app.get('/api/groups/:id/members',(req,res)=>{
+    const g=visibleCircle(req.user.id,req.params.id);if(!joined(req.user.id,g.id)&&!groupAdmin(req.user.id,g))fail(403,'Join this Nest to see its members.');
+    res.json({members:all(`SELECT u.id,u.name,u.username,u.avatar_id,u.avatar_choice,u.avatar_style,cm.role FROM group_members gm JOIN users u ON u.id=gm.user_id JOIN community_members cm ON cm.user_id=u.id AND cm.community_id=? WHERE gm.group_id=? ORDER BY u.name COLLATE NOCASE,u.id`,g.community_id,g.id)});
+  });
   app.get('/api/groups/:id/threads/:messageId', (req, res) => {
     visibleCircle(req.user.id, req.params.id);
     const root = one('SELECT * FROM messages WHERE id=? AND group_id=?', req.params.messageId, req.params.id) || fail(404, 'Thread not found.');
@@ -695,7 +702,7 @@ export function createApp(options = {}) {
     if (g.admin_only && !groupAdmin(req.user.id, g)) fail(403, 'Only admins can post or reply in this Nest.');
     if(encryptionRequired && req.body.body !== undefined)fail(400,'Message text must be encrypted on your device. Update the app before sending.');
     if(encryptionRequired && typeof req.body.clientId==='string'){
-      const existing=one('SELECT * FROM messages WHERE client_id=?',req.body.clientId);
+      const existing=one('SELECT * FROM messages WHERE client_id=?',req.recurringDelivery?`${req.body.clientId}:${req.recurringDelivery}`:req.body.clientId);
       if(existing){if(existing.group_id!==g.id || existing.user_id!==req.user.id || existing.message_kind!==messageKind || existing.ciphertext!==req.body.ciphertext)fail(409,'That encrypted message ID is already in use.');if(validateOnly)fail(409,'This message has already been sent.');return {id:existing.id};}
     }
     const checked=encryptionRequired ? await encryption.validateSend(req,g.id) : null;
@@ -709,7 +716,7 @@ export function createApp(options = {}) {
     if (!encryptionRequired && messageKind==='poll' && !parsePoll(body))fail(400,'Add a valid poll title, questions and answer options.');
     const responseDeadline=messageKind==='rsvp' ? normalizedDeadline(req.body.response_deadline) : null;
     if(!encryptionRequired && messageKind==='rsvp' && (!parseRsvp(body) || parseRsvp(body).responseDeadline!==responseDeadline))fail(400,'Add valid event details and a matching response deadline.');
-    for (const id of files) if (!one('SELECT 1 FROM files WHERE id=? AND user_id=?', id, req.user.id) || one('SELECT 1 FROM message_files WHERE file_id=?', id)) fail(400, 'An attachment is unavailable. Please upload it again.');
+    for (const id of files) if (!one('SELECT 1 FROM files WHERE id=? AND user_id=?', id, req.user.id) || !req.recurringDelivery&&one('SELECT 1 FROM message_files WHERE file_id=?', id)) fail(400, 'An attachment is unavailable. Please upload it again.');
     let reply = req.body.reply_to ?? null;
     if (reply !== null) {
       if (!Number.isSafeInteger(reply)) fail(400, 'Invalid reply.');
@@ -725,10 +732,10 @@ export function createApp(options = {}) {
     transaction(() => {
       if(checked)encryption.assertRoster(req,g.id,checked.rosterHash);
       if(group(g.id).admin_only && !groupAdmin(req.user.id,group(g.id)))fail(403,'Only admins can post or reply in this Nest.');
-      id = Number(run('INSERT INTO messages(group_id,user_id,body,reply_to,urgent,ciphertext,client_id,encrypted_by,e2ee_version,recipient_hash,signer_fingerprint,self_encrypted) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)', g.id, req.user.id, body.trim(), reply, urgent,
-        checked?.ciphertext ?? null,checked?.clientId ?? null,checked ? req.user.id : null,checked ? 1 : 0,checked?.rosterHash ?? null,checked ? encryption.identity(req.user.id).fingerprint : null,checked?.rs.self_encrypted ? 1 : 0).lastInsertRowid);
+      id = Number(run('INSERT INTO messages(group_id,user_id,body,reply_to,urgent,ciphertext,client_id,encrypted_by,e2ee_version,recipient_hash,signer_fingerprint,self_encrypted) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)', g.id, req.user.id, cleanMessageBody(body.trim(),messageKind), reply, urgent,
+        checked?.ciphertext ?? null,checked ? req.recurringDelivery?`${checked.clientId}:${req.recurringDelivery}`:checked.clientId : null,checked ? req.user.id : null,checked ? 1 : 0,checked?.rosterHash ?? null,checked ? encryption.identity(req.user.id).fingerprint : null,checked?.rs.self_encrypted ? 1 : 0).lastInsertRowid);
       if(checked)encryption.recordRecipients(id,checked.rs);
-      run('UPDATE messages SET message_kind=? WHERE id=?',messageKind,id);
+      run('UPDATE messages SET message_kind=?,content_client_id=? WHERE id=?',messageKind,req.recurringDelivery?checked?.clientId||null:null,id);
       if(messageKind==='poll')run('INSERT INTO polls(message_id) VALUES (?)',id);
       if(messageKind==='rsvp')run('INSERT INTO rsvps(message_id,response_deadline) VALUES (?,?)',id,responseDeadline);
       if(assignmentSetup)assignments.create(id,assignmentSetup);
@@ -785,7 +792,7 @@ export function createApp(options = {}) {
         const rs=encryption.assertEditRoster(req,fresh,checked.rosterHash);
         const reused=one('SELECT id FROM messages WHERE client_id=? OR edit_client_id=?',checked.clientId,checked.clientId);
         if(reused)fail(409,'That encrypted edit ID is already in use.');
-        run("UPDATE messages SET body='',ciphertext=?,edit_client_id=?,encrypted_by=?,recipient_hash=?,signer_fingerprint=?,self_encrypted=? WHERE id=?",checked.ciphertext,checked.clientId,req.user.id,checked.rosterHash,encryption.identity(req.user.id).fingerprint,rs.self_encrypted ? 1 : 0,m.id);
+        run("UPDATE messages SET content_client_id=NULL,body='',ciphertext=?,edit_client_id=?,encrypted_by=?,recipient_hash=?,signer_fingerprint=?,self_encrypted=? WHERE id=?",checked.ciphertext,checked.clientId,req.user.id,checked.rosterHash,encryption.identity(req.user.id).fingerprint,rs.self_encrypted ? 1 : 0,m.id);
         run('DELETE FROM e2ee_recipients WHERE message_id=?',m.id);encryption.recordRecipients(m.id,rs);
       }else run('UPDATE messages SET body=? WHERE id=?',body.trim(),m.id);
       if(m.message_kind==='rsvp')run('UPDATE rsvps SET response_deadline=? WHERE message_id=?',responseDeadline,m.id);
@@ -838,9 +845,10 @@ export function createApp(options = {}) {
   app.get('/api/files/:id', (req, res) => {
     const f = one('SELECT * FROM files WHERE id=?', req.params.id) || fail(404, 'File not found.');
     let allowed = f.user_id === req.user.id;
-    const attached = one('SELECT m.* FROM message_files mf JOIN messages m ON m.id=mf.message_id WHERE mf.file_id=? AND m.deleted=0', f.id);
-    if (attached) { allowed=false;try { visibleCircle(req.user.id, attached.group_id); allowed = encryptionRequired ? !!f.encrypted && encryption.canRead(req.user.id,attached) : true; } catch { /* no access */ } }
-    if (!allowed && f.encrypted && privateMessages.canReadFile(req.user.id,f.id)) allowed=true;
+    const privateAttached=!!one('SELECT 1 FROM private_message_files WHERE file_id=?',f.id),references=all('SELECT m.* FROM message_files mf JOIN messages m ON m.id=mf.message_id WHERE mf.file_id=? AND m.deleted=0',f.id);
+    if(privateAttached||references.length)allowed=false;
+    for(const attached of references){try{visibleCircle(req.user.id,attached.group_id);if(encryptionRequired?!!f.encrypted&&encryption.canRead(req.user.id,attached):true)allowed=true;}catch{}}
+    if(!allowed&&f.encrypted&&privateMessages.canReadFile(req.user.id,f.id))allowed=true;
     if (!allowed && one('SELECT 1 FROM users WHERE avatar_id=?', f.id)) allowed = true;
     if (!allowed) for (const c of all('SELECT id FROM communities WHERE avatar_id=?', f.id)) if (one('SELECT 1 FROM community_members WHERE community_id=? AND user_id=?', c.id, req.user.id)) allowed = true;
     if (!allowed) for (const s of all('SELECT community_id FROM subcommunities WHERE avatar_id=?', f.id)) if (one('SELECT 1 FROM community_members WHERE community_id=? AND user_id=?', s.community_id, req.user.id)) allowed = true;

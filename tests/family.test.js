@@ -1,3 +1,4 @@
+import {approveRequest} from './helpers/approve-request.js';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtempSync,rmSync} from 'node:fs';
@@ -46,21 +47,21 @@ test('adult contact requests require either linked parent, all youth DMs include
  assert.equal((await f.req('/contacts',owner,'POST',{name:'Kid',linked_user_id:kid.id})).status,403);
  assert.equal((await f.req('/contacts/import',owner,'POST',{contacts:[{name:'Kid',linked_user_id:kid.id}]})).status,403);
  const result=await f.ok('/private/conversations',owner,'POST',{user_id:kid.id}),cid=result.conversation.id;assert.equal(result.approval_required,true);
- assert.equal((await f.req(`/private/conversations/${cid}/roster`,owner)).status,403);assert.equal((await f.req(`/private/conversations/${cid}/roster`,kid)).status,403);
+ assert.equal((await f.req(`/private/conversations/${cid}/roster`,owner)).status,200);await f.ok(`/private/conversations/${cid}/messages`,owner,'POST',await f.prepare(owner,cid,'Introduction for parent review'));assert.equal((await f.req(`/private/conversations/${cid}/roster`,kid)).status,403);
  assert.equal((await f.ok('/family',parent)).approvals[0].adult_id,owner.id);
  assert.equal((await f.req('/family/approvals',owner,'POST',{child_id:kid.id,adult_id:owner.id,decision:'approved'})).status,403);
- await f.ok('/family/approvals',second,'POST',{child_id:kid.id,adult_id:owner.id,decision:'approved'});
+ await approveRequest(f.ok,second,kid,owner);
  const rs=await f.ok(`/private/conversations/${cid}/roster`,owner);assert.deepEqual(rs.readers.map(r=>r.id).sort(),[owner.id,kid.id,parent.id,second.id].sort());
  assert.equal((await f.req(`/private/conversations/${cid}/messages`,owner,'POST',await f.prepare(owner,cid,'No missing parents',[],rs.readers.filter(r=>[owner.id,kid.id].includes(r.id))))).status,400);
  const raw=enc.bytes('Protected private attachment'),crypt=await enc.encryptFile(raw),form=new FormData();form.append('file',new Blob([crypt.encrypted]),'attachment.pgp');const file=(await f.ok('/e2ee/uploads',owner,'POST',form)).file,desc={id:file.id,name:'private.txt',mime:'application/octet-stream',size:raw.length,key:crypt.key,sha256:crypt.sha256};
  const sent=await f.ok(`/private/conversations/${cid}/messages`,owner,'POST',await f.prepare(owner,cid,'Supervised hello',[desc]));
- for(const p of [parent,second]){const rows=(await f.ok(`/private/conversations/${cid}/messages?child_id=${kid.id}`,p)).messages;assert.equal((await enc.open(p.privateKey,owner.privateKey.toPublic().armor(),rows[0].ciphertext)).body,'Supervised hello');assert.deepEqual(await enc.decryptFile((await f.req(`/files/${file.id}`,p)).data,desc),raw);assert.equal((await f.req(`/private/conversations/${cid}/read`,p,'POST',{through:sent.id})).status,404);assert.equal((await f.req(`/private/conversations/${cid}/block`,p,'PATCH',{blocked:true})).status,404);assert.equal((await f.req(`/private/conversations/${cid}/messages`,p,'POST',{})).status,404);}
+ for(const p of [parent,second]){const rows=(await f.ok(`/private/conversations/${cid}/messages?child_id=${kid.id}`,p)).messages;assert.equal((await enc.open(p.privateKey,owner.privateKey.toPublic().armor(),rows.at(-1).ciphertext)).body,'Supervised hello');assert.deepEqual(await enc.decryptFile((await f.req(`/files/${file.id}`,p)).data,desc),raw);assert.equal((await f.req(`/private/conversations/${cid}/read`,p,'POST',{through:sent.id})).status,404);assert.equal((await f.req(`/private/conversations/${cid}/block`,p,'PATCH',{blocked:true})).status,404);assert.equal((await f.req(`/private/conversations/${cid}/messages`,p,'POST',{})).status,404);}
  assert.equal((await f.req(`/private/conversations/${cid}/messages?child_id=${kid.id}`,stranger)).status,404);assert.equal((await f.req(`/files/${file.id}`,stranger)).status,404);assert.equal((await f.req(`/private/conversations/${cid}/roster?child_id=${kid.id}`,parent)).status,404);
  const nest=(await f.ok(`/communities/${f.tree.id}/circles`,owner,'POST',{name:'School Nest'})).group;await f.ok(`/groups/${nest.id}/join`,kid,'POST');assert.equal((await f.req(`/groups/${nest.id}/messages`,parent)).status,403);
  assert.equal((await f.ok(`/groups/${nest.id}/individual-recipients`,owner)).people.length,1);
  await f.ok('/family/approvals',parent,'POST',{child_id:kid.id,adult_id:owner.id,decision:'declined'});
  assert.equal((await f.ok(`/groups/${nest.id}/individual-recipients`,owner)).people.length,0);assert.equal((await f.req(`/private/conversations/${cid}/messages`,owner,'POST',{})).status,403);
- await f.restart();assert.equal((await f.ok('/family',second)).approvals[0].status,'declined');assert.equal((await f.ok(`/private/conversations/${cid}/messages?child_id=${kid.id}`,parent)).messages.length,1);
+ await f.restart();assert.equal((await f.ok('/family',second)).approvals[0].status,'declined');assert.equal((await f.ok(`/private/conversations/${cid}/messages?child_id=${kid.id}`,parent)).messages.length,2);
 });
 test('historical DMs retain original signatures when shared with parents; second parents trigger migration and removing links revokes access',async t=>{
  const f=await fixture(t),{owner}=f,child=await f.actor('legacy'),parent=await f.actor('parent'),second=await f.actor('second'),third=await f.actor('third');await f.join(child);
@@ -83,13 +84,13 @@ test('historical DMs retain original signatures when shared with parents; second
  assert.equal((await f.ok('/me',child)).user.family.protected,false);assert.equal((await f.req(`/family/children/${child.id}/conversations`,second)).status,404);assert.equal((await f.req(`/private/conversations/${cid}/messages?child_id=${child.id}`,second)).status,404);assert.equal((await f.ok(`/private/conversations/${cid}/roster`,child)).readers.length,2);
  assert.deepEqual(f.db.prepare('PRAGMA foreign_key_check').all(),[]);
 });
-test('youth-to-youth chats include both families without adult-contact approval and stale audiences cannot omit a new parent',async t=>{
+test('youth-to-youth chats include both families and require both family approvals and stale audiences cannot omit a new parent',async t=>{
  const f=await fixture(t),a=await f.actor('youthone','2010-01-01'),b=await f.actor('youthtwo','2011-01-01'),pa=await f.actor('parentone'),pb=await f.actor('parenttwo'),pc=await f.actor('parentthree');await f.link(pa,a);await f.link(pb,b);await f.join(a);await f.join(b);
  const cid=(await f.ok('/private/conversations',a,'POST',{user_id:b.id})).conversation.id,draft=await f.prepare(a,cid,'A youth conversation');await f.link(pc,a);
  assert.equal((await f.req(`/private/conversations/${cid}/messages`,a,'POST',draft)).status,409);
  await f.ok(`/private/conversations/${cid}/messages`,a,'POST',await f.prepare(a,cid,'All linked parents included'));
  for(const [p,child] of [[pa,a],[pc,a],[pb,b]]){const rows=(await f.ok(`/private/conversations/${cid}/messages?child_id=${child.id}`,p)).messages;assert.equal((await enc.open(p.privateKey,a.privateKey.toPublic().armor(),rows[0].ciphertext)).body,'All linked parents included');}
- assert.equal((await f.ok('/family',pa)).approvals.length,0);
+ assert.equal((await f.ok('/family',pa)).approvals.length,1);await approveRequest(f.ok,pa,a,b);assert.equal((await f.ok(`/private/conversations/${cid}/messages`,b)).messages.length,0);await approveRequest(f.ok,pb,b,a);assert.equal((await f.ok(`/private/conversations/${cid}/messages`,b)).messages.length,1);
 });
 
 test('historical session-key wrapping uses archived identities and preserves the original signer',async()=>{
@@ -102,7 +103,7 @@ test('bulk adding Tree members cannot bypass parent approval and fails the whole
  const f=await fixture(t),{owner}=f,child=await f.actor('bulkchild','2011-01-01'),parent=await f.actor('bulkparent'),peer=await f.actor('bulkpeer');await f.link(parent,child);await f.join(child);await f.join(peer);
  assert.equal((await f.req('/contacts/from-tree',owner,'POST',{user_ids:[peer.id,child.id],new_birdhouse_name:'Not yet'})).status,403);
  assert.equal((await f.ok('/contacts',owner)).contacts.length,0);assert.equal((await f.ok('/contacts',owner)).birdhouses.length,0);
- await f.ok('/private/conversations',owner,'POST',{user_id:child.id});await f.ok('/family/approvals',parent,'POST',{child_id:child.id,adult_id:owner.id,decision:'approved'});
+ const intro=(await f.ok('/private/conversations',owner,'POST',{user_id:child.id})).conversation;await f.ok(`/private/conversations/${intro.id}/messages`,owner,'POST',await f.prepare(owner,intro.id,'First reviewed contact message'));await approveRequest(f.ok,parent,child,owner);
  assert.equal((await f.ok('/contacts/from-tree',owner,'POST',{user_ids:[peer.id,child.id]})).added,2);
 });
 
@@ -110,9 +111,9 @@ test('username contacts outside shared Trees still require parent approval and i
  const f=await fixture(t),parent=await f.actor('cross_parent'),child=await f.actor('cross_child','2012-01-01');await f.link(parent,child);
  assert.equal((await f.ok('/private/username?username=cross_child',f.owner)).person.requires_parent_approval,true);
  const result=await f.ok('/private/conversations',f.owner,'POST',{username:'cross_child'}),cid=result.conversation.id;assert.equal(result.approval_required,true);
- assert.equal((await f.ok('/contacts',f.owner)).contacts.length,0);assert.equal((await f.req(`/private/conversations/${cid}/roster`,f.owner)).status,403);assert.equal((await f.req(`/private/conversations/${cid}/messages`,f.owner,'POST',{})).status,403);
- await f.ok('/family/approvals',parent,'POST',{child_id:child.id,adult_id:f.owner.id,decision:'approved'});await f.ok('/private/conversations',f.owner,'POST',{username:'cross_child'});assert.equal((await f.ok('/contacts',f.owner)).contacts[0].linked_user_id,child.id);
+ assert.equal((await f.ok('/contacts',f.owner)).contacts.length,0);assert.equal((await f.req(`/private/conversations/${cid}/roster`,f.owner)).status,200);await f.ok(`/private/conversations/${cid}/messages`,f.owner,'POST',await f.prepare(f.owner,cid,'Introduction for cross-Tree review'));assert.equal((await f.req(`/private/conversations/${cid}/messages`,f.owner,'POST',{})).status,403);
+ await approveRequest(f.ok,parent,child,f.owner);await f.ok('/private/conversations',f.owner,'POST',{username:'cross_child'});assert.equal((await f.ok('/contacts',f.owner)).contacts[0].linked_user_id,child.id);
  const rs=await f.ok(`/private/conversations/${cid}/roster`,f.owner);assert.deepEqual(rs.readers.map(r=>r.id).sort(),[f.owner.id,parent.id,child.id].sort());
  await f.ok(`/private/conversations/${cid}/messages`,f.owner,'POST',await f.prepare(f.owner,cid,'Approved outside our Tree'));
- const row=(await f.ok(`/private/conversations/${cid}/messages?child_id=${child.id}`,parent)).messages[0];assert.equal((await enc.open(parent.privateKey,f.owner.privateKey.toPublic().armor(),row.ciphertext)).body,'Approved outside our Tree');
+ const row=(await f.ok(`/private/conversations/${cid}/messages?child_id=${child.id}`,parent)).messages.at(-1);assert.equal((await enc.open(parent.privateKey,f.owner.privateKey.toPublic().armor(),row.ciphertext)).body,'Approved outside our Tree');
 });

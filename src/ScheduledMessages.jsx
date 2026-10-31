@@ -19,7 +19,7 @@ export function ScheduledPreviews({state,channel,targetId,threadId=null,search='
  const rows=(state.rows||[]).filter(row=>{
   const parts=conversationParts(row,channel,targetId);
   return parts.some(p=>threadId===null||row.entries[p.position].request.reply_to===threadId)&&(!search||row.draft?.body?.toLowerCase().includes(search.toLowerCase()));
- }).sort((a,b)=>a.send_at-b.send_at);
+ }).sort((a,b)=>(a.next_at||a.send_at)-(b.next_at||b.send_at));
  const ids=rows.map(r=>r.id).join(',');
  useEffect(()=>{const current=new Set(rows.map(r=>r.id));if([...current].some(id=>!previousIds.current.has(id)))anchor.current?.scrollIntoView({block:'nearest'});previousIds.current=current;},[ids]);
  const refresh=()=>{state.reload();onRefresh?.();},done=()=>{setEditor(null);refresh();};
@@ -32,7 +32,7 @@ export function ScheduledPreviews({state,channel,targetId,threadId=null,search='
    let body=row.draft?.body||'',previewError=row.draftError;if(channel==='private'&&row.draft)try{body=scheduledRecipientBody(row.draft,entry.target_id);}catch(e){previewError=e.message;}
    return <MessageFocus key={row.id} copyText={previewError?undefined:title||body} actions={close=><ScheduledActions row={row} onEdit={()=>{close();setEditor({row,action:'edit'});}} onReschedule={()=>{close();setEditor({row,action:'reschedule'});}} onChanged={()=>{close();refresh();}}/>}><article className="message own scheduled-inline" data-schedule-id={row.id} aria-label="Your scheduled message">
     <div className="message-content">
-     <div className="scheduled-inline-meta"><Clock size={14}/><strong>{held?'Needs review':sending?'Sending…':'Scheduled'}</strong><span>· Only you</span><time dateTime={new Date(row.send_at).toISOString()}>{scheduleLabel(row.send_at,row.time_zone)}</time></div>
+     <div className="scheduled-inline-meta"><Clock size={14}/><strong>{held?'Needs review':sending?'Sending…':'Scheduled'}</strong><span>· Only you</span><time dateTime={new Date(row.next_at||row.send_at).toISOString()}>{scheduleLabel(row.next_at||row.send_at,row.time_zone)}</time></div>
      {!!replyTo&&<div className="scheduled-thread-label"><Reply size={13}/>{onThread?<button type="button" className="text-button" onClick={()=>onThread(replyTo)}>Reply in thread</button>:'Reply in thread'}</div>}
      <div className={`message-bubble scheduled-preview ${entry.request.urgent?'urgent-message':''}`}>
       {!!entry.request.urgent&&<span className="urgent-label"><AlertCircle size={13}/>Urgent</span>}

@@ -164,3 +164,9 @@ test('phone templates personalize per recipient, keep reviewed names across rest
   const overflow=f.packet(avery,{body:'[first name]'.repeat(800)});await f.ok(`/contacts/${avery.id}`,owner,'PATCH',{name:'A'.repeat(80)});
   assert.equal((await f.req('/phone-drafts',owner,'POST',overflow)).status,400);
 });
+
+test('recurring phone reminders create fresh manual drafts once per occurrence and cancellation stops the series',async t=>{
+ const f=await fixture(t),owner=await f.register('phone_series_owner'),contact=await f.saved(owner),first=f.now+60000;
+ const row=await f.ok('/phone-drafts',owner,'POST',f.packet(contact,{ready_at:first,time_zone:'America/Denver',recurrence:{frequency:'daily',interval:1,until:'',exclude:[]}}));assert.equal(row.status,'scheduled');f.advance(60000);await f.runtime.phoneDrafts.tick();let all=(await f.ok('/phone-drafts',owner)).drafts;assert.equal(all.length,2);const next=all.find(r=>r.ready_at>f.now);assert.ok(next);assert.equal(next.recipients[0].state,'ready');await f.runtime.phoneDrafts.tick();assert.equal((await f.ok('/phone-drafts',owner)).drafts.length,2);
+ await f.restart();await f.ok(`/phone-drafts/${next.id}/cancel`,owner,'POST',{expected_version:next.version});f.advance(next.ready_at-f.now+86400000);await f.runtime.phoneDrafts.tick();all=(await f.ok('/phone-drafts',owner)).drafts;assert.equal(all.length,2);assert.equal(all.find(r=>r.id===next.id).cancelled,true);assert.equal(f.calls,0);
+});

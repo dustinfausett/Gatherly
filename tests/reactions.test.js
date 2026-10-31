@@ -1,3 +1,4 @@
+import {approveRequest} from './helpers/approve-request.js';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtempSync,rmSync} from 'node:fs';
@@ -83,7 +84,7 @@ test('private reactions respect blocking, parental approval and read-only guardi
  const kid=await f.actor('reaction_child','2012-01-01'),parent=await f.actor('reaction_parent');
  const {code}=await f.ok('/family/codes',parent,'POST');await f.ok('/family/claim',kid,'POST',{code});const link=(await f.ok('/family',parent)).links.find(l=>l.child_id===kid.id);await f.ok(`/family/links/${link.id}/confirm`,parent,'POST',{confirm_parent:true});await f.joinTree(kid);
  const supervised=(await f.ok('/private/conversations',owner,'POST',{user_id:kid.id})).conversation.id;
- await f.ok('/family/approvals',parent,'POST',{child_id:kid.id,adult_id:owner.id,decision:'approved'});
+ await f.message(owner,'private',supervised);await approveRequest(f.ok,parent,kid,owner);
  const mid=await f.message(owner,'private',supervised);await f.ok(`/reactions/private/${mid}`,kid,'PUT',await f.prepare(kid,'private',mid,['😊']));
  const path=`/reactions/private/${mid}?child_id=${kid.id}`,view=await f.ok(path,parent);assert.equal(view.can_react,false);assert.equal(view.states.length,1);assert.deepEqual((await enc.open(parent.privateKey,view.states[0].signer_key,view.states[0].ciphertext)).emojis,['😊']);assert.equal((await f.req(path,parent,'PUT',{})).status,403);
  assert.equal((await f.req(`/reactions/private/${mid}`,parent)).status,404);

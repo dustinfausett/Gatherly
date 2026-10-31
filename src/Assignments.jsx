@@ -27,7 +27,7 @@ function ItemFields({item,onChange,members,index}){
     <Field label={`${prefix}: due date (optional)`} type="date" value={item.dueDate || ''} onChange={e=>onChange({...item,dueDate:e.target.value || null})}/></>;
 }
 export function AssignmentBuilder({group,onClose,onSent,initialValue=null,scheduledRecord=null}){
-  const [when,setWhen]=useState(()=>initialSchedule(scheduledRecord?.send_at));
+  const [when,setWhen]=useState(()=>initialSchedule(scheduledRecord?.next_at||scheduledRecord?.send_at,scheduledRecord?.recurrence));
   const {enabled}=useEncryption(),[settings,setSettings]=useState(initialValue||{title:'',description:'',dueDate:null,allowMemberAdds:false}),[items,setItems]=useState(initialValue?.items||[blankItem()]);
   const [members,setMembers]=useState(null),[busy,setBusy]=useState(false),[error,setError]=useState(''),[retry,setRetry]=useState(0);
   const saving=useRef(false),prepared=useRef(null);

@@ -1,3 +1,4 @@
+import {cleanMessageBody,birdWords} from '../../shared/bird-words.js';
 import {sealNotificationPreviews,previewProof} from '../../shared/notification-previews.js';
 import {validateReactions,reactionProof} from '../../shared/reactions.js';
 import { assignmentProof } from '../../shared/assignments';
@@ -197,12 +198,12 @@ export async function decryptMessages(groupId,messages){
       let value=decryptedCache.get(cacheKey);
       if(!value){for(const privateKey of [self.privateKey,...self.previousPrivateKeys]){try{value=await enc.open(privateKey,signer.public_key,m.ciphertext);break;}catch{}}if(!value)throw new Error('This device cannot decrypt the message.');decryptedCache.set(cacheKey,value);if(decryptedCache.size>500)decryptedCache.delete(decryptedCache.keys().next().value);}
       const editVersion=m.edit_version || 0;
-      if(value.version!==enc.VERSION || value.kind!=='nest-message' || value.groupId!==groupId || value.clientId!==m.client_id || value.senderId!==m.user_id || value.signerId!==m.encrypted_by || value.rosterHash!==m.recipient_hash || value.replyTo!==(m.reply_to ?? null) || !!value.migrated!==m.client_id.startsWith('legacy-') || (value.editVersion || 0)!==editVersion || (editVersion>0 && (value.editMessageId!==m.id || value.editClientId!==m.edit_client_id)))throw new Error('The message context does not match.');
+      if(value.version!==enc.VERSION || value.kind!=='nest-message' || value.groupId!==groupId || value.clientId!==(m.content_client_id||m.client_id) || value.senderId!==m.user_id || value.signerId!==m.encrypted_by || value.rosterHash!==m.recipient_hash || value.replyTo!==(m.reply_to ?? null) || !!value.migrated!==m.client_id.startsWith('legacy-') || (value.editVersion || 0)!==editVersion || (editVersion>0 && (value.editMessageId!==m.id || value.editClientId!==m.edit_client_id)))throw new Error('The message context does not match.');
       validateContents(value);
       if((value.contentType || 'chat')!==(m.message_kind || 'chat'))throw new Error('The message type was changed.');
       if(value.selfEncrypted!==undefined && value.selfEncrypted!==!!m.self_encrypted)throw new Error('The message protection status was changed.');
       if(enc.canonical(value.attachments.map(f=>f.id).sort())!==enc.canonical(m.files.map(f=>f.id).sort()))throw new Error('The attachment list was changed.');
-      return {...m,body:value.body,files:value.attachments,identityVerified:signer.verified,migrated:!!value.migrated && !editVersion};
+      return {...m,body:cleanMessageBody(value.body,value.contentType||'chat'),files:value.attachments,identityVerified:signer.verified,migrated:!!value.migrated && !editVersion};
     }catch{return {...m,body:'This message could not be decrypted or verified.',files:[],decryptionError:true};}
   }));
 }
@@ -258,16 +259,16 @@ export async function signAssignmentRequest(request,listId,metadata,operation){
 export async function sealPrivate(conversationId,body,attachments=[],clientId=crypto.randomUUID(),sourceNest=null){
  if(typeof body!=='string'||body.length>10000||(!body.trim()&&!attachments.length))throw new Error('Write a message or attach a file.');
  const self=getCurrent(),rs=await api(`/private/conversations/${conversationId}/roster`),readers=await Promise.all(rs.readers.map(trustedReader));
- const contents={version:1,kind:'private-message',conversationId,clientId,senderId:self.userId,rosterHash:rs.roster_hash,selfEncrypted:rs.self_encrypted,body,attachments};
+ const contents={version:1,intro:!!rs.approval_required,kind:'private-message',conversationId,clientId,senderId:self.userId,rosterHash:rs.roster_hash,selfEncrypted:rs.self_encrypted,body,attachments};
  const ciphertext=await enc.seal(self.privateKey,readers.map(r=>r.public_key),contents),files=attachments.map(f=>f.id),notificationPreviews=await sealNotificationPreviews(self.privateKey,readers,{senderId:self.userId,clientId,channel:'private',body,attachments}),payload={conversationId,clientId,rosterHash:rs.roster_hash,cipherHash:await enc.digest(ciphertext),files,sourceNest,...await previewProof(notificationPreviews)};
  return {notificationPreviews,ciphertext,clientId,rosterHash:rs.roster_hash,files,sourceNest,signature:await enc.sign(self.privateKey,'private-send',payload)};
 }
 export async function decryptPrivate(conversationId,messages){
- const self=getCurrent();return Promise.all(messages.map(async m=>{try{
+ const self=getCurrent();return Promise.all(messages.map(async m=>{if(m.removed)return {...m,body:'Message removed by a linked parent.',files:[],removed:true};try{
   const signer=await trustedReader({id:m.user_id,public_key:m.signer_key,fingerprint:m.signer_fingerprint});let value;
   for(const key of [self.privateKey,...self.previousPrivateKeys]){try{value=await enc.open(key,signer.public_key,m.ciphertext);break;}catch{}}
-  if(!value||value.version!==1||value.kind!=='private-message'||value.conversationId!==conversationId||value.clientId!==m.client_id||value.senderId!==m.user_id||value.rosterHash!==m.recipient_hash||value.selfEncrypted!==!!m.self_encrypted||typeof value.body!=='string'||value.body.length>10000||!Array.isArray(value.attachments)||enc.canonical(value.attachments.map(f=>f.id).sort())!==enc.canonical(m.files.map(f=>f.id).sort()))throw new Error('Private context changed.');
-  return {...m,body:value.body,files:value.attachments};
+  if(!value||value.version!==1||value.kind!=='private-message'||value.conversationId!==conversationId||value.clientId!==(m.content_client_id||m.client_id)||value.senderId!==m.user_id||value.rosterHash!==m.recipient_hash||value.selfEncrypted!==!!m.self_encrypted||typeof value.body!=='string'||value.body.length>10000||!Array.isArray(value.attachments)||enc.canonical(value.attachments.map(f=>f.id).sort())!==enc.canonical(m.files.map(f=>f.id).sort()))throw new Error('Private context changed.');
+  return {...m,body:cleanMessageBody(value.body,value.contentType||'chat'),files:value.attachments};
  }catch{return {...m,body:'This private message could not be decrypted or verified.',files:[],decryptionError:true};}}));
 }
 
@@ -315,4 +316,18 @@ export async function decryptReactions(states,encrypted=true){
   if(emojis.length!==row.reaction_count)throw new Error('Reaction count changed.');
   return {...row,emojis};
  }catch{return {...row,emojis:[],invalid:true};}}));
+}
+
+// Parents authorize the reviewed encrypted introduction without obtaining the
+// child's account key. Only its session key is wrapped for each participant.
+export async function approvePrivateRequest(childId,peerId){
+ const self=getCurrent(),request=await api(`/family/requests/${childId}/${peerId}`),delivery_copies=[];
+ const messages=await decryptPrivate(request.conversation.id,request.messages);
+ if(messages.some(m=>m.decryptionError))throw new Error('Unlock and review the first message before approving.');
+ for(const message of request.messages)for(const recipient of request.recipients){
+  await trustedReader(recipient);const ciphertext=await enc.rewrap([self.privateKey,...self.previousPrivateKeys],recipient.public_key,message.ciphertext);
+  const proof={messageId:message.id,recipientId:recipient.id,originalHash:await enc.digest(message.ciphertext),copyHash:await enc.digest(ciphertext)};
+  delivery_copies.push({message_id:message.id,user_id:recipient.id,ciphertext,signature:await enc.sign(self.privateKey,'private-intro-share',proof)});
+ }
+ return post('/family/approvals',{child_id:childId,adult_id:peerId,decision:'approved',delivery_copies});
 }

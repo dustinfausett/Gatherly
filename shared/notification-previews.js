@@ -1,6 +1,7 @@
+import {cleanMessageBody,birdWords} from './bird-words.js';
 import * as enc from './encryption.js';
 export function previewText(body,attachments=[],kind='chat'){
- let text=typeof body==='string'?body:'';
+ let text=typeof body==='string'?cleanMessageBody(body,kind):'';
  if(['poll','rsvp','assignments'].includes(kind)){try{text=`${{poll:'Poll',rsvp:'RSVP',assignments:'Assignments'}[kind]}: ${JSON.parse(text).title||''}`;}catch{text='New shared item';}}
  text=text.replace(/\s+/gu,' ').trim();
  if(!text&&attachments.length)text=attachments.every(f=>f.mime?.startsWith('image/'))?'Photo':'Attachment';

@@ -22,7 +22,7 @@ export function eventDate(event) {
   return `${format(event.start)}${event.end ? ` – ${format(event.end)}` : ''}`;
 }
 export function RsvpBuilder({ group, message, onClose, onSent, initialValue=null, scheduledRecord=null }) {
-  const [when,setWhen]=useState(()=>initialSchedule(scheduledRecord?.send_at));
+  const [when,setWhen]=useState(()=>initialSchedule(scheduledRecord?.next_at||scheduledRecord?.send_at,scheduledRecord?.recurrence));
   const initial = initialValue || (message && parseRsvp(message.body)), { enabled } = useEncryption();
   const [title, setTitle] = useState(initial?.title || ''), [allDay, setAllDay] = useState(initial?.allDay || false);
   const [start, setStart] = useState(initial ? initial.allDay ? initial.start : localInput(initial.start) : ''), [end, setEnd] = useState(initial ? initial.allDay ? initial.end || '' : localInput(initial.end) : '');

@@ -4,7 +4,7 @@ import { api, post, patch } from './api';
 import { Field, Form, Modal } from './components';
 import { NavigationArt } from './Contacts';
 import { ScheduleFields, initialSchedule } from './ScheduleControls';
-import { scheduleLabel } from './scheduled-client';
+import { scheduleLabel,scheduleZone } from './scheduled-client';
 import { phoneTextUrl, phoneDraftState } from '../shared/phone-drafts';
 import MessageText from './MessageText';
 import './phone-drafts.css';
@@ -59,7 +59,7 @@ export function PhoneDraftDialog({ id, onClose, onChanged }) {
   return <Modal title={editing ? 'Edit phone drafts' : prepared ? `Text ${prepared.name}` : 'Your phone drafts'} onClose={busy ? () => {} : onClose}>
     {error && <p className="error-banner" role="alert">{error}</p>}{notice && <p className="info-banner" role="status">{notice}</p>}
     {!row ? <p role="status">Opening your saved draft…</p> : editing ? <Form submit="Save phone drafts" onSubmit={async () => {
-      const result = await api(`/phone-drafts/${id}`, { method: 'PUT', body: { expected_version: row.version, body, contact_ids: row.recipients.map(r => r.contact_id), tree_id: row.tree_id, source_nest: row.source_nest, filter_nest: row.filter_nest, ready_at: when.enabled ? new Date(when.sendAt).getTime() : null } });
+      const result = await api(`/phone-drafts/${id}`, { method: 'PUT', body: { expected_version: row.version, body, contact_ids: row.recipients.map(r => r.contact_id), tree_id: row.tree_id, source_nest: row.source_nest, filter_nest: row.filter_nest, recurrence:when.recurrence||null,time_zone:scheduleZone(),ready_at: when.enabled ? new Date(when.sendAt).getTime() : null } });
       setRow(result); setEditing(false); onChanged?.(); setNotice('Phone drafts updated. Nothing has been sent.');
     }}><PersonalizedMessageField label="Phone draft message" value={body} onChange={setBody} required/>{hasFirstNameToken(body)&&<div className="selection-list">{row.recipients.map(r=><div key={r.contact_id}><strong>{r.name}</strong><RecipientMessagePreview body={body} name={r.name}/></div>)}</div>}<ScheduleFields value={when} onChange={setWhen} phoneDrafts/><button type="button" className="text-button" onClick={() => setEditing(false)}>Cancel edit</button></Form> : prepared ? <>
       <p className="small-text muted">{prepared.phone} · One recipient only</p>
@@ -78,7 +78,7 @@ export function PhoneDraftDialog({ id, onClose, onChanged }) {
       <p className="info-banner">{row.status === 'scheduled' ? `Reminder set for ${scheduleLabel(row.ready_at)}. Your phone still needs you to tap Send.` : row.cancelled ? 'This draft was cancelled. Previously copied or opened texts remain outside Churp.' : 'These are drafts, not sent texts. Open one at a time to avoid creating a group text.'}</p>
       <div className={`message-preview ${row.status === 'scheduled' ? 'phone-draft-faded' : ''}`}><MessageText text={row.body}/></div>
       <div className="selection-list phone-draft-recipients">{row.recipients.map(r => <article key={r.contact_id}><strong>{r.name}</strong><small>{r.phone} · {phoneDraftState(r.state)}</small>{r.reason && <p className="error-banner">{r.reason}</p>}{!row.cancelled && !['done', 'skipped'].includes(r.state) && <div className="personal-actions"><button className="button primary" disabled={busy || !!r.reason || row.ready_at > Date.now()} onClick={() => act(async () => { setNotice(''); setPrepared(await post(`/phone-drafts/${id}/prepare`, { contact_id: r.contact_id, expected_version: row.version })); })}>Review phone text</button><button className="text-button" disabled={busy || row.ready_at > Date.now()} onClick={() => act(async () => setRow(await mark(r, 'skipped')))}>Skip</button></div>}</article>)}</div>
-      <div className="personal-actions">{canEdit && <button className="button secondary" onClick={() => { setBody(row.body); setWhen(row.ready_at > Date.now() ? initialSchedule(row.ready_at) : initialSchedule()); setEditing(true); setNotice(''); }}>Edit or reschedule</button>}{!row.cancelled && row.status !== 'complete' && <button className="text-button danger" disabled={busy} onClick={() => act(async () => { setRow(await post(`/phone-drafts/${id}/cancel`, { expected_version: row.version })); setNotice('Remaining phone drafts cancelled.'); })}>Cancel remaining drafts</button>}</div>
+      <div className="personal-actions">{canEdit&&(!row.series_id||row.ready_at>Date.now()) && <button className="button secondary" onClick={() => { setBody(row.body); setWhen(row.ready_at > Date.now() ? initialSchedule(row.ready_at,row.recurrence) : initialSchedule()); setEditing(true); setNotice(''); }}>Edit or reschedule</button>}{!row.cancelled && row.status !== 'complete' && <button className="text-button danger" disabled={busy} onClick={() => act(async () => { setRow(await post(`/phone-drafts/${id}/cancel`, { expected_version: row.version })); setNotice('Remaining phone drafts cancelled.'); })}>Cancel remaining drafts</button>}</div>
       <p className="small-text muted">Phone drafts use Churp-managed storage encryption. SMS/iMessage/RCS behavior and privacy depend on your phone and recipient; these texts do not have Churp’s E2EE shield.</p>
     </>}
   </Modal>;

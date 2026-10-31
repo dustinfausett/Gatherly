@@ -209,3 +209,11 @@ Chat messages show their existing sender, time, content and chosen reactions. Ho
 Phone alerts show the sender and the first part of a message by default. **Your corner → Security → Show message previews** switches to private, generic alerts across devices. Alerts are suppressed on devices where Churp is visible. Background devices receive each eligible message without a cooldown, with an updated unread badge. Messages still arrive in chat immediately. [Privacy, encrypted previews and foreground behavior](docs/PUSH-NOTIFICATIONS.md).
 
 In **Messages → Compose → New Message**, use **Find someone by username** to enter a full username (with or without `@`). **Add & message** saves the linked Churp contact and opens an encrypted private conversation, even without a shared Tree. Exact lookup reveals no phone number, age or Tree membership. Blocked accounts are unavailable. Adult/youth pairs still request parent approval before messaging; linked parents remain readers of the youth’s private messages.
+
+## Recurring reminders, self notes and message review
+
+Use **Recurring** under a scheduled message's date/time for daily, selected weekdays, monthly dates or patterns such as the first Thursday, and yearly repeats. Add excluded dates and an optional end date; upcoming dates are previewed. **Messages → Compose → Message myself** stores personal notes, uploads and recurring reminders. Private conversations now have the same pet-in-a-nest shared-items button as Nests. Nest member counts open a branded roster, and member lists offer **Message**.
+
+For protected conversations, one first message goes to linked parents for full review. Adult–youth conversations need a linked parent; youth–youth conversations need a parent from each family. Parents can approve, block/unblock, or remove content from participants while retaining a parent review copy. Parents cannot send as their child. Common profanity is replaced with bird-themed wording across Churp messages and previews, while preserving URLs, email addresses and message protocol identifiers.
+
+In **Send Many Individually**, **Select All** selects the available recipients in the current Tree, Nest or Birdhouse filter. A batch can include up to 500 people; pending first messages are labelled **Awaiting parent approval** rather than delivered to the protected recipient.

@@ -19,8 +19,9 @@ export function installReactions({app,db,encryption,encryptionRequired,family,vi
   const message=one('SELECT * FROM private_messages WHERE id=?',id)||fail(404,'Message not found.');
   const c=one('SELECT * FROM private_conversations WHERE id=?',message.conversation_id),participant=[c.user_low,c.user_high].includes(req.user.id);
   const guardian=!participant&&family.viewChild(req.user.id,c,req.query.child_id)&&one('SELECT 1 FROM private_message_readers WHERE message_id=? AND user_id=?',id,req.user.id);
+  if(participant&&(message.removed_by||!family.participantCanRead(req.user.id,c,message)))fail(404,'Message not found.');
   if(!participant&&!guardian)fail(404,'Message not found.');
-  const can_react=participant&&!c.blocked_low&&!c.blocked_high&&family.pairAllowed(c.user_low,c.user_high);
+  const can_react=participant&&!family.parentBlocked(c)&&!message.removed_by&&!c.blocked_low&&!c.blocked_high&&family.pairAllowed(c.user_low,c.user_high);
   if(writing&&!can_react)fail(403,'Reactions are paused for this private conversation.');
   return {message,c,can_react};
  }

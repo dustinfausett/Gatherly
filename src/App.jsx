@@ -103,7 +103,7 @@ export default function App() {
     return () => { document.removeEventListener('mousedown', outside); document.removeEventListener('keydown', escape); };
   }, []);
   async function finishInvitation(result){sessionStorage.removeItem('gatherly_invite');if(result.pending){await reload();notify('Your request is awaiting Tree or Branch admin approval.');return result;}await chooseCommunity(result.community_id,result.group_id);await reload();notify(result.group_id?'You’ve joined the Nest.':'You’re in. Welcome to the Tree!');}
-  async function openPrivate(id){try{const r=await post('/private/conversations',{user_id:id});setConversationId(r.conversation.id);setTab('messages');}catch(e){notify(e.message,true);}}
+  async function openPrivate(id){try{const r=await post('/private/conversations',id===user.id?{self:true}:{user_id:id});setConversationId(r.conversation.id);setTab('messages');}catch(e){notify(e.message,true);}}
   function cancelEntry() {clearTimeout(navigationTimer.current);navigationToken.current++;setOpeningId(null);setJourney(null);}
   useEffect(()=>()=>clearTimeout(navigationTimer.current),[]);
   async function chooseCommunity(id, gid = null) {
@@ -178,7 +178,7 @@ export default function App() {
     {modal?.kind === 'invite' && community && <InviteDialog community={community} group={modal.group} onClose={() => setModal(null)} />}
     {modal?.kind === 'join' && <JoinDialog version={version} initialToken={modal.token} onClose={() => setModal(null)} onJoined={finishInvitation} onJoin={async value => finishInvitation(await post('/invitations/accept',{token:value}))}/> }
     {modal?.kind === 'profile' && <ProfileDialog user={user} config={config} onClose={() => setModal(null)} onSave={async body => { setUser((await patch('/me',body)).user); await reload(); }} onAccountUpdate={setUser} onLogout={logout} notify={notify} />}
-    {modal?.kind === 'members' && community && <MembersDialog community={community} user={user} onClose={() => setModal(null)} onRefresh={reload} notify={notify} />}
+    {modal?.kind === 'members' && community && <MembersDialog community={community} nest={modal.group} onMessage={async id=>{setModal(null);await openPrivate(id);}} user={user} onClose={() => setModal(null)} onRefresh={reload} notify={notify} />}
     {modal?.kind === 'creation-requests' && community && <CreationRequests community={community} version={version} onClose={()=>setModal(null)} onRefresh={reload} notify={notify}/> }
   </div></FamilyGate></EncryptionGate>;
 }

@@ -84,3 +84,8 @@ test('phone preview recovery handles old senders and read races without exposing
  await f.ok(`/private/conversations/${cid}/block`,member,'PATCH',{blocked:true});assert.equal((await f.ok(privateQuery,member)).can_preview,false);
  await f.ok(`/groups/${nest.id}/join`,member,'DELETE');assert.equal((await f.ok(query,member)).can_preview,false);
 });
+
+test('self reminders dispatch a private push and an unread badge without a compact sender preview',async t=>{
+ const f=await fixture(t),a=f.member,c=(await f.ok('/private/conversations',a,'POST',{self:true})).conversation,rs=await f.ok(`/private/conversations/${c.id}/roster`,a),clientId=randomUUID(),ciphertext=await enc.seal(a.privateKey,rs.readers.map(r=>r.public_key),{version:1,kind:'private-message',conversationId:c.id,clientId,senderId:a.id,rosterHash:rs.roster_hash,selfEncrypted:rs.self_encrypted,body:'A reminder just for me',attachments:[]}),proof={conversationId:c.id,clientId,rosterHash:rs.roster_hash,cipherHash:await enc.digest(ciphertext),files:[],sourceNest:null};
+ const sent=await f.ok(`/private/conversations/${c.id}/messages`,a,'POST',{clientId,ciphertext,rosterHash:rs.roster_hash,files:[],sourceNest:null,signature:await enc.sign(a.privateKey,'private-send',proof)});assert.equal(f.deliveries.length,2);assert.equal(f.deliveries[0].payload.recipient_id,a.id);assert.equal(f.deliveries[0].payload.unread_count,1);const detail=await f.ok(`/push/message?channel=private&message_id=${sent.id}`,a);assert.equal(detail.can_preview,true);assert.equal((await enc.open(a.privateKey,detail.message.signer_key,detail.message.ciphertext)).body,'A reminder just for me');
+});

@@ -1,3 +1,4 @@
+import {normalizeRecurrence,nextOccurrence,calendarParts} from '../shared/recurrence.js';
 import {randomUUID} from 'node:crypto';
 import {rateLimit} from 'express-rate-limit';
 import * as enc from '../shared/encryption.js';
@@ -14,23 +15,24 @@ export function installScheduling({app,db,dataDir,encryption,family,transaction,
  const owned=(id,uid)=>one('SELECT * FROM scheduled_sends WHERE id=? AND owner_id=?',id,uid)||fail(404,'Scheduled send not found.');
  const context=(job,entry)=>({user:one('SELECT * FROM users WHERE id=?',job.owner_id)||fail(403,'This account is unavailable.'),params:{id:entry.target_id},body:entry.request,get:name=>name.toLowerCase()==='x-churp-device'?job.device_id:undefined});
  const parts=id=>all('SELECT id,position,state,receipt,error FROM scheduled_parts WHERE send_id=? ORDER BY position',id).map(p=>({...p,receipt:p.receipt?JSON.parse(p.receipt):null}));
- function view(job){const packet=open(job.id,job.packet_cipher),rows=parts(job.id),sent=rows.filter(p=>p.state==='sent').length,status=rows.every(p=>p.state==='cancelled')?'cancelled':sent===rows.length?'sent':rows.some(p=>p.state==='sending')?'sending':rows.some(p=>p.state==='held')?'needs_review':sent?'partly_sent':'scheduled';return {id:job.id,client_id:job.client_id,send_at:job.send_at,time_zone:job.time_zone,version:job.version,created_at:job.created_at,signer_key:job.signer_key,draft_ciphertext:packet.draft_ciphertext,entries:packet.entries,parts:rows,status};}
- async function validate(req,body){
+ function view(job){const packet=open(job.id,job.packet_cipher),rows=parts(job.id),sent=rows.filter(p=>p.state==='sent').length,status=rows.every(p=>p.state==='cancelled')?'cancelled':sent===rows.length?(rows.some(p=>p.receipt?.status==='pending_approval')?'awaiting_parent_approval':'sent'):rows.some(p=>p.state==='sending')?'sending':rows.some(p=>p.state==='held')?'needs_review':sent?'partly_sent':'scheduled';return {id:job.id,client_id:job.client_id,send_at:job.send_at,time_zone:job.time_zone,version:job.version,created_at:job.created_at,signer_key:job.signer_key,draft_ciphertext:packet.draft_ciphertext,entries:packet.entries,recurrence:packet.recurrence||null,next_at:job.next_at,parts:rows,status};}
+ async function validate(req,body,reusableFiles=false){
   family.requireReady(req.user.id);encryption.device(req);
   let sendAt;try{sendAt=scheduleTime(body.send_at,now());}catch(e){fail(400,e.message);}if(typeof body.time_zone!=='string'||body.time_zone.length>100)fail(400,'Choose a time zone.');try{new Intl.DateTimeFormat('en',{timeZone:body.time_zone});}catch{fail(400,'Choose a valid time zone.');}
+  let recurrence;try{recurrence=normalizeRecurrence(body.recurrence);if(recurrence&&enc.canonical(recurrence)!==enc.canonical(body.recurrence))throw new Error('Refresh the recurring schedule.');if(recurrence&&recurrence.until&&recurrence.until<calendarParts(sendAt,body.time_zone).date)throw new Error('Choose an end date on or after the start date.');if(recurrence&&!nextOccurrence(sendAt,recurrence,body.time_zone))throw new Error('This recurring schedule has no matching dates.');}catch(e){fail(400,e.message);}
   if(typeof body.client_id!=='string'||!/^[\da-f-]{36}$/i.test(body.client_id))fail(400,'A unique scheduled send ID is required.');
-  if(!Array.isArray(body.entries)||!body.entries.length||body.entries.length>50||body.entries.some(e=>!e||typeof e!=='object'))fail(400,'Schedule between 1 and 50 messages together.');
+  if(!Array.isArray(body.entries)||!body.entries.length||body.entries.length>500||body.entries.some(e=>!e||typeof e!=='object'))fail(400,'Schedule between 1 and 500 messages together.');
   if(new Set(body.entries.map(e=>`${e.channel}:${e.target_id}`)).size!==body.entries.length)fail(400,'Choose different recipients.');
   const identity=encryption.identity(req.user.id);try{await enc.validateCiphertext(body.draft_ciphertext,[identity.public_key]);await enc.verify(identity.public_key,'scheduled-send',scheduleProof(body),body.signature);}catch{fail(400,'The encrypted scheduled draft could not be verified.');}
   for(const entry of body.entries){
    if(!['nest','private','sms'].includes(entry.channel)||typeof entry.target_id!=='string'||!entry.request||typeof entry.request!=='object')fail(400,'Choose a supported message destination.');
-   const ctx=context({owner_id:req.user.id,device_id:req.get('x-churp-device')},entry);
+   const ctx=context({owner_id:req.user.id,device_id:req.get('x-churp-device')},entry);if(recurrence||reusableFiles)ctx.recurringDelivery='validation';
    if(entry.channel==='nest'){
     if(entry.request.response_deadline&&Date.parse(entry.request.response_deadline)<=sendAt)fail(400,'Send the invitation before its response deadline.');await sendNest(ctx,{validateOnly:true});
    }else if(entry.channel==='private')await sendPrivate(ctx,{validateOnly:true});
    else{if(entry.target_id!==entry.request.tree_id)fail(400,'Choose the matching Tree for these texts.');const preview=sms.preview(req.user.id,entry.request);if(!preview.rows.some(r=>r.eligible))fail(403,'No recipients currently have permission to receive these phone texts.');}
   }
-  return {sendAt,deviceId:req.get('x-churp-device'),signerKey:identity.public_key};
+  return {sendAt,nextAt:recurrence?nextOccurrence(sendAt,recurrence,body.time_zone):null,deviceId:req.get('x-churp-device'),signerKey:identity.public_key};
  }
  app.get('/api/scheduled',(req,res)=>{
   encryption.device(req);res.set('Cache-Control','no-store');const {channel,target_id:targetId}=req.query;
@@ -44,20 +46,26 @@ export function installScheduling({app,db,dataDir,encryption,family,transaction,
   const prior=typeof req.body.client_id==='string'&&one('SELECT * FROM scheduled_sends WHERE owner_id=? AND client_id=?',req.user.id,req.body.client_id),digest=hash(JSON.stringify(req.body));
   if(prior){if(prior.request_hash!==digest)fail(409,'This scheduled send ID has already been used.');return res.json(view(prior));}
   const checked=await validate(req,req.body);let id=randomUUID();
-  transaction(()=>{const repeated=one('SELECT * FROM scheduled_sends WHERE owner_id=? AND client_id=?',req.user.id,req.body.client_id);if(repeated){if(repeated.request_hash!==digest)fail(409,'This scheduled send ID has already been used.');id=repeated.id;return;}if(one("SELECT COUNT(*) AS n FROM scheduled_sends s WHERE owner_id=? AND EXISTS(SELECT 1 FROM scheduled_parts p WHERE p.send_id=s.id AND p.state IN ('pending','held','sending'))",req.user.id).n>=100)fail(400,'Manage your existing scheduled sends before adding more.');run('INSERT INTO scheduled_sends(id,owner_id,client_id,request_hash,send_at,time_zone,device_id,signer_key,packet_cipher,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)',id,req.user.id,req.body.client_id,digest,checked.sendAt,req.body.time_zone,checked.deviceId,checked.signerKey,seal(id,req.body),Date.now());req.body.entries.forEach((e,i)=>run("INSERT INTO scheduled_parts(id,send_id,position,state,mode) VALUES (?,?,?,'pending',?)",randomUUID(),id,i,e.channel==='sms'?sms.mode:null));});refreshUser(req.user.id);res.status(201).json(view(owned(id,req.user.id)));
+  transaction(()=>{const repeated=one('SELECT * FROM scheduled_sends WHERE owner_id=? AND client_id=?',req.user.id,req.body.client_id);if(repeated){if(repeated.request_hash!==digest)fail(409,'This scheduled send ID has already been used.');id=repeated.id;return;}if(one("SELECT COUNT(*) AS n FROM scheduled_sends s WHERE owner_id=? AND EXISTS(SELECT 1 FROM scheduled_parts p WHERE p.send_id=s.id AND p.state IN ('pending','held','sending'))",req.user.id).n>=100)fail(400,'Manage your existing scheduled sends before adding more.');run('INSERT INTO scheduled_sends(id,owner_id,client_id,request_hash,send_at,time_zone,device_id,signer_key,packet_cipher,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)',id,req.user.id,req.body.client_id,digest,checked.sendAt,req.body.time_zone,checked.deviceId,checked.signerKey,seal(id,req.body),Date.now());run('UPDATE scheduled_sends SET next_at=? WHERE id=?',checked.nextAt,id);req.body.entries.forEach((e,i)=>run("INSERT INTO scheduled_parts(id,send_id,position,state,mode) VALUES (?,?,?,'pending',?)",randomUUID(),id,i,e.channel==='sms'?sms.mode:null));});refreshUser(req.user.id);res.status(201).json(view(owned(id,req.user.id)));
  });
  app.put('/api/scheduled/:id',limited,async(req,res)=>{
   const old=owned(req.params.id,req.user.id);if(req.body.expected_version!==old.version)fail(409,'This scheduled send changed. Refresh it before editing.');
-  const checked=await validate(req,req.body);transaction(()=>{const current=owned(old.id,req.user.id);if(current.version!==req.body.expected_version||one("SELECT 1 FROM scheduled_parts WHERE send_id=? AND state NOT IN ('pending','held')",old.id))fail(409,'Delivery has started or this send changed. Refresh its status.');run('UPDATE scheduled_sends SET send_at=?,time_zone=?,device_id=?,signer_key=?,packet_cipher=?,version=version+1 WHERE id=?',checked.sendAt,req.body.time_zone,checked.deviceId,checked.signerKey,seal(old.id,req.body),old.id);run('DELETE FROM scheduled_parts WHERE send_id=?',old.id);req.body.entries.forEach((e,i)=>run("INSERT INTO scheduled_parts(id,send_id,position,state,mode) VALUES (?,?,?,'pending',?)",randomUUID(),old.id,i,e.channel==='sms'?sms.mode:null));});refreshUser(req.user.id);res.json(view(owned(old.id,req.user.id)));
+  const checked=await validate(req,req.body,!!open(old.id,old.packet_cipher).recurrence);transaction(()=>{const current=owned(old.id,req.user.id);if(current.version!==req.body.expected_version||one("SELECT 1 FROM scheduled_parts WHERE send_id=? AND state NOT IN ('pending','held')",old.id))fail(409,'Delivery has started or this send changed. Refresh its status.');run('UPDATE scheduled_sends SET send_at=?,time_zone=?,device_id=?,signer_key=?,packet_cipher=?,version=version+1 WHERE id=?',checked.sendAt,req.body.time_zone,checked.deviceId,checked.signerKey,seal(old.id,req.body),old.id);run('UPDATE scheduled_sends SET next_at=? WHERE id=?',checked.nextAt,old.id);run('DELETE FROM scheduled_parts WHERE send_id=?',old.id);req.body.entries.forEach((e,i)=>run("INSERT INTO scheduled_parts(id,send_id,position,state,mode) VALUES (?,?,?,'pending',?)",randomUUID(),old.id,i,e.channel==='sms'?sms.mode:null));});refreshUser(req.user.id);res.json(view(owned(old.id,req.user.id)));
  });
  app.post('/api/scheduled/:id/cancel',limited,(req,res)=>{const old=owned(req.params.id,req.user.id);transaction(()=>{if(old.version!==req.body.expected_version||one("SELECT 1 FROM scheduled_parts WHERE send_id=? AND state='sending'",old.id))fail(409,'Delivery has started or this send changed. Refresh its status.');run("UPDATE scheduled_parts SET state='cancelled',error=NULL WHERE send_id=? AND state IN ('pending','held')",old.id);run('UPDATE scheduled_sends SET version=version+1 WHERE id=?',old.id);});refreshUser(req.user.id);res.json(view(owned(old.id,req.user.id)));});
+ function advanceSeries(series){
+  if(!series||!series.next_at||one("SELECT 1 FROM scheduled_parts WHERE send_id=? AND state<>'sent'",series.id))return;
+  const packet=open(series.id,series.packet_cipher);if(!packet.recurrence)return;
+  const next=nextOccurrence(series.send_at,packet.recurrence,series.time_zone,Math.max(now(),series.next_at));
+  transaction(()=>{run('UPDATE scheduled_sends SET next_at=?,version=version+1 WHERE id=?',next||0,series.id);if(next){run('DELETE FROM scheduled_parts WHERE send_id=?',series.id);packet.entries.forEach((e,i)=>run("INSERT INTO scheduled_parts(id,send_id,position,state,mode) VALUES (?,?,?,'pending',?)",randomUUID(),series.id,i,e.channel==='sms'?sms.mode:null));}});
+ }
  async function tick(){
   if(working||closed)return;working=true;
-  try{for(let n=0;n<10&&!closed;n++){
-   const part=one("SELECT p.*,s.owner_id,s.device_id,s.packet_cipher,s.send_at FROM scheduled_parts p JOIN scheduled_sends s ON s.id=p.send_id WHERE p.state='pending' AND s.send_at<=? ORDER BY s.send_at,p.position LIMIT 1",now());if(!part)break;
+  try{for(const series of all("SELECT * FROM scheduled_sends s WHERE next_at>0 AND NOT EXISTS(SELECT 1 FROM scheduled_parts p WHERE p.send_id=s.id AND p.state<>'sent') LIMIT 100"))advanceSeries(series);for(let n=0;n<10&&!closed;n++){
+   const part=one("SELECT p.*,s.owner_id,s.device_id,s.packet_cipher,s.send_at,s.next_at FROM scheduled_parts p JOIN scheduled_sends s ON s.id=p.send_id WHERE p.state='pending' AND COALESCE(s.next_at,s.send_at)<=? ORDER BY COALESCE(s.next_at,s.send_at),p.position LIMIT 1",now());if(!part)break;
    run("UPDATE scheduled_parts SET state='sending' WHERE id=? AND state='pending'",part.id);
    try{
-    family.requireReady(part.owner_id);const packet=open(part.send_id,part.packet_cipher),entry=packet.entries[part.position],ctx=context(part,entry);encryption.device(ctx);
+    family.requireReady(part.owner_id);const packet=open(part.send_id,part.packet_cipher),entry=packet.entries[part.position],ctx=context(part,entry);encryption.device(ctx);if(packet.recurrence)ctx.recurringDelivery=`${part.send_id}:${part.next_at||part.send_at}`;
     ctx.scheduledStored=receipt=>run("UPDATE scheduled_parts SET state='sent',receipt=?,error=NULL WHERE id=? AND state='sending'",JSON.stringify(receipt),part.id);
     let receipt;
     if(entry.channel==='nest')receipt=await sendNest(ctx);
@@ -71,6 +79,7 @@ export function installScheduling({app,db,dataDir,encryption,family,transaction,
     }
     if(one('SELECT state FROM scheduled_parts WHERE id=?',part.id)?.state==='sending')ctx.scheduledStored(receipt);
    }catch(error){if(one('SELECT state FROM scheduled_parts WHERE id=?',part.id)?.state==='sending'){run("UPDATE scheduled_parts SET state='held',error=? WHERE id=?",(error.status&&error.status<500?String(error.message):'Delivery paused unexpectedly. Review and reschedule this send.').slice(0,300),part.id);notifyHold?.(part.owner_id);}}
+   advanceSeries(one('SELECT * FROM scheduled_sends WHERE id=?',part.send_id));
    refreshUser(part.owner_id);
   }}finally{working=false;}
  }
