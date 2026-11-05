@@ -153,3 +153,7 @@ test('Google remains optional when no client is configured', async t => {
   assert.equal((await f.req('/me/google/challenge', a.cookies, 'POST', { currentPassword: 'Existing Churp password!' })).status, 503);
   assert.equal((await f.ok('/auth/login', f.jar(), 'POST', { username: a.user.username, password: 'Existing Churp password!' })).user.id, a.user.id);
 });
+
+test('a Google-only account can rename its username and still signs into the same account',async t=>{
+ const f=await fixture(t),cookies=f.jar(),nonce=await f.proof(cookies,false,true),created=await f.ok('/auth/google',cookies,'POST',{credential:f.credential(nonce)});await f.ok('/family/birth-date',cookies,'POST',{birth_date:'1990-01-01'});const changed=await f.ok('/me/username',cookies,'PATCH',{username:'google_new_handle'});assert.equal(changed.user.id,created.user.id);assert.equal(changed.user.has_google,true);assert.equal(changed.user.has_password,false);await f.ok('/auth/logout',cookies,'POST');const loginNonce=await f.proof(cookies),returned=await f.ok('/auth/google',cookies,'POST',{credential:f.credential(loginNonce)});assert.equal(returned.user.id,created.user.id);assert.equal(returned.user.username,'google_new_handle');assert.equal(f.runtime.db.prepare('SELECT COUNT(*) AS n FROM users').get().n,1);
+});

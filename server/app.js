@@ -1,3 +1,4 @@
+import {normalizeUsername} from '../shared/usernames.js';
 import {createPushNotifications} from './push-notifications.js';
 import {previewText} from '../shared/notification-previews.js';
 import {installReactions} from './reactions.js';
@@ -174,8 +175,7 @@ export function createApp(options = {}) {
   app.get('/api/config', (req, res) => res.json({ googleClientId: googleClientId || null, vapidPublicKey: pushEnabled ? vapidPublic : null, recoveryEmailEnabled:accountSecurity.enabled,encryptionRequired }));
   installWebsite(app,{production,appUrl,explicitAppUrl:!!(options.appUrl || process.env.APP_URL)});
   app.post('/api/auth/register', authLimit, async (req, res) => {
-    const username = text(req.body.username, 'Username', 30).toLowerCase();
-    if (!/^[a-z0-9_]{3,30}$/.test(username)) fail(400, 'Use 3–30 letters, numbers, or underscores for your username.');
+    let username;try{username=normalizeUsername(req.body.username);}catch(e){fail(400,e.message);}
     const name = text(req.body.name, 'Display name');
     const requestedEmail=req.body.email ? normalizeEmail(req.body.email) : null;
     if(requestedEmail && !accountSecurity.enabled)fail(503,'Email delivery is awaiting setup. Create your account without an email, then add one in your profile later.');
@@ -286,6 +286,18 @@ export function createApp(options = {}) {
   });
 
   app.get('/api/me', (req,res)=>res.json({user:publicUser(req.user)}));
+  const usernameChecks=rateLimit({windowMs:60000,limit:options.testing?1000:60,keyGenerator:req=>req.user.id,message:{error:'Please wait a moment before checking more usernames.'}});
+  const usernameChanges=rateLimit({windowMs:15*60000,limit:options.testing?1000:20,keyGenerator:req=>req.user.id,message:{error:'Please wait before changing your username again.'}});
+  app.get('/api/me/username',usernameChecks,(req,res)=>{
+    let username;try{username=normalizeUsername(req.query.username);}catch(e){fail(400,e.message);}
+    res.json({username,available:!one('SELECT 1 FROM users WHERE username=? AND id<>?',username,req.user.id),current:username===req.user.username});
+  });
+  app.patch('/api/me/username',usernameChanges,(req,res)=>{
+    let username;try{username=normalizeUsername(req.body.username);}catch(e){fail(400,e.message);}
+    try{transaction(()=>{if(one('SELECT 1 FROM users WHERE username=? AND id<>?',username,req.user.id))fail(409,'That username is already taken. Choose another.');run('UPDATE users SET username=? WHERE id=?',username,req.user.id);});}
+    catch(e){if(e.errcode===2067||/UNIQUE constraint failed: users.username/.test(e.message))fail(409,'That username is already taken. Choose another.');throw e;}
+    refresh();res.json({user:publicUser(one('SELECT * FROM users WHERE id=?',req.user.id))});
+  });
   installContacts({app,db,transaction,refreshUser,family,testing:options.testing});
   installRecipientScopes({app,db,groupAdmin,membership});
   const privateMessages=installPrivateMessages({app,db,encryption,family,transaction,refreshUser,group,groupAdmin,testing:options.testing,notifyIntro:(c,id)=>{for(const parent of new Set([...family.parents(c.user_low),...family.parents(c.user_high)].map(p=>p.parent_id)))notifyDevice(parent,{title:'New message request',body:'Review a first message in Family & youth protection.',url:'/'},null,{channel:'family-review',messageId:id});},notifyPrivate:(uid,id,context)=>notifyDevice(uid,{title:'New private message on Churp',body:'You have a private message.',url:`/?conversation=${id}`},encryptedPreview(uid,context,'private'),{channel:'private',messageId:context.id})});

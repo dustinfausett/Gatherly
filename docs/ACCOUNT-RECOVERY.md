@@ -25,3 +25,11 @@ Resetting a password does not recover a self-managed encryption key. A self-mana
 5. Redeploy. Open your profile, add an email you can receive, verify it, then test **Forgot password?**. Check the spam folder and the Resend delivery dashboard if needed. A sending address does not need a paid mailbox to send these links.
 
 With no mail configuration, password changes still work and email reset/verification is clearly unavailable. No tokens or reset links are exposed through development API endpoints. Tests inject an in-memory mailer instead of sending real email. No WordPress or separate mail server is needed.
+
+## Change username
+
+Open **Your corner → Account settings → Change username**. Availability is checked while typing and checked again when saving. Usernames use the same 3–30 character rules as signup, are stored lowercase, and must be unique without regard to case. A concurrent claim is rejected without changing the account. Availability and updates require sign-in and have per-account rate limits.
+
+Only `users.username` changes. The permanent account ID, password and Google sign-in connection, existing sessions, encryption identities, contacts, family links, memberships, ownership, invitations, unread/pin preferences and scheduled sends stay attached to the same account. Username/password users sign in with the new username afterward; Google users keep using Google. People can find the account by its new username. The former username is released for reuse and does not act as an alias; existing saved connections continue to use the permanent ID.
+
+API checks in `tests/usernames.test.js` verify conflicts, concurrent claims, account continuity, encrypted uploads and history, family supervision, scheduled packets, restart persistence and safe reuse of a former username. Browser checks in `e2e/usernames.spec.js` cover availability, save-time collisions and a new sign-in through the settings screens on desktop and phone layouts. Google-only sign-in continuity is also covered in `tests/google-auth.test.js`.
