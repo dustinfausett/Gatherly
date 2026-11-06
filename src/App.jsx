@@ -1,3 +1,4 @@
+import {DeleteAccountDialog} from './DeleteAccountSettings';
 import useMobileKeyboard from './useMobileKeyboard';
 import {useAppBadge} from './app-badge';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
@@ -50,6 +51,7 @@ export default function App() {
   const mobileSwitcherRef = useRef();
   const notify = useCallback((message, error = false) => { clearTimeout(toastTimer.current); setToast({ message, error }); toastTimer.current = setTimeout(() => setToast(null), 5000); }, []);
   useAppBadge(user,version);
+  useEffect(()=>{if(user&&initialParams.has('delete_account')){initialParams.delete('delete_account');const url=new URL(location.href);url.searchParams.delete('delete_account');history.replaceState({},'',url);setModal({kind:'delete-account'});}},[user?.id]);
   async function boot() {
     setBooting(true); setError('');
     try {
@@ -145,6 +147,10 @@ export default function App() {
       return ()=>cancelAnimationFrame(frame);
     }
   },[view.gid,community?.circles.some(g=>g.id === view.gid)]);
+  async function accountDeleted(){
+    cancelEntry();try{const subscription=await(await navigator.serviceWorker?.getRegistration())?.pushManager?.getSubscription();await subscription?.unsubscribe();}catch{}
+    try{await forgetEncryption(user.id);}catch{}clearScheduleRequests();setUser(null);setCommunity(null);setCommunities([]);setModal(null);setScheduledOpen(false);setConversationId(null);setCompose(null);setPrivateUnread(0);setSmsUnread(0);setView({cid:null,gid:null});const url=new URL(location.href);url.search='';history.replaceState({},'',url);notify('Your account has been deleted.');
+  }
   async function logout() {
     cancelEntry();
     try {
@@ -157,7 +163,8 @@ export default function App() {
   if (!user && error) return <div className="boot-screen"><Logo /><p className="error-banner">{error}</p><button className="button primary" onClick={boot}>Try again</button></div>;
   if(accountAction)return <AccountLink action={accountAction} onDone={async reset=>{setAccountAction(null);if(reset)setUser(null);await boot();}}/>;
   if (!user) return <Auth config={config} onLogin={(u,notice) => { if(notice)notify(notice);setUser(u); setView({ cid: u.last_community_id, gid: null }); }} />;
-  return <EncryptionGate key={user.id} user={user} required={!!config.encryptionRequired} onLogout={logout}><FamilyGate user={user} onUser={setUser} onLogout={logout}><div className={`app phase-one ${keyboard.open?'keyboard-open':''} ${tab==='tree'&&group ? 'showing-chat' : ''} ${journey ? 'bird-in-transit' : ''}`} style={{'--nest-entry-duration':`${NEST_MOTION.slide}ms`,'--keyboard-viewport-height':`${keyboard.height}px`,'--keyboard-top':`${keyboard.top}px`}}>
+  if(modal?.kind==='delete-account')return <main className="encryption-gate"><Logo/><DeleteAccountDialog config={config} onDeleted={accountDeleted} onClose={()=>setModal(null)}/></main>;
+  return <EncryptionGate key={user.id} user={user} required={!!config.encryptionRequired} onLogout={logout} onDeleteAccount={()=>setModal({kind:'delete-account'})}><FamilyGate user={user} onUser={setUser} onLogout={logout} onDeleteAccount={()=>setModal({kind:'delete-account'})}><div className={`app phase-one ${keyboard.open?'keyboard-open':''} ${tab==='tree'&&group ? 'showing-chat' : ''} ${journey ? 'bird-in-transit' : ''}`} style={{'--nest-entry-duration':`${NEST_MOTION.slide}ms`,'--keyboard-viewport-height':`${keyboard.height}px`,'--keyboard-top':`${keyboard.top}px`}}>
     <DeviceNotifications user={user} config={config}/>
     <header className="topbar"><div className="brand-zone"><button className="icon-button mobile-only" aria-label="Open navigation" onClick={() => setMobileNav(true)}><Menu size={22} /></button><span className={community&&tab==='tree' ? 'desktop-logo' : ''}><Logo /></span>{community&&tab==='tree' && <div className="mobile-community-switcher" ref={mobileSwitcherRef}>
         <button className="mobile-community-button" aria-label="My Orchard" aria-expanded={mobileSwitcher} onClick={() => setMobileSwitcher(!mobileSwitcher)}><Avatar name={community.name} id={community.avatar_id} size={30} square /><span><strong>{community.name}</strong><small>YOUR TREE</small></span><ChevronDown size={13} /></button>
@@ -179,7 +186,7 @@ export default function App() {
     {modal?.kind === 'space' && <SpaceDialog modal={modal} community={community} onClose={() => setModal(null)} onDelete={async (result,type,entity)=>{cancelEntry();if(type === 'community'){setCommunity(null);setCommunities(prev=>prev.filter(c=>c.id !== entity.id));setUser(prev=>({...prev,last_community_id:prev.last_community_id === entity.id ? null : prev.last_community_id}));setView({cid:null,gid:null});}if(type === 'group' && view.gid === entity.id) communityHome();if(type === 'subcommunity')setExpandedGroups(prev=>({...prev,[view.cid]:{...prev[view.cid],[entity.id]:false}}));await reload();notify(type === 'community' ? 'Tree deleted.' : type === 'subcommunity' ? 'Branch deleted. Its Nests are kept at Tree level.' : 'Nest deleted.');}} onSave={async (result,type) => { if (type === 'community' && result.community) await chooseCommunity(result.community.id); if (type === 'group' && result.group) openCircle(result.group.id); if (type === 'subcommunity' && result.subcommunity) openGroup(result.subcommunity.id); await reload(); notify(result.request ? 'Submitted for approval. Follow its status in Creation requests.' : modal.entity ? 'Changes saved.' : `${type === 'subcommunity' ? 'Branch' : type === 'group' ? 'Nest' : 'Tree'} created. Make yourself at home!`); }} />}
     {modal?.kind === 'invite' && community && <InviteDialog community={community} group={modal.group} onClose={() => setModal(null)} />}
     {modal?.kind === 'join' && <JoinDialog version={version} initialToken={modal.token} onClose={() => setModal(null)} onJoined={finishInvitation} onJoin={async value => finishInvitation(await post('/invitations/accept',{token:value}))}/> }
-    {modal?.kind === 'profile' && <ProfileDialog user={user} config={config} onClose={() => setModal(null)} onSave={async body => { setUser((await patch('/me',body)).user); await reload(); }} onAccountUpdate={setUser} onLogout={logout} notify={notify} />}
+    {modal?.kind === 'profile' && <ProfileDialog user={user} config={config} onClose={() => setModal(null)} onSave={async body => { setUser((await patch('/me',body)).user); await reload(); }} onAccountUpdate={setUser} onLogout={logout} onDeleted={accountDeleted} initialAccountDeletion={!!modal.accountDelete} notify={notify} />}
     {modal?.kind === 'members' && community && <MembersDialog community={community} nest={modal.group} onMessage={async id=>{setModal(null);await openPrivate(id);}} user={user} onClose={() => setModal(null)} onRefresh={reload} notify={notify} />}
     {modal?.kind === 'creation-requests' && community && <CreationRequests community={community} version={version} onClose={()=>setModal(null)} onRefresh={reload} notify={notify}/> }
   </div></FamilyGate></EncryptionGate>;

@@ -16,7 +16,7 @@ function useFamily(active=true){
   useEffect(()=>{if(!active)return;refresh();const timer=setInterval(refresh,4000);return()=>clearInterval(timer);},[active]);
   return {data,error,refresh};
 }
-export function FamilyGate({user,onUser,onLogout,children}) {
+export function FamilyGate({user,onUser,onLogout,onDeleteAccount,children}) {
   const required=!!user.family?.needs_setup;
   const {data,error,refresh}=useFamily(required),[busy,setBusy]=useState(false),[migrationError,setMigrationError]=useState(''),[remaining,setRemaining]=useState(null);
   useEffect(()=>{if(required&&data&&!data.status.needs_setup)api('/me').then(r=>onUser(r.user)).catch(()=>{});},[required,data?.status.needs_setup]);
@@ -30,7 +30,7 @@ export function FamilyGate({user,onUser,onLogout,children}) {
       {status.parent_count>0&&status.history_remaining>0&&<section className="family-card"><h2>Prepare earlier direct messages</h2><p>Share encrypted access to your earlier direct messages with your linked parents. Your account keys and Nest conversations stay separate.</p><button className="button primary" disabled={busy} onClick={async()=>{setBusy(true);setMigrationError('');try{await shareGuardianHistory(setRemaining);await refresh();onUser((await api('/me')).user);}catch(e){setMigrationError(e.message);}finally{setBusy(false);}}}>{busy?'Preparing message history…':'Prepare messages & continue'}</button>{remaining!==null&&busy&&<p role="status">{remaining} message access updates remaining</p>}</section>}
     </>}
     {(error||migrationError)&&<p className="error-banner" role="alert">{error||migrationError}</p>}
-    <button className="text-button" onClick={onLogout}>Sign out</button>
+    <button className="text-button" onClick={onLogout}>Sign out</button>{onDeleteAccount&&<button className="text-button danger" onClick={onDeleteAccount}>Delete my account</button>}
   </section></main>;
 }
 function FamilyLinks({data,onRefresh,youth,userId}){

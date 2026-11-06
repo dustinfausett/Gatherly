@@ -27,15 +27,16 @@ export function installEncryption({app,db,uploadDir,enabled,transaction,refresh,
     return {self_encrypted:rs.members>0 && rs.members===rs.self_members,member_count:rs.members,self_managed_count:rs.self_members};
   };
   async function ensureManaged(userId){
+    if(one('SELECT 1 FROM users WHERE id=? AND deleted_at IS NOT NULL',userId))return identity(userId);
     if(identity(userId))return identity(userId);
     if(!enabled)fail(409,'Encrypted messaging is unavailable in this fixture.');
     if(provisioning.has(userId))return provisioning.get(userId);
     const task=(async()=>{
       const keys=await generateIdentity(userId);
-      transaction(()=>{if(identity(userId))return;
+      transaction(()=>{if(identity(userId)||one('SELECT deleted_at FROM users WHERE id=?',userId)?.deleted_at)return;
         run("INSERT INTO e2ee_identities(user_id,public_key,fingerprint,backup,created_at,custody) VALUES (?,?,?,'',?,'managed')",userId,keys.publicKey,keys.fingerprint,Date.now());
         run('INSERT INTO e2ee_managed_keys VALUES (?,?,?)',userId,keys.fingerprint,vault.seal(userId,keys.fingerprint,keys.privateKey.armor()));
-      });return identity(userId);
+      });if(one('SELECT deleted_at FROM users WHERE id=?',userId)?.deleted_at)fail(401,'This account is no longer available.');return identity(userId);
     })().finally(()=>provisioning.delete(userId));provisioning.set(userId,task);return task;
   }
   async function prepareMembers(gid,messageId=null){for(const r of members(gid,messageId).missing)await ensureManaged(r.id);}
@@ -270,7 +271,7 @@ export function installEncryption({app,db,uploadDir,enabled,transaction,refresh,
   const encryptedUpload=multer({dest:uploadDir,limits:{fileSize:FILE_LIMIT+65536,files:1,fields:0}});
   app.post('/api/e2ee/uploads',limited,(req,res,next)=>{device(req);next();},encryptedUpload.single('file'),async(req,res)=>{
     if(!req.file)fail(400,'Choose an encrypted attachment.');
-    try{await validateEncryptedFile(readFileSync(req.file.path));}catch{try{unlinkSync(req.file.path);}catch{}fail(400,'Only encrypted message attachments can be uploaded here.');}
+    try{await validateEncryptedFile(readFileSync(req.file.path));device(req);}catch(e){try{unlinkSync(req.file.path);}catch{}if(e.status)throw e;fail(400,'Only encrypted message attachments can be uploaded here.');}
     const id=randomUUID();run('INSERT INTO files(id,user_id,name,disk_name,mime,size,created_at,encrypted) VALUES (?,?,?,?,?,?,?,1)',id,req.user.id,'encrypted-attachment.pgp',req.file.filename,'application/octet-stream',req.file.size,Date.now());
     res.status(201).json({file:{id}});
   });

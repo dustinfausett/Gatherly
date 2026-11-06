@@ -1,3 +1,4 @@
+import DeleteAccountSettings from './DeleteAccountSettings';
 import UsernameSettings from './UsernameSettings';
 import React,{useEffect,useRef,useState} from 'react';
 import { ArrowLeft,Bell,BellOff,Check,ChevronRight,LogOut,Settings2,ShieldCheck,UserRound,Users,FileText } from 'lucide-react';
@@ -30,8 +31,8 @@ const sections=[
   {id:'legal',title:'About & policies',description:'Terms, privacy and phone texting',icon:FileText},
   {id:'notifications',title:'Notifications',description:'Alerts on this device',icon:Bell},
 ];
-export default function ProfileSettings({user,config,onClose,onSave,onAccountUpdate,onLogout,notify}){
-  const [section,setSection]=useState(null),content=useRef(null);
+export default function ProfileSettings({user,config,onClose,onSave,onAccountUpdate,onLogout,onDeleted,initialAccountDeletion=false,notify}){
+  const [section,setSection]=useState(initialAccountDeletion?'account':null),content=useRef(null);
   const selected=sections.find(s=>s.id===section);
   // Each screen starts at its heading instead of inheriting the previous scroll position.
   useEffect(()=>{if(!section)return;content.current?.closest('.modal')?.scrollTo(0,0);content.current?.querySelector('.settings-back')?.focus();},[section]);
@@ -40,7 +41,7 @@ export default function ProfileSettings({user,config,onClose,onSave,onAccountUpd
       {section ? <><button type="button" className="text-button settings-back" onClick={()=>setSection(null)}><ArrowLeft size={17}/>Back to your settings</button>
         {section==='profile' && <ProfileScreen user={user} onSave={onSave} onDone={onClose} notify={notify}/>}
         {section==='pet' && <PetScreen user={user} onSave={onSave} onAccountUpdate={onAccountUpdate} onDone={onClose} notify={notify}/>}
-        {section==='account' && <><div className="settings-account-id"><span>Signed in as</span><strong>@{user.username}</strong></div><UsernameSettings user={user} onAccountUpdate={onAccountUpdate}/><GoogleAccountSettings user={user} config={config} onAccountUpdate={onAccountUpdate}/><AccountSecuritySettings user={user} config={config} onAccountUpdate={onAccountUpdate}/></>}
+        {section==='account' && <><div className="settings-account-id"><span>Signed in as</span><strong>@{user.username}</strong></div><UsernameSettings user={user} onAccountUpdate={onAccountUpdate}/><GoogleAccountSettings user={user} config={config} onAccountUpdate={onAccountUpdate}/><AccountSecuritySettings user={user} config={config} onAccountUpdate={onAccountUpdate}/><DeleteAccountSettings config={config} onDeleted={onDeleted} initialOpen={initialAccountDeletion}/></>}
         {section==='family' && <FamilySettings user={user}/>}
         {section==='security' && <><NotificationPrivacySettings user={user} onAccountUpdate={onAccountUpdate}/><p className="settings-intro">Choose who manages your message keys and how you recover encrypted conversations.</p>{config.encryptionRequired?<EncryptionSettings/>:<p className="info-banner">Encrypted messaging is not enabled in this environment.</p>}</>}
         {section==='legal' && <section className="settings-section"><p>Read Churp’s policies without signing in. Each document opens in a separate tab.</p><nav className="policy-links" aria-label="Churp policies">{legalLinks.map(link=><a key={link.path} href={link.path} target="_blank" rel="noopener noreferrer">{link.title}<ChevronRight size={17}/></a>)}</nav><p className="small-text muted">{policyStatus}</p></section>}

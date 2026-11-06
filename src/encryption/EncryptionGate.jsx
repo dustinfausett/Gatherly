@@ -17,7 +17,7 @@ function RecoveryCard({code,confirmed,onConfirmed,busy,submitLabel}){
     <button className="button primary" disabled={!saved || busy} onClick={onConfirmed}>{submitLabel || (confirmed ? 'Replace recovery key' : 'Continue to Churp')}</button>
   </div>;
 }
-export default function EncryptionGate({user,required,onLogout,children}){
+export default function EncryptionGate({user,required,onLogout,onDeleteAccount,children}){
   const [phase,setPhase]=useState('loading'),[error,setError]=useState(''),[busy,setBusy]=useState(false);
   const [account,setAccount]=useState(null),[pending,setPending]=useState(null),[code,setCode]=useState(''),[grant,setGrant]=useState(null);
   const [deviceName,setDeviceName]=useState(client.browserName());
@@ -59,7 +59,7 @@ export default function EncryptionGate({user,required,onLogout,children}){
       </div><p className="small-text muted">Without an approved device or the recovery key, earlier encrypted messages cannot be recovered. Never send your recovery key to support or another person.</p>
     </> : <><h1>Encryption could not be unlocked</h1><p>Keep this device’s data intact and try again. If an identity changed unexpectedly, verify it before sharing messages.</p><button className="button secondary" onClick={()=>location.reload()}>Try again</button></>}
     {error && <p className="error-banner" role="alert">{error}</p>}
-    <button className="text-button danger" onClick={onLogout}><LogOut size={15}/>Sign out</button>
+    <button className="text-button danger" onClick={onLogout}><LogOut size={15}/>Sign out</button>{onDeleteAccount&&<button className="text-button danger" onClick={onDeleteAccount}>Delete my account</button>}
   </div></main>;
 }
 export function EncryptionSettings(){

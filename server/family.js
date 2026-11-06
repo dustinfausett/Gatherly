@@ -9,7 +9,7 @@ export function installFamily({app,db,encryption,transaction,refreshUser,publicU
   const hash=s=>createHash('sha256').update(s).digest('hex');
   const user=id=>one('SELECT * FROM users WHERE id=?',id);
   const age=id=>ageAt(user(id)?.birth_date);
-  const youth=id=>age(id)!==null && age(id)<18;
+  const youth=id=>{const u=user(id);return u?.deleted_at?u.deleted_protected_until>Date.now():age(id)!==null&&age(id)<18;};
   const parents=id=>youth(id)?all(`SELECT l.*,u.name,u.username FROM family_links l JOIN users u ON u.id=l.parent_id WHERE l.child_id=? AND l.status='active' ORDER BY l.confirmed_at,l.id`,id).filter(l=>age(l.parent_id)>=18):[];
   const guardian=(parent,child)=>parents(child).some(l=>l.parent_id===parent);
   const missing=id=>{
@@ -22,12 +22,14 @@ export function installFamily({app,db,encryption,transaction,refreshUser,publicU
     const pendingLinks=a!==null&&a<18?one("SELECT COUNT(*) AS n FROM family_links WHERE child_id=? AND status='pending'",id).n:0;
     return {action_required:pending>0||pendingLinks>0||remaining>0,pending_links:pendingLinks,pending_reviews:pending,age_recorded:a!==null,protected:a!==null&&a<18,parent_count:ps.length,history_remaining:remaining,needs_setup:a===null||(a<18&&(!ps.length||remaining>0))};
   }
-  const ready=id=>!summary(id).needs_setup;
+  const ready=id=>!user(id)?.deleted_at&&!summary(id).needs_setup;
   function requireReady(id) {if(!ready(id))fail(403,'Complete age, parent linking and supervised-message setup before continuing.');}
   function adult(id) {if(age(id)===null||age(id)<18)fail(403,'A parent account must be 18 or older.');}
   const requiredApprovals=(a,b)=>a===b?[]:[a,b].filter(id=>youth(id)&&!guardian(id===a?b:a,id)).map(child=>({child,peer:child===a?b:a}));
   function pairAllowed(a,b) {
-    return ready(a)&&ready(b)&&requiredApprovals(a,b).every(({child,peer})=>!!one("SELECT 1 FROM private_approvals WHERE child_id=? AND adult_id=? AND status='approved'",child,peer));
+    return ready(a)&&ready(b)&&historyAllowed(a,b);
+  }
+  function historyAllowed(a,b){return requiredApprovals(a,b).every(({child,peer})=>!!one("SELECT 1 FROM private_approvals WHERE child_id=? AND adult_id=? AND status='approved'",child,peer));
   }
   function requests(a,b) {
     if(!ready(a)||!ready(b))fail(403,'Both accounts must complete their age and parent setup.');
@@ -38,7 +40,7 @@ export function installFamily({app,db,encryption,transaction,refreshUser,publicU
   }
   const parentBlocked=(c,child=null)=>all(`SELECT child_id FROM private_parent_blocks WHERE conversation_id=? AND active=1 ${child?'AND child_id=?':''}`,c.id,...(child?[child]:[])).some(r=>youth(r.child_id)&&parents(r.child_id).length>0);
   const introAllowed=(uid,c)=>!parentBlocked(c)&&!one('SELECT 1 FROM private_messages WHERE conversation_id=?',c.id)&&!requiredApprovals(c.user_low,c.user_high).some(({child,peer})=>one("SELECT 1 FROM private_approvals WHERE child_id=? AND adult_id=? AND status='declined'",child,peer));
-  const participantCanRead=(uid,c,m)=>!parentBlocked(c,uid)&&(!m.intro||m.user_id===uid||pairAllowed(c.user_low,c.user_high));
+  const participantCanRead=(uid,c,m)=>!parentBlocked(c,uid)&&(!m.intro||m.user_id===uid||historyAllowed(c.user_low,c.user_high));
   const readerIds=c=>[...new Set([c.user_low,c.user_high,...parents(c.user_low).map(p=>p.parent_id),...parents(c.user_high).map(p=>p.parent_id)])].sort();
   const supervised=c=>youth(c.user_low)||youth(c.user_high);
   const viewChild=(uid,c,child)=>!!child && [c.user_low,c.user_high].includes(child)&&guardian(uid,child);
@@ -52,8 +54,8 @@ export function installFamily({app,db,encryption,transaction,refreshUser,publicU
     res.json({user:publicUser(user(req.user.id))});
   });
   app.get('/api/family',(req,res)=>{
-    const links=all(`SELECT l.*,p.name AS parent_name,p.username AS parent_username,c.name AS child_name,c.username AS child_username FROM family_links l JOIN users p ON p.id=l.parent_id JOIN users c ON c.id=l.child_id WHERE (l.parent_id=? OR l.child_id=?) AND l.status<>'removed' ORDER BY l.created_at`,req.user.id,req.user.id).map(l=>({...l,child_protected:youth(l.child_id)}));
-    const approvals=all(`SELECT a.*,u.name AS adult_name,u.username AS adult_username,c.name AS child_name FROM private_approvals a JOIN users u ON u.id=a.adult_id JOIN users c ON c.id=a.child_id WHERE a.child_id=? OR EXISTS(SELECT 1 FROM family_links l WHERE l.parent_id=? AND l.child_id=a.child_id AND l.status='active') ORDER BY a.created_at DESC`,req.user.id,req.user.id).filter(a=>youth(a.child_id));
+    const links=all(`SELECT l.*,p.name AS parent_name,CASE WHEN p.deleted_at IS NOT NULL THEN 'unknown' ELSE p.username END AS parent_username,c.name AS child_name,CASE WHEN c.deleted_at IS NOT NULL THEN 'unknown' ELSE c.username END AS child_username FROM family_links l JOIN users p ON p.id=l.parent_id JOIN users c ON c.id=l.child_id WHERE (l.parent_id=? OR l.child_id=?) AND l.status<>'removed' ORDER BY l.created_at`,req.user.id,req.user.id).map(l=>({...l,child_protected:youth(l.child_id)}));
+    const approvals=all(`SELECT a.*,u.name AS adult_name,CASE WHEN u.deleted_at IS NOT NULL THEN 'unknown' ELSE u.username END AS adult_username,c.name AS child_name FROM private_approvals a JOIN users u ON u.id=a.adult_id JOIN users c ON c.id=a.child_id WHERE a.child_id=? OR EXISTS(SELECT 1 FROM family_links l WHERE l.parent_id=? AND l.child_id=a.child_id AND l.status='active') ORDER BY a.created_at DESC`,req.user.id,req.user.id).filter(a=>youth(a.child_id));
     res.json({status:summary(req.user.id),links,approvals});
   });
   app.post('/api/family/codes',limit,(req,res)=>{
@@ -166,5 +168,5 @@ export function installFamily({app,db,encryption,transaction,refreshUser,publicU
       run('INSERT OR IGNORE INTO private_message_readers VALUES (?,?)',m.id,parent_id);
     });touch(req.user.id,parent_id);if(ready(req.user.id))for(const m of all('SELECT pm.* FROM private_messages pm JOIN private_conversations c ON c.id=pm.conversation_id WHERE pm.intro=1 AND (c.user_low=? OR c.user_high=?)',req.user.id,req.user.id)){const c=one('SELECT * FROM private_conversations WHERE id=?',m.conversation_id);if(pairAllowed(c.user_low,c.user_high)&&!parentBlocked(c))onApproved?.(m,c);}res.json({ok:true});
   });
-  return {requiredApprovals,parentBlocked,introAllowed,participantCanRead,summary,ready,requireReady,parents,guardian,pairAllowed,requests,readerIds,supervised,viewChild,youth,age};
+  return {requiredApprovals,parentBlocked,introAllowed,participantCanRead,summary,ready,requireReady,parents,guardian,pairAllowed,requests,readerIds,supervised,viewChild,youth,age,historyAllowed};
 }

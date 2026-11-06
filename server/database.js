@@ -232,6 +232,9 @@ export function openDatabase(path) {
       self_encrypted=CASE WHEN client_id LIKE 'legacy-%' THEN 0 ELSE 1 END
       WHERE e2ee_version=1 AND signer_fingerprint IS NULL;
   `);
+  addColumn('users','deleted_at','INTEGER');
+  addColumn('users','deleted_protected_until','INTEGER');
+  addColumn('communities','archived_at','INTEGER');
   addColumn('users','email','TEXT');
   addColumn('users','email_verified_at','INTEGER');
   addColumn('users','pending_email','TEXT');
@@ -365,8 +368,8 @@ export function openDatabase(path) {
       ciphertext TEXT NOT NULL,shared_by TEXT NOT NULL REFERENCES users(id),signature TEXT NOT NULL,created_at INTEGER NOT NULL,
       PRIMARY KEY(message_id,parent_id)
     );
-    INSERT OR IGNORE INTO private_message_readers SELECT pm.id,c.user_low FROM private_messages pm JOIN private_conversations c ON c.id=pm.conversation_id;
-    INSERT OR IGNORE INTO private_message_readers SELECT pm.id,c.user_high FROM private_messages pm JOIN private_conversations c ON c.id=pm.conversation_id;
+    INSERT OR IGNORE INTO private_message_readers SELECT pm.id,c.user_low FROM private_messages pm JOIN private_conversations c ON c.id=pm.conversation_id ${db.prepare('PRAGMA table_info(private_messages)').all().some(c=>c.name==='intro')?'WHERE pm.intro=0':''};
+    INSERT OR IGNORE INTO private_message_readers SELECT pm.id,c.user_high FROM private_messages pm JOIN private_conversations c ON c.id=pm.conversation_id ${db.prepare('PRAGMA table_info(private_messages)').all().some(c=>c.name==='intro')?'WHERE pm.intro=0':''};
   `);
   addColumn('invitations','requires_approval','INTEGER NOT NULL DEFAULT 0');
   db.exec("CREATE TRIGGER IF NOT EXISTS tree_request_joined AFTER INSERT ON community_members BEGIN UPDATE tree_join_requests SET status='approved' WHERE community_id=NEW.community_id AND user_id=NEW.user_id AND status='pending'; END;");
@@ -481,5 +484,7 @@ export function openDatabase(path) {
     CREATE TABLE IF NOT EXISTS private_message_versions(message_id INTEGER NOT NULL REFERENCES private_messages(id) ON DELETE CASCADE,version INTEGER NOT NULL,record TEXT NOT NULL,PRIMARY KEY(message_id,version));`);
   db.exec(`CREATE TABLE IF NOT EXISTS phone_draft_series(id TEXT PRIMARY KEY,owner_id TEXT NOT NULL REFERENCES users(id),active INTEGER NOT NULL DEFAULT 1);
     CREATE UNIQUE INDEX IF NOT EXISTS phone_series_occurrence ON phone_drafts(series_id,ready_at) WHERE series_id IS NOT NULL;`);
+  db.exec(`CREATE TABLE IF NOT EXISTS account_deletion_proofs(token_hash TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id),session_hash TEXT NOT NULL REFERENCES sessions(token_hash) ON DELETE CASCADE,expires_at INTEGER NOT NULL,verified_at INTEGER);
+    CREATE TABLE IF NOT EXISTS account_file_cleanup(disk_name TEXT PRIMARY KEY);`);
   return db;
 }

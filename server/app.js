@@ -1,3 +1,5 @@
+import {AsyncLocalStorage} from 'node:async_hooks';
+import {installAccountDeletion} from './account-deletion.js';
 import {normalizeUsername} from '../shared/usernames.js';
 import {createPushNotifications} from './push-notifications.js';
 import {previewText} from '../shared/notification-previews.js';
@@ -74,7 +76,7 @@ export function createApp(options = {}) {
   const vapidPrivate = process.env.VAPID_PRIVATE_KEY;
   const pushEnabled = options.pushEnabled ?? !!(vapidPublic && vapidPrivate && process.env.VAPID_SUBJECT);
   if (pushEnabled && !(options.testing&&options.pushSender)) webPush.setVapidDetails(process.env.VAPID_SUBJECT, vapidPublic, vapidPrivate);
-  const streams = new Map();
+  const streams = new Map(),requestContext=new AsyncLocalStorage();
   const one = (sql, ...args) => db.prepare(sql).get(...args);
   const all = (sql, ...args) => db.prepare(sql).all(...args);
   const run = (sql, ...args) => db.prepare(sql).run(...args);
@@ -90,18 +92,19 @@ export function createApp(options = {}) {
   const publicUser = u => ({ family:family?.summary(u.id), has_password:!!u.password,has_google:!!u.google_id,google_email:u.google_email || null,recovery_email:u.email || null,recovery_email_verified:!!u.email_verified_at,pending_recovery_email:u.pending_email || null,notification_previews:!!u.notification_previews,id: u.id, username: u.username, name: u.name, avatar_id: u.avatar_id,
     bird_id: activeBird(u.bird_id,u.id), visible_birds:BIRDS.filter(b=>birdIsVisible(b,birdNow(),b.secret?earnedBirds(u.id):[])).map(b=>b.id), bird_seasons:Object.fromEntries(BIRDS.filter(b=>b.seasonal).map(b=>[b.id,seasonalLabel(b,birdNow())])), avatar_choice:u.avatar_choice, avatar_style: u.avatar_style, unlocked_birds: unlockedBirds(u.id), last_community_id: u.last_community_id });
   const transaction = fn => {
+    const requester=requestContext.getStore()?.user;if(requester&&one('SELECT deleted_at FROM users WHERE id=?',requester.id)?.deleted_at)fail(401,'This account is no longer available.');
     db.exec('BEGIN');
     try { const result = fn(); db.exec('COMMIT'); return result; }
     catch (error) { db.exec('ROLLBACK'); throw error; }
   };
   function refreshUser(userId) {
-    for (const res of streams.get(userId) || []) res.write('event: refresh\ndata: {}\n\n');
+    for (const res of streams.get(userId) || []) if(!res.writableEnded&&!res.destroyed)res.write('event: refresh\ndata: {}\n\n');
   }
   function refresh(communityId) {
     const users = communityId ? all('SELECT user_id FROM community_members WHERE community_id=?', communityId).map(x => x.user_id) : [...streams.keys()];
     for (const id of users) refreshUser(id);
   }
-  const community = id => one('SELECT * FROM communities WHERE id=?', id) || fail(404, 'Tree not found.');
+  const community = id => one('SELECT * FROM communities WHERE id=? AND archived_at IS NULL', id) || fail(404, 'Tree not found.');
   function membership(userId, communityId) {
     return one('SELECT * FROM community_members WHERE user_id=? AND community_id=?', userId, communityId) || fail(403, 'You are not a member of this Tree.');
   }
@@ -132,6 +135,7 @@ export function createApp(options = {}) {
     return f.id;
   }
   function session(res, user) {
+    user=one('SELECT * FROM users WHERE id=?',user.id);if(!user||user.deleted_at)fail(401,'This account is no longer available.');
     const value = token();
     run('DELETE FROM sessions WHERE expires_at < ?', Date.now());
     run('INSERT INTO sessions VALUES (?,?,?)', hash(value), user.id, Date.now() + SESSION_AGE);
@@ -141,7 +145,7 @@ export function createApp(options = {}) {
   function auth(req, res, next) {
     const value = req.cookies.gatherly_session;
     const record = typeof value === 'string' && one('SELECT u.*,s.expires_at FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=?', hash(value));
-    if (!record || record.expires_at < Date.now()) return res.status(401).json({ error: 'Please sign in to continue.' });
+    if (!record || record.deleted_at || record.expires_at < Date.now()) return res.status(401).json({ error: 'Please sign in to continue.' });
     req.user = record;
     next();
   }
@@ -159,6 +163,7 @@ export function createApp(options = {}) {
   app.use('/api/scheduled', express.json({ limit: '32mb' }));
   app.use(express.json({ limit: '1mb' }));
   app.use(cookieParser());
+  app.use('/api',(req,res,next)=>requestContext.run(req,next));
   app.use('/api', (req, res, next) => {
     res.setHeader('Cache-Control', 'no-store');
     if (!['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
@@ -212,12 +217,13 @@ export function createApp(options = {}) {
   const sms=installSms({app,db,dataDir,appUrl,transaction,refreshUser,testing:options.testing,config:smsConfig,transport:options.smsTransport,autoProcess:!(options.testing&&options.smsAutoProcess===false)});
   app.use('/api', auth);
   app.use('/api',(req,res,next)=>{
-    const setup=req.path==='/me'||req.path==='/badges'||req.path==='/events'||/^\/family(?:\/|$)/.test(req.path)||(/^\/e2ee\//.test(req.path)&&!/^\/e2ee\/(?:uploads|legacy)(?:\/|$)/.test(req.path));
+    const setup=req.path==='/me'||/^\/me\/deletion(?:\/|$)/.test(req.path)||req.path==='/badges'||req.path==='/events'||/^\/family(?:\/|$)/.test(req.path)||(/^\/e2ee\//.test(req.path)&&!/^\/e2ee\/(?:uploads|legacy)(?:\/|$)/.test(req.path));
     if(setup)return next();
     try{family.requireReady(req.user.id);next();}catch(e){next(e);}
   });
   const encryption = installEncryption({app,db,uploadDir,enabled:encryptionRequired,transaction,refresh,refreshUser,group,membership,visibleCircle,testing:options.testing});
   family=installFamily({app,db,encryption,transaction,refreshUser,publicUser,testing:options.testing,onApproved:(m,c)=>{run("UPDATE scheduled_parts SET receipt=json_set(receipt,'$.status','stored') WHERE json_extract(receipt,'$.channel')='private' AND json_extract(receipt,'$.status')='pending_approval' AND json_extract(receipt,'$.id')=?",m.id);notifyDevice(m.user_id===c.user_low?c.user_high:c.user_low,{title:'New private message on Churp',body:'You have a private message.',url:`/?conversation=${c.id}`},null,{channel:'private',messageId:m.id});}});
+  const accountDeletion=installAccountDeletion({app,db,uploadDir,transaction,family,refresh,endSessions:id=>{for(const stream of streams.get(id)||[])stream.end();},googleClientId,googleVerifyToken:options.googleVerifyToken,testing:options.testing});
   const badges=createBadges({db,family,encryptionRequired,smsUnread:uid=>sms.unread(uid)});
   app.get('/api/badges',(req,res)=>{res.set('Cache-Control','no-store');res.json(badges.snapshot(req.user.id));});
   function pushEligible(uid,source){
@@ -841,6 +847,7 @@ export function createApp(options = {}) {
   app.post('/api/uploads', rateLimit({ windowMs: 3600_000, limit: options.testing ? 1000 : 100, keyGenerator: req => req.user.id, message: { error: 'Upload limit reached. Please try again later.' } }), upload.single('file'), (req, res) => {
     if (!req.file) fail(400, 'Choose a file to upload.');
     const file = req.file;
+    if(one('SELECT deleted_at FROM users WHERE id=?',req.user.id)?.deleted_at){run('INSERT OR IGNORE INTO account_file_cleanup VALUES (?)',file.filename);fail(401,'This account is no longer available.');}
     // Only recognized raster formats render inline. All other uploads download as attachments.
     const header = Buffer.alloc(16);
     const fd = openSync(file.path, 'r');
@@ -916,5 +923,5 @@ export function createApp(options = {}) {
     app.use(express.static(resolve('dist'), { setHeaders: (res, path) => { if (path.endsWith('/index.html') || path.endsWith('/sw.js') || path.endsWith('/push-preview.js')) res.setHeader('Cache-Control','no-store'); } }));
     app.get('/{*path}', (req, res) => { res.setHeader('Cache-Control','no-store'); res.sendFile(resolve('dist/index.html')); });
   }
-  return { app, db, sms, phoneDrafts, scheduling, push, close: () => { phoneDrafts.close();push.close();scheduling.close();sms.close(); for (const set of streams.values()) for (const res of set) res.end(); db.close(); } };
+  return { app, db, sms, phoneDrafts, scheduling, push, close: () => { accountDeletion.close();phoneDrafts.close();push.close();scheduling.close();sms.close(); for (const set of streams.values()) for (const res of set) res.end(); db.close(); } };
 }
