@@ -1,0 +1,31 @@
+# Safety reports and moderation
+
+Hold a received message for 750 ms (or focus it and press Enter/right-click) and choose **Report message**. This works in Nests, threads and private chats, including messages a linked parent is reviewing. Choose a reason, optionally add details and select an eligible Tree to share with its admins. Reviewers see the reporter’s name; reports are not anonymous. The consent box is never preselected; changing the Tree resets consent. Submitting always sends the report to the Churp review queue.
+
+**Your corner → Safety & reports** shows the reporter's latest 100 reports and their statuses. Authorized reviewers see a paginated queue, with active cases first, and can mark a case open, in review, resolved or dismissed. Refresh fetches new cases. Selecting a case records the view. Internal notes are visible only to its reviewers. Removing a message requires explicit confirmation and resolves the case. It removes the entire current message, including subsequent edits, from participants; the selected snapshot and existing parent-supervised private history remain available. Nest poll/RSVP/assignment removal also closes its dependent activity. No account suspension, automatic email delivery or emergency response is implied.
+
+## Who receives a report
+
+Churp reviewers receive every report, including reports the user also shares with a Tree. Nest reports can optionally go to that Nest's Tree admins. Private reports can optionally go to a Tree only when both participants and the reporter are current members of it. No shared Tree means Churp admins only. Existing Tree owners/admins receive no private-message report unless the reporter explicitly selects their Tree. Scoped Nest/Branch admin roles alone do not grant access to the queue.
+
+The initial deployment binds the already existing **dustin** account to the platform review role once, storing its permanent account ID in `report_reviewers`, with a bootstrap marker in `report_config`. A rename preserves the role; reusing the old username never inherits it. No user-facing profile field or client request can grant this role. An installation without an established dustin account must explicitly set up the operator before accepting reports (submissions otherwise return an actionable unavailable message). For additional Churp reviewers, an operator with deployment/database access must add the verified account's permanent UUID to `report_reviewers`; remove that row to revoke access. Do not assign roles based on a newly claimed username. Check the established operator account before a first deployment on a new database. The current app has no general platform-admin role editor.
+
+Tree reviewer permissions are checked on every list, detail and update request. A departing or demoted Tree admin loses access; a current replacement owner/admin gains access to reports explicitly shared with that Tree. Deleted platform accounts lose review access. Churp admins retain the queue independently of Tree membership. Review version checks prevent conflicting updates from overwriting another review.
+
+## Encrypted messages and evidence
+
+Before consent, only message identifiers and eligible Tree labels are requested. After consent, the approved device rewraps only the selected message's encryption session key for the report service. It does not send the account private key, recovery key or chat history. The server checks the unchanged encrypted content packet and original signature, then saves a snapshot of the message text and report metadata. Fabricated replacement text and inaccessible messages are rejected. A message edited while reporting requires reopening the report.
+
+The transmitted evidence packet contains the selected signed message, including its original attachment descriptors; those are transiently decrypted during verification and are discarded. **Attachment contents, keys, descriptors and the evidence packet are not persisted in the safety report.** Reviewers see only selected text, sender, time, reason and reporter details. The reported message may itself contain personal information or structured poll/RSVP/assignment text. Original managed/self-managed protection of other messages is unchanged.
+
+Report text and review notes use AES-GCM through the existing persistent `key-vault.key` / `CHURP_KEY_VAULT_SECRET` vault. Preserve that original master with backups. The report service's own signing/decryption identity is stored wrapped by that vault. SQLite retains routing metadata, case status, timestamps, stable account references and a content hash; it does not store the selected text in plaintext. This is Churp-managed storage, not E2EE against the platform. Reports and audit history remain for abuse handling after account deletion; deleted identities display Unknown. Historical backups follow the normal retention cycle. No automated report-expiry policy is implemented.
+
+## Blocking and limitations
+
+**Block sender** in a message menu, or the optional checkbox while reporting, uses the existing private-conversation block. From a Nest it creates a blocked private relationship without sending a message, creating a contact or granting parent approval. Existing conversation options allow unblocking. Nest posts remain visible. A parent reviewing a child's message uses the existing family conversation block rather than blocking the sender on the parent's own behalf.
+
+Reports cover text, including structured message text. Attachment review/upload as evidence, proactive moderation, automatic reviewer push alerts and account suspensions are separate work. The menu's review count updates through the app's existing live refresh. This feature alone does not establish full store or legal readiness.
+
+## Verification
+
+`tests/reports.test.js` checks explicit consent, message authenticity, Tree scope opt-in, unauthorized access, at-rest encryption, duplicate cases, restart durability, reviewer revocation, stale review versions, removal, private blocks and youth/parent protections. `e2e/reports.spec.js` verifies consent, optional Tree routing, private blocking and review/removal on desktop and phone viewports. Run `npm run check` and the encryption Playwright configuration.

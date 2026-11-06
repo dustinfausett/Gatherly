@@ -1,3 +1,4 @@
+import Reporting from './Reporting';
 import {DeleteAccountDialog} from './DeleteAccountSettings';
 import useMobileKeyboard from './useMobileKeyboard';
 import {useAppBadge} from './app-badge';
@@ -165,7 +166,7 @@ export default function App() {
   if (!user) return <Auth config={config} onLogin={(u,notice) => { if(notice)notify(notice);setUser(u); setView({ cid: u.last_community_id, gid: null }); }} />;
   if(modal?.kind==='delete-account')return <main className="encryption-gate"><Logo/><DeleteAccountDialog config={config} onDeleted={accountDeleted} onClose={()=>setModal(null)}/></main>;
   return <EncryptionGate key={user.id} user={user} required={!!config.encryptionRequired} onLogout={logout} onDeleteAccount={()=>setModal({kind:'delete-account'})}><FamilyGate user={user} onUser={setUser} onLogout={logout} onDeleteAccount={()=>setModal({kind:'delete-account'})}><div className={`app phase-one ${keyboard.open?'keyboard-open':''} ${tab==='tree'&&group ? 'showing-chat' : ''} ${journey ? 'bird-in-transit' : ''}`} style={{'--nest-entry-duration':`${NEST_MOTION.slide}ms`,'--keyboard-viewport-height':`${keyboard.height}px`,'--keyboard-top':`${keyboard.top}px`}}>
-    <DeviceNotifications user={user} config={config}/>
+    <Reporting notify={notify}/><DeviceNotifications user={user} config={config}/>
     <header className="topbar"><div className="brand-zone"><button className="icon-button mobile-only" aria-label="Open navigation" onClick={() => setMobileNav(true)}><Menu size={22} /></button><span className={community&&tab==='tree' ? 'desktop-logo' : ''}><Logo /></span>{community&&tab==='tree' && <div className="mobile-community-switcher" ref={mobileSwitcherRef}>
         <button className="mobile-community-button" aria-label="My Orchard" aria-expanded={mobileSwitcher} onClick={() => setMobileSwitcher(!mobileSwitcher)}><Avatar name={community.name} id={community.avatar_id} size={30} square /><span><strong>{community.name}</strong><small>YOUR TREE</small></span><ChevronDown size={13} /></button>
         {mobileSwitcher && <div className="switcher-menu"><div className="menu-label">My Orchard</div>{communities.map(c => <button className="switcher-item" key={c.id} onClick={() => chooseCommunity(c.id)}><Avatar name={c.name} id={c.avatar_id} size={30} square /><span>{c.name}</span>{view.cid === c.id && <Check size={15} />}</button>)}<div className="menu-divider" /><button onClick={() => { setMobileSwitcher(false); setModal({ kind: 'space', type: 'community' }); }}><Plus size={16} />Create a Tree</button><button onClick={() => { setMobileSwitcher(false); setModal({ kind: 'join' }); }}><InvitationIcon/>Invitations</button></div>}

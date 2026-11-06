@@ -341,3 +341,6 @@ export async function approvePrivateRequest(childId,peerId){
  }
  return post('/family/approvals',{child_id:childId,adult_id:peerId,decision:'approved',delivery_copies});
 }
+
+// Share only this message's signed packet, never the account identity or history.
+export async function shareReportedMessage(message,publicKey){const self=getCurrent();if(!message.ciphertext||message.decryptionError)throw new Error('Unlock this message before reporting it.');return enc.rewrap([self.privateKey,...self.previousPrivateKeys],publicKey,message.ciphertext);}

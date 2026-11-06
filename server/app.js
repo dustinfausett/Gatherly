@@ -1,3 +1,4 @@
+import {installReports} from './reports.js';
 import {AsyncLocalStorage} from 'node:async_hooks';
 import {installAccountDeletion} from './account-deletion.js';
 import {normalizeUsername} from '../shared/usernames.js';
@@ -88,8 +89,8 @@ export function createApp(options = {}) {
     const earned = new Set(all('SELECT bird_id FROM bird_unlocks WHERE user_id=?', userId).map(b => b.bird_id));
     return BIRDS.filter(b => birdAvailable(b,userId)&&(b.free || earned.has(b.id))).map(b => b.id);
   };
-  let family;
-  const publicUser = u => ({ family:family?.summary(u.id), has_password:!!u.password,has_google:!!u.google_id,google_email:u.google_email || null,recovery_email:u.email || null,recovery_email_verified:!!u.email_verified_at,pending_recovery_email:u.pending_email || null,notification_previews:!!u.notification_previews,id: u.id, username: u.username, name: u.name, avatar_id: u.avatar_id,
+  let family,reports;
+  const publicUser = u => ({ family:family?.summary(u.id),reports:reports?.summary(u.id), has_password:!!u.password,has_google:!!u.google_id,google_email:u.google_email || null,recovery_email:u.email || null,recovery_email_verified:!!u.email_verified_at,pending_recovery_email:u.pending_email || null,notification_previews:!!u.notification_previews,id: u.id, username: u.username, name: u.name, avatar_id: u.avatar_id,
     bird_id: activeBird(u.bird_id,u.id), visible_birds:BIRDS.filter(b=>birdIsVisible(b,birdNow(),b.secret?earnedBirds(u.id):[])).map(b=>b.id), bird_seasons:Object.fromEntries(BIRDS.filter(b=>b.seasonal).map(b=>[b.id,seasonalLabel(b,birdNow())])), avatar_choice:u.avatar_choice, avatar_style: u.avatar_style, unlocked_birds: unlockedBirds(u.id), last_community_id: u.last_community_id });
   const transaction = fn => {
     const requester=requestContext.getStore()?.user;if(requester&&one('SELECT deleted_at FROM users WHERE id=?',requester.id)?.deleted_at)fail(401,'This account is no longer available.');
@@ -223,6 +224,7 @@ export function createApp(options = {}) {
   });
   const encryption = installEncryption({app,db,uploadDir,enabled:encryptionRequired,transaction,refresh,refreshUser,group,membership,visibleCircle,testing:options.testing});
   family=installFamily({app,db,encryption,transaction,refreshUser,publicUser,testing:options.testing,onApproved:(m,c)=>{run("UPDATE scheduled_parts SET receipt=json_set(receipt,'$.status','stored') WHERE json_extract(receipt,'$.channel')='private' AND json_extract(receipt,'$.status')='pending_approval' AND json_extract(receipt,'$.id')=?",m.id);notifyDevice(m.user_id===c.user_low?c.user_high:c.user_low,{title:'New private message on Churp',body:'You have a private message.',url:`/?conversation=${c.id}`},null,{channel:'private',messageId:m.id});}});
+  reports=installReports({app,db,dataDir,encryption,encryptionRequired,family,visibleCircle,joined,transaction,refresh,refreshUser});
   const accountDeletion=installAccountDeletion({app,db,uploadDir,transaction,family,refresh,endSessions:id=>{for(const stream of streams.get(id)||[])stream.end();},googleClientId,googleVerifyToken:options.googleVerifyToken,testing:options.testing});
   const badges=createBadges({db,family,encryptionRequired,smsUnread:uid=>sms.unread(uid)});
   app.get('/api/badges',(req,res)=>{res.set('Cache-Control','no-store');res.json(badges.snapshot(req.user.id));});

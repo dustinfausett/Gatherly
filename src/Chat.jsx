@@ -1,3 +1,4 @@
+import {ReportAction,BlockMessageAction} from './Reporting';
 import MessageFocus from './MessageFocus';
 import {isMobileMessagingDevice,messageEnterKey} from './message-keyboard';
 import MessageReactions,{ReactionsProvider} from './MessageReactions';
@@ -44,6 +45,7 @@ function Message({ message: m, own, admin, onReply, onThread, onDelete, onUrgenc
     {!compact&&<button type="button" onClick={()=>{close();onThread(m.reply_to||m.id);}}><MessageCircle size={16}/>Thread</button>}
     {own&&onEdit&&(m.message_kind||'chat')==='chat'&&<button type="button" aria-label="Edit message" onClick={()=>{close();onEdit(m);}}><Pencil size={16}/>Edit</button>}
     {(own||admin)&&onUrgency&&<button type="button" aria-label={m.urgent?'Remove urgency':'Mark message urgent'} aria-pressed={!!m.urgent} onClick={()=>{close();onUrgency(m);}}><AlertCircle size={16}/>{m.urgent?'Remove urgency':'Urgent'}</button>}
+    {!own&&<><ReportAction message={m} channel="nest" close={close}/><BlockMessageAction message={m} channel="nest" close={close} notify={message=>window.dispatchEvent(new CustomEvent('churp-report-notice',{detail:message}))}/></>}
     {(own||admin)&&<button type="button" className="delete-message" aria-label="Delete message" onClick={()=>setConfirmDelete(true)}><Trash2 size={16}/>Delete</button>}
   </div>}</>;
   return <MessageFocus disabled={!!m.deleted||!!m.decryptionError} label="Message options" onActivate={openActivity} copyText={messagePreview(m)} reactions={<MessageReactions message={m} mode="controls"/>} actions={actions} onClose={()=>setConfirmDelete(false)}>
