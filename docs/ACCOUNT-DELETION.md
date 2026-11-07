@@ -14,7 +14,7 @@ The chosen new Tree owner is checked again atomically at deletion. A sole-member
 
 A deleted youth's active linked parents retain existing supervised private history, attachments and supervised Notes to self until the existing 18th-birthday or family-link cutoff. The exact birth date is removed; a limited supervision end timestamp remains. Deleting a parent removes that parent's access and copies. A child without another active parent must complete setup again. Deletion never gives parents Nest access.
 
-Backups are not rewritten by deletion. Old backups may retain earlier records and keys until normal backup replacement/retention. Apply the same retention policy to manual snapshots, and reapply subsequent deletion requests after a restore. Backup automation and permanent deletion from historical backups are separate operational work.
+Backups are not rewritten by deletion. Old backups may retain earlier records and keys until normal backup replacement/retention. Apply the same retention policy to manual snapshots, and reapply subsequent deletion requests after a restore. Daily encrypted R2 backups and retention are available after setup; restores remain blocked until later deletions and permissions are reconciled. See [BACKUPS.md](BACKUPS.md). Historical snapshots are not rewritten by individual deletion requests.
 
 ## Verification and implementation
 

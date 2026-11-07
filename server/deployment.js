@@ -11,6 +11,7 @@ export function prepareDeployment(env = process.env) {
   if (env.RAILWAY_VOLUME_MOUNT_PATH && resolve(env.DATA_DIR || '.data') !== resolve(env.RAILWAY_VOLUME_MOUNT_PATH)) {
     throw new Error('DATA_DIR must match the Railway Volume mount path. Use /data for both.');
   }
+  if(existsSync(join(resolve(env.DATA_DIR||'.data'),'restore-review-required.json')))throw new Error('Review the restored snapshot before production startup. Read docs/BACKUPS.md and reconcile later deletions and permissions.');
   if (!env.APP_URL && env.RAILWAY_PUBLIC_DOMAIN) env.APP_URL = `https://${env.RAILWAY_PUBLIC_DOMAIN}`;
   if (!!env.VAPID_PUBLIC_KEY !== !!env.VAPID_PRIVATE_KEY) {
     throw new Error('Both VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY are required when supplying your own push keys.');

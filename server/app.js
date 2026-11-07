@@ -60,6 +60,7 @@ function boolean(value, name) {
 
 export function createApp(options = {}) {
   const dataDir = resolve(options.dataDir || process.env.DATA_DIR || '.data');
+  if(existsSync(join(dataDir,'restore-review-required.json')))throw new Error('This restored snapshot needs review before startup. Read docs/BACKUPS.md and reconcile later deletions and permissions.');
   const uploadDir = join(dataDir, 'uploads');
   mkdirSync(uploadDir, { recursive: true });
   const db = openDatabase(options.database || join(dataDir, 'gatherly.sqlite'));
@@ -225,6 +226,8 @@ export function createApp(options = {}) {
   const encryption = installEncryption({app,db,uploadDir,enabled:encryptionRequired,transaction,refresh,refreshUser,group,membership,visibleCircle,testing:options.testing});
   family=installFamily({app,db,encryption,transaction,refreshUser,publicUser,testing:options.testing,onApproved:(m,c)=>{run("UPDATE scheduled_parts SET receipt=json_set(receipt,'$.status','stored') WHERE json_extract(receipt,'$.channel')='private' AND json_extract(receipt,'$.status')='pending_approval' AND json_extract(receipt,'$.id')=?",m.id);notifyDevice(m.user_id===c.user_low?c.user_high:c.user_low,{title:'New private message on Churp',body:'You have a private message.',url:`/?conversation=${c.id}`},null,{channel:'private',messageId:m.id});}});
   reports=installReports({app,db,dataDir,encryption,encryptionRequired,family,visibleCircle,joined,transaction,refresh,refreshUser});
+  app.get('/api/backups/status',(req,res)=>{if(!reports.isPlatform(req.user.id))fail(404,'Backup settings not found.');res.json(app.locals.backups?.snapshot()||{enabled:false,configured:false,running:false,phase:'idle'});});
+  app.post('/api/backups/run',rateLimit({windowMs:3600000,limit:4,keyGenerator:req=>req.user.id,message:{error:'Please wait before starting another backup.'}}),(req,res)=>{if(!reports.isPlatform(req.user.id))fail(404,'Backup settings not found.');try{if(!app.locals.backups)fail(409,'Off-site backups are not configured.');res.status(202).json(app.locals.backups.run());}catch(error){if(!error.status)error.status=409;throw error;}});
   const accountDeletion=installAccountDeletion({app,db,uploadDir,transaction,family,refresh,endSessions:id=>{for(const stream of streams.get(id)||[])stream.end();},googleClientId,googleVerifyToken:options.googleVerifyToken,testing:options.testing});
   const badges=createBadges({db,family,encryptionRequired,smsUnread:uid=>sms.unread(uid)});
   app.get('/api/badges',(req,res)=>{res.set('Cache-Control','no-store');res.json(badges.snapshot(req.user.id));});

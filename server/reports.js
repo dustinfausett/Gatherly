@@ -23,7 +23,7 @@ export function installReports({app,db,dataDir,encryption,encryptionRequired,fam
  const platform=uid=>!!one('SELECT 1 FROM report_reviewers rr JOIN users u ON u.id=rr.user_id WHERE rr.user_id=? AND u.deleted_at IS NULL',uid);
  const canReview=(uid,r)=>platform(uid)||!!r.community_id&&!!one("SELECT 1 FROM community_members WHERE community_id=? AND user_id=? AND role IN ('owner','admin')",r.community_id,uid);
  const reviewable=uid=>all("SELECT * FROM safety_reports ORDER BY CASE WHEN status IN ('open','in_review') THEN 0 ELSE 1 END,created_at DESC,id").filter(r=>canReview(uid,r));
- const summary=uid=>({can_review:platform(uid)||!!one("SELECT 1 FROM community_members WHERE user_id=? AND role IN ('owner','admin')",uid),pending:reviewable(uid).filter(r=>['open','in_review'].includes(r.status)).length});
+ const summary=uid=>({platform_admin:platform(uid),can_review:platform(uid)||!!one("SELECT 1 FROM community_members WHERE user_id=? AND role IN ('owner','admin')",uid),pending:reviewable(uid).filter(r=>['open','in_review'].includes(r.status)).length});
  const audit=(r,uid,event)=>run('INSERT INTO report_audit(report_id,actor_id,event,created_at) VALUES (?,?,?,?)',r.id,uid,event,Date.now());
  const unpack=r=>JSON.parse(vault.open('safety-report',r.id,r.contents));
  function access(req,channel,id){
@@ -74,5 +74,5 @@ export function installReports({app,db,dataDir,encryption,encryptionRequired,fam
    audit(current,req.user.id,'removed_message');
   }contents.review_note=note;contents.action=action;run('UPDATE safety_reports SET contents=?,status=?,version=version+1,updated_at=? WHERE id=?',vault.seal('safety-report',r.id,JSON.stringify(contents)),status,Date.now(),r.id);audit(current,req.user.id,`status:${status}`);});refresh();res.json({ok:true});
  });
- return {summary};
+ return {summary,isPlatform:platform};
 }

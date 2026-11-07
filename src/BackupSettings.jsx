@@ -1,0 +1,12 @@
+import React,{useEffect,useState} from 'react';
+import {api,post} from './api';
+export default function BackupSettings(){
+ const [data,setData]=useState(null),[error,setError]=useState(''),[busy,setBusy]=useState(false);
+ async function load(){try{setData(await api('/backups/status'));setError('');}catch(e){setError(e.message);}}
+ useEffect(()=>{load();const timer=setInterval(load,10000);return()=>clearInterval(timer);},[]);
+ async function run(){setBusy(true);try{setData(await post('/backups/run'));setError('');}catch(e){setError(e.message);}finally{setBusy(false);}}
+ return <section className="settings-section"><h4>Backups & recovery</h4><p className="small-text muted">When connected, encrypted copies of the database, uploads and recovery keys are kept separately in Cloudflare R2. This view is restricted to Churp admins.</p>{!data?<p role="status">Loading backup status…</p>:<>
+ {!data.enabled?<p className="info-banner">Off-site backups aren’t connected yet. Complete the R2 setup before relying on automatic backups.</p>:<><p><strong>{data.running?'Backup in progress':data.last_verified_at?'Backup verified':'First backup pending'}</strong></p>{data.running&&<p role="status">{data.phase?.replaceAll('_',' ')}…</p>}<p>Daily at {String(data.schedule.hour).padStart(2,'0')}:00 ({data.schedule.time_zone}). Retention: {data.schedule.retention_days} days, with at least seven verified copies.</p>{data.last_verified_at&&<p>Last downloaded and verified: <strong>{new Date(data.last_verified_at).toLocaleString()}</strong><br/>{data.last_files||0} uploads · {((data.last_bytes||0)/1048576).toFixed(1)} MB encrypted</p>}{data.overdue&&<p className="error-banner">A recent verified backup is missing. Check the setup and run a backup.</p>}<button className="button secondary" disabled={busy||data.running} onClick={run}>{busy?'Starting…':'Back up now'}</button></>}
+ {(data.setup_error||data.last_error)&&<p className="error-banner" role="alert">{data.setup_error||data.last_error}</p>}{data.retention_warning&&<p className="info-banner">The latest backup was verified, but older copies could not be pruned. Check R2 delete permissions.</p>}
+ </>}{error&&<p className="error-banner" role="alert">{error}</p>}<p className="small-text muted">Keep the separate backup encryption key in a safe place outside Railway. The app cannot recover that key. Restores go into a separate folder for review before going live.</p></section>;
+}

@@ -58,3 +58,5 @@ Older layout/administration regression tests explicitly use a legacy plaintext t
 ## Parent-supervised direct messages
 
 Protected accounts under 18 require linked parents. New direct messages include active parents as encryption readers; Nest audiences do not change. Earlier direct messages are shared by wrapping the original signed message session key on the child’s unlocked device, without exporting the child’s private identity keys. Parents receive read-only access while linked and while the child is under 18. See [YOUTH-PROTECTION.md](YOUTH-PROTECTION.md) for setup, approval rules, migration, disclosure and limits.
+
+Automated recovery copies can be configured in Cloudflare R2. Each encrypted archive includes the effective original vault master and is downloaded and verified before retention. Users' self-managed private keys are not exported from their devices. See [BACKUPS.md](BACKUPS.md) for the separate backup key, retention and isolated restore procedure.

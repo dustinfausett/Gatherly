@@ -1,3 +1,4 @@
+import BackupSettings from './BackupSettings';
 import {SafetyReports} from './Reporting';
 import {Flag} from 'lucide-react';
 import DeleteAccountSettings from './DeleteAccountSettings';
@@ -45,7 +46,7 @@ export default function ProfileSettings({user,config,onClose,onSave,onAccountUpd
         {section==='reports' && <SafetyReports/>}
         {section==='profile' && <ProfileScreen user={user} onSave={onSave} onDone={onClose} notify={notify}/>}
         {section==='pet' && <PetScreen user={user} onSave={onSave} onAccountUpdate={onAccountUpdate} onDone={onClose} notify={notify}/>}
-        {section==='account' && <><div className="settings-account-id"><span>Signed in as</span><strong>@{user.username}</strong></div><UsernameSettings user={user} onAccountUpdate={onAccountUpdate}/><GoogleAccountSettings user={user} config={config} onAccountUpdate={onAccountUpdate}/><AccountSecuritySettings user={user} config={config} onAccountUpdate={onAccountUpdate}/><DeleteAccountSettings config={config} onDeleted={onDeleted} initialOpen={initialAccountDeletion}/></>}
+        {section==='account' && <><div className="settings-account-id"><span>Signed in as</span><strong>@{user.username}</strong></div><UsernameSettings user={user} onAccountUpdate={onAccountUpdate}/><GoogleAccountSettings user={user} config={config} onAccountUpdate={onAccountUpdate}/><AccountSecuritySettings user={user} config={config} onAccountUpdate={onAccountUpdate}/>{user.reports?.platform_admin&&<BackupSettings/>}<DeleteAccountSettings config={config} onDeleted={onDeleted} initialOpen={initialAccountDeletion}/></>}
         {section==='family' && <FamilySettings user={user}/>}
         {section==='security' && <><NotificationPrivacySettings user={user} onAccountUpdate={onAccountUpdate}/><p className="settings-intro">Choose who manages your message keys and how you recover encrypted conversations.</p>{config.encryptionRequired?<EncryptionSettings/>:<p className="info-banner">Encrypted messaging is not enabled in this environment.</p>}</>}
         {section==='legal' && <section className="settings-section"><p>Read Churp’s policies without signing in. Each document opens in a separate tab.</p><nav className="policy-links" aria-label="Churp policies">{legalLinks.map(link=><a key={link.path} href={link.path} target="_blank" rel="noopener noreferrer">{link.title}<ChevronRight size={17}/></a>)}</nav><p className="small-text muted">{policyStatus}</p></section>}

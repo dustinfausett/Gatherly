@@ -12,3 +12,6 @@ tests
 *.log
 README.md
 docs
+
+**/*.churpbackup
+**/*.backup.key

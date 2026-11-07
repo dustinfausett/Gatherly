@@ -11,12 +11,15 @@
     "check": "npm run build && npm test",
     "test:e2e": "playwright test",
     "setup:push": "node scripts/setup-push.js",
-    "test:e2e:encryption": "playwright test -c playwright.encryption.config.js"
+    "test:e2e:encryption": "playwright test -c playwright.encryption.config.js",
+    "backup": "node server/backups/cli.js"
   },
   "engines": {
     "node": ">=24.0.0"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1164.0",
+    "@aws-sdk/lib-storage": "^3.1164.0",
     "@fontsource/nunito": "^5.3.0",
     "@fontsource/nunito-sans": "^5.3.0",
     "cookie-parser": "^1.4.7",

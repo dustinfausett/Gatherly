@@ -9,3 +9,8 @@ playwright-report/
 *.log
 
 public/push-preview.js
+
+# Recovery archives and standalone secret keys must never enter Git.
+*.churpbackup
+*.backup.key
+backup-status.json
