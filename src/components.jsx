@@ -1,3 +1,4 @@
+import {isNative,backendFetch} from './native/runtime';
 import React, { useEffect, useId, useRef, useState } from 'react';
 import { X, Camera, LoaderCircle, Check, ImagePlus } from 'lucide-react';
 import { upload } from './api';
@@ -8,10 +9,11 @@ export function Logo({ compact = false }) {
   return <div className={`logo churp-logo ${compact ? 'compact' : ''}`}><img src={compact ? '/brand/churp-nest.webp' : '/brand/churp-logo.webp'} alt="Churp" /></div>;
 }
 export function Avatar({ name = '?', id, birdId, portrait, size = 40, className = '', square = false }) {
+  const [photo,setPhoto]=useState(null);useEffect(()=>{if(!id||!isNative())return;let alive=true,url;backendFetch(`/api/files/${id}`).then(r=>{if(!r.ok)throw Error();return r.blob();}).then(blob=>{url=URL.createObjectURL(blob);if(alive)setPhoto(url);else URL.revokeObjectURL(url);}).catch(()=>{});return()=>{alive=false;if(url)URL.revokeObjectURL(url);setPhoto(null);};},[id]);
   const palette = ['sage', 'rose', 'sand', 'lilac', 'blue'];
   const color = palette[Array.from(name).reduce((n,c) => n + c.charCodeAt(0), 0) % palette.length];
   return <span className={`avatar ${color} ${square ? 'square' : ''} ${className}`} style={{ width: size, height: size, fontSize: size * .34 }}>
-    {portrait ? <AvatarPortrait choice={portrait}/> : birdId ? <Bird birdId={birdId} className="avatar-bird"/> : id ? <img src={`/api/files/${id}`} alt="" /> : name.trim().split(/\s+/).slice(0,2).map(x => x[0]).join('').toUpperCase()}
+    {portrait ? <AvatarPortrait choice={portrait}/> : birdId ? <Bird birdId={birdId} className="avatar-bird"/> : id ? <img src={isNative()?photo||undefined:`/api/files/${id}`} alt="" /> : name.trim().split(/\s+/).slice(0,2).map(x => x[0]).join('').toUpperCase()}
   </span>;
 }
 export function Modal({ title, subtitle, children, onClose, wide = false }) {

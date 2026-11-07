@@ -1,10 +1,11 @@
+import {backendFetch} from './native/runtime';
 let encryptionDevice = null;
 export function setEncryptionDevice(id) { encryptionDevice = id; }
 export async function api(path, options = {}) {
   const isForm = options.body instanceof FormData;
   let res;
   try {
-    res = await fetch(`/api${path}`, { credentials: 'same-origin', ...options,
+    res = await backendFetch(`/api${path}`, { credentials: 'same-origin', ...options,
       headers: { ...(encryptionDevice ? {'x-churp-device':encryptionDevice} : {}), ...(!isForm && options.body ? { 'Content-Type': 'application/json' } : {}), ...options.headers },
       body: options.body ? (isForm ? options.body : JSON.stringify(options.body)) : undefined,
     });

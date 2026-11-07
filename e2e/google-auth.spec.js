@@ -67,7 +67,7 @@ for (const custody of ['managed', 'self-managed']) test(`an existing ${custody} 
     await dialog.getByLabel('Current Churp password', { exact: true }).fill(password);
     await dialog.getByRole('button', { name: 'Connect Google', exact: true }).click();
     await dialog.getByRole('button', { name: 'Continue with Google', exact: true }).click();
-    await expect(dialog.getByRole('status')).toContainText('Google connected');
+    await expect(dialog.getByRole('status').filter({hasText:'Google connected'})).toContainText('Google connected');
     await expect(dialog).toContainText('browser@example.com');
     expect((await (await context.request.get('/api/me')).json()).user.id).toBe(user.id);
     expect((await (await context.request.get('/api/e2ee/account')).json()).identity.fingerprint).toBe(fingerprint);
@@ -91,7 +91,7 @@ for (const custody of ['managed', 'self-managed']) test(`an existing ${custody} 
     await dialog.locator('summary').filter({ hasText: 'Disconnect Google' }).click();
     await dialog.getByLabel('Current Churp password', { exact: true }).fill(password);
     await dialog.getByRole('button', { name: 'Disconnect Google', exact: true }).click();
-    await expect(dialog.getByRole('status')).toContainText('Google disconnected');
+    await expect(dialog.getByRole('status').filter({hasText:'Google disconnected'})).toContainText('Google disconnected');
     expect((await (await context.request.get('/api/me')).json()).user.has_google).toBe(false);
     expect(f.errors).toEqual([]);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBeTruthy();

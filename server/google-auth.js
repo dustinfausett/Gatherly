@@ -52,22 +52,7 @@ export function installGoogleAuth({ app, db, auth, limited, clientId, production
   });
   app.post('/api/auth/google', limited, async (req, res) => {
     const { payload, entry } = await credential(req, res, false);
-    const email = payload.email.toLowerCase();
-    const user = transaction(() => {
-      let user = one('SELECT * FROM users WHERE google_id=?', payload.sub);
-      if (!user) {
-        if (entry.purpose !== 'signup') fail(409, 'This Google account is not connected to Churp yet. Already have an account? Sign in with your username, then open Your corner → Account settings → Connect Google. New here? Choose Create an account first.');
-        // Email is a duplicate-account hint, never authorization to merge identities.
-        if (one('SELECT 1 FROM users WHERE email=? AND email_verified_at IS NOT NULL', email)) fail(409, 'An existing Churp account uses this email. Sign in with your username, then open Your corner → Account settings → Connect Google.');
-        const id = randomUUID();
-        run("INSERT INTO users(id,username,name,google_id,google_email,avatar_style) VALUES (?,?,?,?,?,'portrait')", id, `g_${id.replaceAll('-', '').slice(0, 20)}`, (typeof payload.name === 'string' && payload.name.trim() ? payload.name.trim() : 'New member').slice(0, 80), payload.sub, email);
-        user = one('SELECT * FROM users WHERE id=?', id);
-      } else {
-        run('UPDATE users SET google_email=? WHERE id=?', email, user.id);
-        user.google_email = email;
-      }
-      return user;
-    });
+    const user=transaction(()=>resolveGoogleAccount(db,payload,entry.purpose));
     res.json({ user: session(res, user) });
   });
   app.post('/api/me/google/challenge', auth, limited, async (req, res) => {
@@ -101,4 +86,9 @@ export function installGoogleAuth({ app, db, auth, limited, clientId, production
     refreshUser(req.user.id);
     res.json({ user: publicUser(one('SELECT * FROM users WHERE id=?', req.user.id)) });
   });
+}
+
+export function resolveGoogleAccount(db,payload,purpose){
+ const one=(s,...a)=>db.prepare(s).get(...a),run=(s,...a)=>db.prepare(s).run(...a),email=payload.email.toLowerCase();let user=one('SELECT * FROM users WHERE google_id=?',payload.sub);
+ if(!user){if(purpose!=='signup')fail(409,'This Google account is not connected to Churp yet. Already have an account? Sign in with your username, then open Your corner → Account settings → Connect Google. New here? Choose Create an account first.');if(one('SELECT 1 FROM users WHERE email=? AND email_verified_at IS NOT NULL',email))fail(409,'An existing Churp account uses this email. Sign in with your username, then open Your corner → Account settings → Connect Google.');const id=randomUUID();run("INSERT INTO users(id,username,name,google_id,google_email,avatar_style) VALUES (?,?,?,?,?,'portrait')",id,`g_${id.replaceAll('-','').slice(0,20)}`,(typeof payload.name==='string'&&payload.name.trim()?payload.name.trim():'New member').slice(0,80),payload.sub,email);user=one('SELECT * FROM users WHERE id=?',id);}else{run('UPDATE users SET google_email=? WHERE id=?',email,user.id);user.google_email=email;}return user;
 }

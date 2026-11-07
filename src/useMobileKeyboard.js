@@ -10,11 +10,12 @@ export default function useMobileKeyboard(){
  const [layout,setLayout]=useState({open:false,height:0,top:0});
  useEffect(()=>{
   if(!isMobileMessagingDevice())return;
-  const viewport=window.visualViewport;let baseline=Math.max(window.innerHeight,viewport?.height||0),open=false,frame;
-  function measure(){const height=viewport?.height||window.innerHeight,editing=!!textInput(document.activeElement),scale=viewport?.scale||1;if(!open&&!editing)baseline=Math.max(baseline,window.innerHeight,height);open=keyboardIsOpen({mobile:true,editing,baseline,height,scale,previous:open});setLayout({open,height,top:viewport?.offsetTop||0});}
+  const viewport=window.visualViewport;let baseline=Math.max(window.innerHeight,viewport?.height||0),open=false,frame,nativeOpen=false;
+  function measure(){const height=viewport?.height||window.innerHeight,editing=!!textInput(document.activeElement),scale=viewport?.scale||1;if(!open&&!editing)baseline=Math.max(baseline,window.innerHeight,height);open=nativeOpen||keyboardIsOpen({mobile:true,editing,baseline,height,scale,previous:open});setLayout({open,height,top:viewport?.offsetTop||0});}
   const update=()=>{cancelAnimationFrame(frame);frame=requestAnimationFrame(measure);},rotate=()=>{baseline=Math.max(window.innerHeight,viewport?.height||0);update();};
+  const native=event=>{nativeOpen=!!event.detail.open;update();};window.addEventListener('churp-native-keyboard',native);
   document.addEventListener('focusin',update);document.addEventListener('focusout',update);window.addEventListener('resize',update);window.addEventListener('orientationchange',rotate);viewport?.addEventListener('resize',update);viewport?.addEventListener('scroll',update);measure();
-  return()=>{cancelAnimationFrame(frame);document.removeEventListener('focusin',update);document.removeEventListener('focusout',update);window.removeEventListener('resize',update);window.removeEventListener('orientationchange',rotate);viewport?.removeEventListener('resize',update);viewport?.removeEventListener('scroll',update);};
+  return()=>{window.removeEventListener('churp-native-keyboard',native);cancelAnimationFrame(frame);document.removeEventListener('focusin',update);document.removeEventListener('focusout',update);window.removeEventListener('resize',update);window.removeEventListener('orientationchange',rotate);viewport?.removeEventListener('resize',update);viewport?.removeEventListener('scroll',update);};
  },[]);
  return layout;
 }

@@ -18,7 +18,7 @@ export default function Auth({ onLogin, config }) {
     </div>
     <main className="auth-main"><span className="auth-corner">A space to call yours <Sprout size={16} /></span><div className="auth-form-wrap">
       <div className="auth-mobile-logo"><Logo /></div><span className="eyebrow">LET’S GET TOGETHER</span><h2>{signup ? 'Find your people.' : 'Welcome home.'}</h2><p className="muted">{signup ? 'Create an account. Start something good.' : 'Sign in and pick up where you left off.'}</p>
-      {config.googleClientId ? <GoogleSignIn key={signup?'signup':'login'} clientId={config.googleClientId} createAccount={signup} onCredential={async credential=>onLogin((await post('/auth/google',{credential})).user)}/> : <div className="google-unavailable"><span className="google-g">G</span><span>Google Sign-in <small>Awaiting setup</small></span><LockKeyhole size={15} /></div>}
+      {config.googleClientId ? <GoogleSignIn key={signup?'signup':'login'} clientId={config.googleClientId} createAccount={signup} onNativeResult={result=>onLogin(result.user)} onCredential={async credential=>onLogin((await post('/auth/google',{credential})).user)}/> : <div className="google-unavailable"><span className="google-g">G</span><span>Google Sign-in <small>Awaiting setup</small></span><LockKeyhole size={15} /></div>}
       {config.googleClientId && signup && <p className="small-text muted google-existing-account">Already use Churp? Sign in with your username first, then connect Google in Account settings.</p>}
       <div className="divider"><span>or continue with your username</span></div>
       <Form key={signup ? 'signup' : 'login'} submit={signup ? 'Create your account' : 'Sign in'} onSubmit={async form => {

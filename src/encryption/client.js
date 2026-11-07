@@ -1,3 +1,4 @@
+import {backendFetch} from '../native/runtime';
 import {cleanMessageBody,birdWords} from '../../shared/bird-words.js';
 import {sealNotificationPreviews,previewProof} from '../../shared/notification-previews.js';
 import {validateReactions,reactionProof} from '../../shared/reactions.js';
@@ -215,7 +216,7 @@ export async function uploadEncrypted(file){
   return {id,name:file.name.slice(0,200),size:original.length,mime:safeImageMime(original),key:result.key,sha256:result.sha256};
 }
 export async function attachmentUrl(file){
-  const response=await fetch(`/api/files/${file.id}`,{credentials:'same-origin',cache:'no-store'});if(!response.ok)throw new Error('The attachment is no longer available.');
+  const response=await backendFetch(`/api/files/${file.id}`,{credentials:'same-origin',cache:'no-store'});if(!response.ok)throw new Error('The attachment is no longer available.');
   const data=await enc.decryptFile(new Uint8Array(await response.arrayBuffer()),file),mime=safeImageMime(data);
   return URL.createObjectURL(new Blob([data],{type:mime}));
 }
@@ -234,7 +235,7 @@ export function convertHistory(groupId){
         if(m.roster.missing.length){pending+=m.roster.missing.length;continue;}
         const files=[];
         for(const f of m.files){
-          const response=await fetch(`/api/e2ee/legacy-files/${f.id}`,{credentials:'same-origin',cache:'no-store',headers:{'x-churp-device':getCurrent().deviceId,...await legacyProof('file',f.id)}});
+          const response=await backendFetch(`/api/e2ee/legacy-files/${f.id}`,{credentials:'same-origin',cache:'no-store',headers:{'x-churp-device':getCurrent().deviceId,...await legacyProof('file',f.id)}});
           if(!response.ok)throw new Error('An earlier attachment could not be converted.');
           files.push(await uploadEncrypted(new File([await response.arrayBuffer()],f.name,{type:f.mime})));
         }

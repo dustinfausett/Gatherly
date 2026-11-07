@@ -1,3 +1,6 @@
+import {disableNativePush} from './native/push';
+import {isNative,watchRefresh} from './native/runtime';
+import {clearNativeShares} from './native/files';
 import Reporting from './Reporting';
 import {DeleteAccountDialog} from './DeleteAccountSettings';
 import useMobileKeyboard from './useMobileKeyboard';
@@ -46,12 +49,14 @@ export default function App() {
   const [invitationCount,setInvitationCount]=useState(0);
   const [tab,setTab]=useState((initialParams.get('conversation')||initialParams.has('phone_texts'))?'messages':'tree'),[conversationId,setConversationId]=useState(initialParams.get('conversation')),[compose,setCompose]=useState(null),[privateUnread,setPrivateUnread]=useState(0),[smsUnread,setSmsUnread]=useState(0);
   const [openingId,setOpeningId]=useState(null), [journey,setJourney]=useState(null);
+  useEffect(()=>{if(!isNative())return;const back=event=>{if(modal){event.preventDefault();setModal(null);}else if(conversationId){event.preventDefault();setConversationId(null);}else if(view.gid){event.preventDefault();setView(v=>({...v,gid:null}));}else if(tab!=='tree'){event.preventDefault();setTab('tree');}};window.addEventListener('churp-native-back',back);return()=>window.removeEventListener('churp-native-back',back);},[modal,conversationId,view.gid,tab]);
   const navigationTimer=useRef(), navigationToken=useRef(0), returnFocus=useRef(null);
   const [mobileSwitcher, setMobileSwitcher] = useState(false);
   const toastTimer = useRef(), switcherRef = useRef();
   const mobileSwitcherRef = useRef();
   const notify = useCallback((message, error = false) => { clearTimeout(toastTimer.current); setToast({ message, error }); toastTimer.current = setTimeout(() => setToast(null), 5000); }, []);
   useAppBadge(user,version);
+  useEffect(()=>{const onAuth=e=>{if(e.detail.user){setUser(e.detail.user);reload();}},onError=e=>notify(e.detail,true);window.addEventListener('churp-native-auth-result',onAuth);window.addEventListener('churp-native-error',onError);return()=>{window.removeEventListener('churp-native-auth-result',onAuth);window.removeEventListener('churp-native-error',onError);};},[]);
   useEffect(()=>{if(user&&initialParams.has('delete_account')){initialParams.delete('delete_account');const url=new URL(location.href);url.searchParams.delete('delete_account');history.replaceState({},'',url);setModal({kind:'delete-account'});}},[user?.id]);
   async function boot() {
     setBooting(true); setError('');
@@ -89,6 +94,7 @@ export default function App() {
   }, [user?.id, user?.family?.needs_setup, view.cid, version]);
   useEffect(() => {
     if (!user) return;
+    if(isNative()){let stop,closed=false;watchRefresh(()=>reload()).then(fn=>{if(closed)fn();else stop=fn;});return()=>{closed=true;stop?.();};}
     const events = new EventSource('/api/events');
     const refresh = () => reload();
     events.addEventListener('refresh', refresh);
@@ -149,14 +155,14 @@ export default function App() {
     }
   },[view.gid,community?.circles.some(g=>g.id === view.gid)]);
   async function accountDeleted(){
-    cancelEntry();try{const subscription=await(await navigator.serviceWorker?.getRegistration())?.pushManager?.getSubscription();await subscription?.unsubscribe();}catch{}
-    try{await forgetEncryption(user.id);}catch{}clearScheduleRequests();setUser(null);setCommunity(null);setCommunities([]);setModal(null);setScheduledOpen(false);setConversationId(null);setCompose(null);setPrivateUnread(0);setSmsUnread(0);setView({cid:null,gid:null});const url=new URL(location.href);url.search='';history.replaceState({},'',url);notify('Your account has been deleted.');
+    cancelEntry();if(isNative())try{await disableNativePush();}catch{}try{const subscription=await(await navigator.serviceWorker?.getRegistration())?.pushManager?.getSubscription();await subscription?.unsubscribe();}catch{}
+    try{await forgetEncryption(user.id);}catch{}await clearNativeShares();clearScheduleRequests();setUser(null);setCommunity(null);setCommunities([]);setModal(null);setScheduledOpen(false);setConversationId(null);setCompose(null);setPrivateUnread(0);setSmsUnread(0);setView({cid:null,gid:null});const url=new URL(location.href);url.search='';history.replaceState({},'',url);notify('Your account has been deleted.');
   }
   async function logout() {
     cancelEntry();
     try {
       await disconnectDeviceNotifications(user,false);
-      await post('/auth/logout'); await forgetEncryption(user.id);clearScheduleRequests(); setUser(null); setCommunity(null); setCommunities([]); setModal(null);setScheduledOpen(false); setView({ cid: null, gid: null });
+      await post('/auth/logout'); await forgetEncryption(user.id);await clearNativeShares();clearScheduleRequests(); setUser(null); setCommunity(null); setCommunities([]); setModal(null);setScheduledOpen(false); setView({ cid: null, gid: null });
     } catch (err) { notify(err.message, true); }
   }
   const group = community?.circles.find(g => g.id === view.gid);

@@ -1,3 +1,5 @@
+import {isNative} from './native/runtime';
+import {pickPhoneContact} from './native/contacts';
 import React,{useEffect,useState} from 'react';
 import {ArrowLeft,Plus,Search,Upload,Trash2,Pencil,Check,Smartphone} from 'lucide-react';
 import Papa from 'papaparse';
@@ -81,10 +83,10 @@ function TreeContactPicker({onMessage,data,people,trees,initialHouse,onSaved}){
 }
 function PhoneContactPicker({people,trees,country,setCountry,birdhouses,initialHouse,onPreview,onSaved}){
  const [manual,setManual]=useState(false),[error,setError]=useState(''),[busy,setBusy]=useState(false);
- const supportsPicker=typeof navigator.contacts?.select==='function';
+ const supportsPicker=isNative()||typeof navigator.contacts?.select==='function';
  if(manual)return <div className="phone-contact-source"><button type="button" className="text-button" onClick={()=>setManual(false)}><ArrowLeft size={16}/>Back to phone options</button><h3>Add a phone contact</h3><ContactEditor people={people} trees={trees} country={country} setCountry={setCountry} birdhouses={birdhouses} initialHouse={initialHouse} onSaved={onSaved}/></div>;
  return <section className="phone-contact-source"><p className="muted small-text">Import only the people you choose. You’ll review the selection before anything is saved.</p><Country country={country} setCountry={setCountry}/>
-  {supportsPicker?<button type="button" className="button primary phone-picker-button" disabled={busy} onClick={async()=>{setBusy(true);setError('');try{const contacts=await navigator.contacts.select(['name','tel'],{multiple:true});if(contacts.length)onPreview(contacts.flatMap(c=>(c.tel||[]).map(phone=>({name:c.name?.[0]||'Phone contact',phone}))));}catch(e){if(e.name!=='AbortError')setError('Your phone contact picker could not open. Try a contact file or add someone manually.');}finally{setBusy(false);}}}><Smartphone size={18}/>{busy?'Opening contacts…':'Choose from phone contacts'}</button>:<p className="info-banner">This browser can’t open your phone’s address book directly. In your phone’s Contacts app, share or export the people you want as a vCard, then choose that file below.</p>}
+  {supportsPicker?<button type="button" className="button primary phone-picker-button" disabled={busy} onClick={async()=>{setBusy(true);setError('');try{const contacts=isNative()?await pickPhoneContact():await navigator.contacts.select(['name','tel'],{multiple:true});if(contacts.length)onPreview(contacts.flatMap(c=>(c.tel||[]).map(phone=>({name:c.name?.[0]||'Phone contact',phone}))));}catch(e){if(e.name!=='AbortError')setError('Your phone contact picker could not open. Try a contact file or add someone manually.');}finally{setBusy(false);}}}><Smartphone size={18}/>{busy?'Opening contacts…':'Choose from phone contacts'}</button>:<p className="info-banner">This browser can’t open your phone’s address book directly. In your phone’s Contacts app, share or export the people you want as a vCard, then choose that file below.</p>}
   <label className="button secondary import-file"><Upload size={17}/>Choose CSV or vCard<input className="visually-hidden" type="file" accept=".csv,.vcf,text/csv,text/vcard" onChange={async e=>{const file=e.target.files[0];e.target.value='';setError('');try{if(!file)return;if(file.size>2*1024*1024)throw new Error('Choose a file smaller than 2 MB.');onPreview(importedRows(await file.text(),file.name));}catch(e){setError(e.message);}}}/></label>
   <p className="muted small-text">CSV files need name and phone columns. vCard (.vcf) files from your phone’s Contacts app are also supported.</p>
   {error&&<p className="error-banner" role="alert">{error}</p>}

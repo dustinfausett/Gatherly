@@ -1,0 +1,17 @@
+{
+  "appId": "com.churptree.app",
+  "appName": "Churp",
+  "webDir": "native-dist",
+  "server": {"hostname": "localhost", "iosScheme": "capacitor", "androidScheme": "https"},
+  "ios": {"contentInset": "never", "backgroundColor": "#fcfaf3"},
+  "android": {"backgroundColor": "#fcfaf3", "allowMixedContent": false},
+  "plugins": {
+    "CapacitorHttp": {"enabled": true},
+    "CapacitorCookies": {"enabled": true},
+    "Keyboard": {"resize": "native", "resizeOnFullScreen": true},
+    "SplashScreen": {"launchAutoHide": false, "backgroundColor": "#fcfaf3", "showSpinner": false},
+    "StatusBar": {"style": "DARK", "backgroundColor": "#fcfaf3"},
+    "Badge": {"persist": true, "autoClear": false},
+    "PushNotifications": {"presentationOptions": []}
+  }
+}

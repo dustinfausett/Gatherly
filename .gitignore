@@ -1,10 +1,10 @@
 node_modules/
-dist/
+dist
 .data/
 .env
 .env.local
 test-results/
-test-results-encryption/
+test-results-encryption
 playwright-report/
 *.log
 
@@ -14,3 +14,25 @@ public/push-preview.js
 *.churpbackup
 *.backup.key
 backup-status.json
+
+# Native build products and local signing configuration
+node_modules
+native-dist
+android/.gradle/
+android/local.properties
+android/**/build/
+android/app/google-services.json
+android/key.properties
+*.keystore
+*.jks
+ios/App/App/GoogleService-Info.plist
+ios/App/Pods/
+ios/App/App/public/
+ios/App/App/capacitor.config.json
+ios/App/DerivedData/
+*.xcuserstate
+xcuserdata/
+/ios/App/App/public
+/android/app/src/main/assets/public
+*.p8
+*.mobileprovision

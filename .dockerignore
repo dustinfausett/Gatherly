@@ -15,3 +15,8 @@ docs
 
 **/*.churpbackup
 **/*.backup.key
+
+android
+ios
+native
+native-dist

@@ -1,3 +1,5 @@
+import {isNative} from './native/runtime';
+import {startNativeGoogle} from './native/auth';
 import React, { useEffect, useRef, useState } from 'react';
 import { api, post } from './api';
 import { Field, Form } from './components';
@@ -19,7 +21,7 @@ function loadGoogle() {
   return googleScript;
 }
 
-export default function GoogleSignIn({ clientId, createAccount = false, challenge, onCredential, onFailure, connecting = false }) {
+function WebGoogleSignIn({ clientId, createAccount = false, challenge, onCredential, onFailure, connecting = false }) {
   const host = useRef(null), callbacks = useRef({ onCredential, onFailure });
   callbacks.current = { onCredential, onFailure };
   const [error, setError] = useState(''), [ready, setReady] = useState(false), [busy, setBusy] = useState(false), [attempt, setAttempt] = useState(0);
@@ -75,7 +77,7 @@ export function GoogleAccountSettings({ user, config, onAccountUpdate }) {
         setPassword(''); setProof(challenge);
       }} value={password} onChange={event => setPassword(event.target.value)}/> : <>
         <p className="small-text">Choose the Google account you want to connect.</p>
-        <GoogleSignIn clientId={config.googleClientId} challenge={proof} connecting onCredential={async credential => {
+        <GoogleSignIn clientId={config.googleClientId} challenge={proof} connecting onNativeResult={result=>{onAccountUpdate(result.user);setProof(null);setNotice('Google connected. You can now sign in with Google or your Churp username and password.');}} onCredential={async credential => {
           const result = await post('/me/google', { credential });
           onAccountUpdate(result.user); setProof(null); setNotice('Google connected. You can now sign in with Google or your Churp username and password.');
         }} onFailure={e => { setProof(null); setError(e.message); }}/>
@@ -89,3 +91,9 @@ export function GoogleAccountSettings({ user, config, onAccountUpdate }) {
 function FormForGoogle({ submit, onSubmit, value, onChange }) {
   return <Form submit={submit} onSubmit={onSubmit}><Field label="Current Churp password" name="currentPassword" type="password" autoComplete="current-password" required maxLength={128} {...(onChange ? { value, onChange } : {})}/></Form>;
 }
+
+function NativeGoogleSignIn({createAccount=false,challenge,connecting=false,onNativeResult,onFailure}){
+ const [busy,setBusy]=useState(false),[error,setError]=useState('');
+ return <div className="google-sign-in"><button type="button" className="button secondary" disabled={busy} onClick={async()=>{setBusy(true);setError('');try{const result=await startNativeGoogle(connecting?'connect':challenge?'delete':createAccount?'signup':'login',challenge?.nonce);await onNativeResult?.(result);}catch(e){setError(e.message);onFailure?.(e);}finally{setBusy(false);}}}><span className="google-g" aria-hidden="true">G</span>{busy?'Waiting for Google…':connecting?'Connect Google':'Continue with Google'}</button><p className="small-text muted">Google opens securely in your phone’s browser and returns to Churp.</p>{error&&<p className="error-banner" role="alert">{error}</p>}</div>;
+}
+export default function GoogleSignIn(props){return isNative()?<NativeGoogleSignIn {...props}/>:<WebGoogleSignIn {...props}/>;}

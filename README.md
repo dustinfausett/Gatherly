@@ -4,6 +4,10 @@ A warm, responsive messaging app organized as **Tree → optional Branch → Nes
 
 The Churp wordmark and birds-and-nest mark appear on sign-in, navigation, browser icons, and Home Screen icons. Self-hosted Nunito and Nunito Sans fonts pair with leafy greens, cream backgrounds, and soft brown Nest rows. Read Nest rows are brown; unread rows remain yellow with a yellow egg, and urgent unread rows remain red with a red egg. Received messages use blue bubbles; your own use gold bubbles. Urgent messages keep their bubble color and have an urgent label and outline.
 
+## Native phone apps
+
+The iPhone and Android development projects share the Churp codebase and Railway backend. Start with the [Mac simulator and native setup guide](docs/native-apps.md). Signing, native push credentials and store review are separate release steps.
+
 ## Run locally
 
 Requires **Node.js 24 or newer** and npm. The repository and existing checkout remain named Gatherly for compatibility.

@@ -1,3 +1,6 @@
+import {installNativePush,nativePushProviders} from './native-push.js';
+import {installNativeAuth} from './native-auth.js';
+import {mobileOrigins} from '../shared/mobile.js';
 import {installReports} from './reports.js';
 import {AsyncLocalStorage} from 'node:async_hooks';
 import {installAccountDeletion} from './account-deletion.js';
@@ -78,7 +81,7 @@ export function createApp(options = {}) {
   const vapidPrivate = process.env.VAPID_PRIVATE_KEY;
   const pushEnabled = options.pushEnabled ?? !!(vapidPublic && vapidPrivate && process.env.VAPID_SUBJECT);
   if (pushEnabled && !(options.testing&&options.pushSender)) webPush.setVapidDetails(process.env.VAPID_SUBJECT, vapidPublic, vapidPrivate);
-  const streams = new Map(),requestContext=new AsyncLocalStorage();
+  const streams = new Map(),requestContext=new AsyncLocalStorage(),syncEpoch=randomUUID(),syncRevisions=new Map();let globalSyncRevision=token();
   const one = (sql, ...args) => db.prepare(sql).get(...args);
   const all = (sql, ...args) => db.prepare(sql).all(...args);
   const run = (sql, ...args) => db.prepare(sql).run(...args);
@@ -100,9 +103,11 @@ export function createApp(options = {}) {
     catch (error) { db.exec('ROLLBACK'); throw error; }
   };
   function refreshUser(userId) {
+    syncRevisions.set(userId,(syncRevisions.get(userId)||0)+1);
     for (const res of streams.get(userId) || []) if(!res.writableEnded&&!res.destroyed)res.write('event: refresh\ndata: {}\n\n');
   }
   function refresh(communityId) {
+    if(!communityId)globalSyncRevision=token();
     const users = communityId ? all('SELECT user_id FROM community_members WHERE community_id=?', communityId).map(x => x.user_id) : [...streams.keys()];
     for (const id of users) refreshUser(id);
   }
@@ -172,7 +177,8 @@ export function createApp(options = {}) {
       const origin = req.get('origin');
       if (req.get('sec-fetch-site') === 'cross-site') return res.status(403).json({ error: 'Cross-site requests are not allowed.' });
       // An explicit APP_URL supports a reverse proxy; same-origin requests use the actual Host.
-      if (origin && origin !== new URL(appUrl).origin && ![`${req.protocol}://${req.get('host')}`, `https://${req.get('host')}`].includes(origin)) return res.status(403).json({ error: 'Untrusted request origin.' });
+      const nativeRequest=req.get('x-churp-client')==='native'&&mobileOrigins.includes(origin);
+      if (!nativeRequest && origin && origin !== new URL(appUrl).origin && ![`${req.protocol}://${req.get('host')}`, `https://${req.get('host')}`].includes(origin)) return res.status(403).json({ error: 'Untrusted request origin.' });
     }
     next();
   });
@@ -207,6 +213,7 @@ export function createApp(options = {}) {
     res.json({ user: session(res, user) });
   });
   installGoogleAuth({app,db,auth,limited:authLimit,clientId:googleClientId,production,session,publicUser,refreshUser,transaction,testing:options.testing,verifyToken:options.googleVerifyToken});
+  installNativeAuth({app,db,auth,limited:authLimit,clientId:googleClientId,appUrl,transaction,session,publicUser,refreshUser,testing:options.testing,verifyToken:options.googleVerifyToken});
   app.post('/api/auth/logout', auth, (req, res) => {
     run('DELETE FROM sessions WHERE token_hash=?', hash(req.cookies.gatherly_session));
     for (const stream of streams.get(req.user.id) || []) stream.end();
@@ -218,8 +225,9 @@ export function createApp(options = {}) {
   const smsConfig=options.testing===true&&!production&&options.smsConfig ? options.smsConfig : {...smsConfiguration(),mode:'disabled',retired:true};
   const sms=installSms({app,db,dataDir,appUrl,transaction,refreshUser,testing:options.testing,config:smsConfig,transport:options.smsTransport,autoProcess:!(options.testing&&options.smsAutoProcess===false)});
   app.use('/api', auth);
+  app.use('/api',(req,res,next)=>{if(!['GET','HEAD','OPTIONS'].includes(req.method)&&! /\/(?:read|presence)$/.test(req.path))res.once('finish',()=>{if(res.statusCode<400)refreshUser(req.user.id);});next();});
   app.use('/api',(req,res,next)=>{
-    const setup=req.path==='/me'||/^\/me\/deletion(?:\/|$)/.test(req.path)||req.path==='/badges'||req.path==='/events'||/^\/family(?:\/|$)/.test(req.path)||(/^\/e2ee\//.test(req.path)&&!/^\/e2ee\/(?:uploads|legacy)(?:\/|$)/.test(req.path));
+    const setup=req.path==='/native-push/subscribe'&&req.method==='DELETE'||req.path==='/me'||/^\/me\/deletion(?:\/|$)/.test(req.path)||req.path==='/badges'||req.path==='/events'||req.path==='/sync'||/^\/family(?:\/|$)/.test(req.path)||(/^\/e2ee\//.test(req.path)&&!/^\/e2ee\/(?:uploads|legacy)(?:\/|$)/.test(req.path));
     if(setup)return next();
     try{family.requireReady(req.user.id);next();}catch(e){next(e);}
   });
@@ -229,6 +237,7 @@ export function createApp(options = {}) {
   app.get('/api/backups/status',(req,res)=>{if(!reports.isPlatform(req.user.id))fail(404,'Backup settings not found.');res.json(app.locals.backups?.snapshot()||{enabled:false,configured:false,running:false,phase:'idle'});});
   app.post('/api/backups/run',rateLimit({windowMs:3600000,limit:4,keyGenerator:req=>req.user.id,message:{error:'Please wait before starting another backup.'}}),(req,res)=>{if(!reports.isPlatform(req.user.id))fail(404,'Backup settings not found.');try{if(!app.locals.backups)fail(409,'Off-site backups are not configured.');res.status(202).json(app.locals.backups.run());}catch(error){if(!error.status)error.status=409;throw error;}});
   const accountDeletion=installAccountDeletion({app,db,uploadDir,transaction,family,refresh,endSessions:id=>{for(const stream of streams.get(id)||[])stream.end();},googleClientId,googleVerifyToken:options.googleVerifyToken,testing:options.testing});
+  app.get('/api/sync',(req,res)=>res.json({version:`${syncEpoch}:${globalSyncRevision}:${syncRevisions.get(req.user.id)||0}`}));
   const badges=createBadges({db,family,encryptionRequired,smsUnread:uid=>sms.unread(uid)});
   app.get('/api/badges',(req,res)=>{res.set('Cache-Control','no-store');res.json(badges.snapshot(req.user.id));});
   function pushEligible(uid,source){
@@ -267,7 +276,8 @@ export function createApp(options = {}) {
   const push=createPushNotifications({db,dataDir,enabled:pushEnabled,badge:uid=>badges.snapshot(uid).count,eligible:pushEligible,canPreview:pushPreviewAllowed,
     now:options.testing&&options.pushNow?options.pushNow:Date.now,autoProcess:!(options.testing&&options.pushAutoProcess===false),
     send:options.testing&&options.pushSender?options.pushSender:(subscription,body)=>webPush.sendNotification(subscription,body,{TTL:3600,timeout:10000,proxy:process.env.HTTPS_PROXY||process.env.https_proxy})});
-  function notifyDevice(...args){push.notify(...args).catch(()=>{});}
+  const nativePush=installNativePush({app,db,auth,limited:authLimit,eligible:pushEligible,badge:uid=>badges.snapshot(uid).count,providers:options.testing&&options.nativePushProviders?options.nativePushProviders:nativePushProviders()});
+  function notifyDevice(...args){push.notify(...args).catch(()=>{});nativePush.notify(...args).catch(()=>{});}
   function encryptedPreview(uid,context,channel,contextName){
     const packet=context?.notificationPreviews?.find(p=>p.userId===uid),identity=context&&encryption.identity(context.sender.id);
     return packet&&identity?{ciphertext:packet.ciphertext,client_id:context.clientId,channel,sender_id:context.sender.id,sender_name:context.sender.name,context_name:contextName,signer_key:identity.public_key,signer_fingerprint:identity.fingerprint}:null;
@@ -928,5 +938,5 @@ export function createApp(options = {}) {
     app.use(express.static(resolve('dist'), { setHeaders: (res, path) => { if (path.endsWith('/index.html') || path.endsWith('/sw.js') || path.endsWith('/push-preview.js')) res.setHeader('Cache-Control','no-store'); } }));
     app.get('/{*path}', (req, res) => { res.setHeader('Cache-Control','no-store'); res.sendFile(resolve('dist/index.html')); });
   }
-  return { app, db, sms, phoneDrafts, scheduling, push, close: () => { accountDeletion.close();phoneDrafts.close();push.close();scheduling.close();sms.close(); for (const set of streams.values()) for (const res of set) res.end(); db.close(); } };
+  return { app, db, sms, phoneDrafts, scheduling, push, close: () => { nativePush.close();accountDeletion.close();phoneDrafts.close();push.close();scheduling.close();sms.close(); for (const set of streams.values()) for (const res of set) res.end(); db.close(); } };
 }
