@@ -1,0 +1,23 @@
+import {test,expect} from '@playwright/test';
+import {randomUUID} from 'node:crypto';
+test('Nest, Branch and Tree calendars, saved filters and read-only subscriptions',async({page},info)=>{
+ const errors=[];page.on('pageerror',e=>errors.push(e.message));
+ await page.request.post('/api/auth/register',{data:{username:`cal_${randomUUID().slice(0,8)}`,name:'Calendar owner',password:'Calendar browser fixture!',birth_date:'1990-01-01'}});
+ const tree=(await(await page.request.post('/api/communities',{data:{name:'Calendar Tree'}})).json()).community;
+ const branch=(await(await page.request.post(`/api/communities/${tree.id}/subcommunities`,{data:{name:'Garden Branch'}})).json()).subcommunity;
+ const nest=(await(await page.request.post(`/api/communities/${tree.id}/circles`,{data:{name:'Garden Nest',subcommunity_id:branch.id}})).json()).group;
+ await page.goto(`/?community=${tree.id}&group=${nest.id}`);await expect(page.getByRole('button',{name:'Open Nest calendar',exact:true})).toBeVisible();
+ await page.getByRole('button',{name:'Open Nest calendar',exact:true}).click();let dialog=page.getByRole('dialog');await dialog.getByRole('button',{name:'New event',exact:true}).click();
+ await dialog.getByLabel('Title',{exact:true}).fill('Garden picnic');
+ const now=new Date(),date=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-15`;
+ await dialog.getByLabel('Starts',{exact:true}).fill(`${date}T10:00`);await dialog.getByLabel('Ends',{exact:true}).fill(`${date}T11:00`);await dialog.getByLabel('Visibility',{exact:true}).selectOption('public');await dialog.getByRole('button',{name:'Save event',exact:true}).click();
+ await expect(dialog.getByRole('heading',{name:'Garden picnic',exact:true})).toBeVisible();await dialog.getByRole('button',{name:'Close dialog',exact:true}).click();
+ await page.getByRole('button',{name:'Back to Tree',exact:true}).click();await page.getByRole('button',{name:'Open calendar for Branch Garden Branch',exact:true}).click();await expect(page.getByRole('dialog').getByRole('heading',{name:'Garden picnic',exact:true})).toBeVisible();await page.getByRole('button',{name:'Close dialog',exact:true}).click();
+ await page.getByRole('button',{name:'Open Tree calendar',exact:true}).click();dialog=page.getByRole('dialog');await expect(dialog.getByRole('heading',{name:'Garden picnic',exact:true})).toBeVisible();await dialog.getByText('Personal filters · saved automatically',{exact:true}).click();
+ await dialog.getByRole('checkbox',{name:'Garden Branch',exact:true}).uncheck();await dialog.getByRole('checkbox',{name:'Garden Nest',exact:true}).uncheck();await expect(dialog.getByRole('heading',{name:'Garden picnic',exact:true})).toHaveCount(0);
+ await expect.poll(async()=> (await(await page.request.get(`/api/calendar/trees/${tree.id}`)).json()).filters).toEqual({branches:[],nests:[]});
+ await dialog.getByRole('button',{name:'Close dialog',exact:true}).click();await page.goto(`/?community=${tree.id}`);await page.getByRole('button',{name:'Open Tree calendar',exact:true}).click();dialog=page.getByRole('dialog');await expect(dialog.getByRole('heading',{name:'Garden picnic',exact:true})).toHaveCount(0);
+ await dialog.getByText('Subscribe with Google or Apple Calendar',{exact:true}).click();await dialog.getByLabel('Calendar to subscribe to',{exact:true}).selectOption(`nest:${nest.id}`);await dialog.getByRole('button',{name:'Create subscription link',exact:true}).click();const url=await dialog.getByLabel('Subscription URL',{exact:true}).inputValue();const feed=await page.request.get(new URL(url).pathname);expect(feed.status()).toBe(200);expect(await feed.text()).toContain('Garden picnic');
+ await dialog.getByRole('button',{name:'Revoke subscription',exact:true}).click();await expect(dialog.getByRole('button',{name:'Revoke subscription',exact:true})).toHaveCount(0);expect((await page.request.get(new URL(url).pathname)).status()).toBe(404);
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=document.documentElement.clientWidth)).toBeTruthy();await page.screenshot({path:info.outputPath('calendar.png'),fullPage:true});expect(errors).toEqual([]);
+});

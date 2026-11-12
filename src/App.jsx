@@ -1,3 +1,4 @@
+import Calendar from './Calendar';
 import {disableNativePush} from './native/push';
 import {isNative,watchRefresh} from './native/runtime';
 import {clearNativeShares} from './native/files';
@@ -190,6 +191,7 @@ export default function App() {
     {journey && group?.id === journey.id && <BirdJourney journey={journey} onDone={finishJourney}/>}
     <Toast toast={toast} />
     {scheduledOpen&&<ScheduledOutbox version={version} onClose={()=>setScheduledOpen(false)} onRefresh={reload}/>}
+    {modal?.kind === 'calendar' && community && <Calendar community={community} scope={modal.scope} version={version} onClose={()=>setModal(null)}/>}
     {modal?.kind === 'space' && <SpaceDialog modal={modal} community={community} onClose={() => setModal(null)} onDelete={async (result,type,entity)=>{cancelEntry();if(type === 'community'){setCommunity(null);setCommunities(prev=>prev.filter(c=>c.id !== entity.id));setUser(prev=>({...prev,last_community_id:prev.last_community_id === entity.id ? null : prev.last_community_id}));setView({cid:null,gid:null});}if(type === 'group' && view.gid === entity.id) communityHome();if(type === 'subcommunity')setExpandedGroups(prev=>({...prev,[view.cid]:{...prev[view.cid],[entity.id]:false}}));await reload();notify(type === 'community' ? 'Tree deleted.' : type === 'subcommunity' ? 'Branch deleted. Its Nests are kept at Tree level.' : 'Nest deleted.');}} onSave={async (result,type) => { if (type === 'community' && result.community) await chooseCommunity(result.community.id); if (type === 'group' && result.group) openCircle(result.group.id); if (type === 'subcommunity' && result.subcommunity) openGroup(result.subcommunity.id); await reload(); notify(result.request ? 'Submitted for approval. Follow its status in Creation requests.' : modal.entity ? 'Changes saved.' : `${type === 'subcommunity' ? 'Branch' : type === 'group' ? 'Nest' : 'Tree'} created. Make yourself at home!`); }} />}
     {modal?.kind === 'invite' && community && <InviteDialog community={community} group={modal.group} onClose={() => setModal(null)} />}
     {modal?.kind === 'join' && <JoinDialog version={version} initialToken={modal.token} onClose={() => setModal(null)} onJoined={finishInvitation} onJoin={async value => finishInvitation(await post('/invitations/accept',{token:value}))}/> }

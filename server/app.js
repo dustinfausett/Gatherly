@@ -1,3 +1,4 @@
+import { installCalendars, verifyCalendarVault } from './calendars.js';
 import {installNativePush,nativePushProviders} from './native-push.js';
 import {installNativeAuth} from './native-auth.js';
 import {mobileOrigins} from '../shared/mobile.js';
@@ -67,6 +68,7 @@ export function createApp(options = {}) {
   const uploadDir = join(dataDir, 'uploads');
   mkdirSync(uploadDir, { recursive: true });
   const db = openDatabase(options.database || join(dataDir, 'gatherly.sqlite'));
+  try { verifyCalendarVault(db,dataDir); } catch(error) { db.close(); throw error; }
   const app = express();
   // Plaintext transport exists only for explicit legacy test fixtures. The
   // production entry point, including a caller passing false, always encrypts.
@@ -225,7 +227,8 @@ export function createApp(options = {}) {
   const smsConfig=options.testing===true&&!production&&options.smsConfig ? options.smsConfig : {...smsConfiguration(),mode:'disabled',retired:true};
   const sms=installSms({app,db,dataDir,appUrl,transaction,refreshUser,testing:options.testing,config:smsConfig,transport:options.smsTransport,autoProcess:!(options.testing&&options.smsAutoProcess===false)});
   app.use('/api', auth);
-  app.use('/api',(req,res,next)=>{if(!['GET','HEAD','OPTIONS'].includes(req.method)&&! /\/(?:read|presence)$/.test(req.path))res.once('finish',()=>{if(res.statusCode<400)refreshUser(req.user.id);});next();});
+  // Nest membership updates emit their own refresh only when preferences or read state change.
+  app.use('/api',(req,res,next)=>{if(!['GET','HEAD','OPTIONS'].includes(req.method)&&! /\/(?:read|presence)$/.test(req.path)&&!/^\/groups\/[^/]+\/membership$/.test(req.path))res.once('finish',()=>{if(res.statusCode<400)refreshUser(req.user.id);});next();});
   app.use('/api',(req,res,next)=>{
     const setup=req.path==='/native-push/subscribe'&&req.method==='DELETE'||req.path==='/me'||/^\/me\/deletion(?:\/|$)/.test(req.path)||req.path==='/badges'||req.path==='/events'||req.path==='/sync'||/^\/family(?:\/|$)/.test(req.path)||(/^\/e2ee\//.test(req.path)&&!/^\/e2ee\/(?:uploads|legacy)(?:\/|$)/.test(req.path));
     if(setup)return next();
@@ -324,6 +327,7 @@ export function createApp(options = {}) {
   const privateMessages=installPrivateMessages({app,db,encryption,family,transaction,refreshUser,group,groupAdmin,testing:options.testing,notifyIntro:(c,id)=>{for(const parent of new Set([...family.parents(c.user_low),...family.parents(c.user_high)].map(p=>p.parent_id)))notifyDevice(parent,{title:'New message request',body:'Review a first message in Family & youth protection.',url:'/'},null,{channel:'family-review',messageId:id});},notifyPrivate:(uid,id,context)=>notifyDevice(uid,{title:'New private message on Churp',body:'You have a private message.',url:`/?conversation=${id}`},encryptedPreview(uid,context,'private'),{channel:'private',messageId:context.id})});
   installReactions({app,db,encryption,encryptionRequired,family,visibleCircle,joined,transaction,refresh,refreshUser,testing:options.testing});
   installPolls({app,db,encryption,encryptionRequired,visibleCircle,joined,groupAdmin,transaction,refresh,testing:options.testing});
+  installCalendars({app,db,dataDir,appUrl,membership,visibleCircle,joined,groupAdmin,refresh,family});
   installRsvps({app,db,encryption,encryptionRequired,visibleCircle,joined,groupAdmin,transaction,refresh,testing:options.testing});
   const assignments=installAssignments({app,db,encryption,encryptionRequired,visibleCircle,joined,groupAdmin,transaction,refresh,testing:options.testing});
   app.post('/api/me/birds/unlock', rateLimit({ windowMs: 15 * 60 * 1000, limit: options.testing ? 1000 : 10,

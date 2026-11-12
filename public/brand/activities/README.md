@@ -15,3 +15,5 @@ The same blue-and-gold bird pair carries every activity, with cream paper, olive
 | <img src="rsvp-happy.png" width="220" alt="Happy blue hatchling" /> | <img src="rsvp-questioning.png" width="220" alt="Questioning blue hatchling" /> | <img src="rsvp-sad.png" width="220" alt="Sad blue hatchling" /> |
 
 All nine PNGs were generated using the logo and the new Poll illustration as visual references. The opened envelope is a reference edit of the closed envelope. Original generated files are retained in the workspace. `src/activityArtwork.js` is the app’s shared asset map; `src/activity-cards.css` coordinates their frames and scale. Older illustration URLs remain available for clients with an earlier app bundle.
+
+`calendar.png` is the generated calendar-only icon used for Tree, Branch and Nest calendars. It follows Churp’s cream, moss-green and golden clay artwork, without a bird.

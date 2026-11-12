@@ -38,6 +38,12 @@ test('header Nest opens the encrypted shared library with newest-first pictures,
   await page.getByRole('button',{name:'Open shared items',exact:true}).click();
   let dialog=page.getByRole('dialog');await expect(dialog.getByRole('heading',{name:'Shared in this Nest',exact:true})).toBeVisible();
   await expect(dialog.getByText('Loading shared items…',{exact:true})).toHaveCount(0);
+  // Read acknowledgements must not cause an endless shared-library refresh loop.
+  await page.evaluate(()=>{window.sharedLoadingFlashes=0;window.sharedObserver=new MutationObserver(()=>{if(document.querySelector('.shared-loading'))window.sharedLoadingFlashes++;});window.sharedObserver.observe(document.querySelector('.shared-library'),{childList:true,subtree:true});});
+  for(let i=0;i<3;i++)await page.request.patch(`/api/groups/${nest.id}/membership`,{data:{read_to:999999}});
+  await page.waitForTimeout(1200);
+  expect(await page.evaluate(()=>window.sharedLoadingFlashes)).toBe(0);
+  await page.evaluate(()=>window.sharedObserver.disconnect());
   for(const name of ['Pictures','Documents','Polls','Videos','Audio','Other files'])await expect(dialog.getByRole('button',{name:new RegExp(`^${name}`)})).toBeVisible();
   await page.screenshot({path:info.outputPath('shared-categories.png'),fullPage:true});
   await dialog.getByRole('button',{name:/^Documents/}).click();
