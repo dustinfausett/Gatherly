@@ -1,3 +1,4 @@
+import {CalendarButton} from './Calendar';
 import React, { useRef, useState } from 'react';
 import { ArrowDown, ArrowUp, Bell, BellOff, CheckCheck, ChevronRight, LockKeyhole, MoreHorizontal, Pin, PinOff, Plus, Search, Settings2, Trash2, Users } from 'lucide-react';
 import { api, patch } from './api';
@@ -62,7 +63,7 @@ function CircleRow({ circle: c, onOpen, onOptions, onChange, openingId }) {
 }
 
 
-function GroupRow({ group: g, expanded, onToggle }) {
+function GroupRow({ group: g, expanded, onToggle, onCalendar }) {
   return <div className={`circle-row group-row ${unread(g) ? 'is-unread' : ''} ${g.urgent_unread > 0 ? 'is-urgent' : ''}`} data-group-id={g.id} data-unread={unread(g)} data-urgent={g.urgent_unread > 0}>
     <div className="circle-row-content">
       <button className="circle-open" aria-label={`Open Branch ${g.name}`} aria-expanded={expanded} aria-controls={`group-circles-${g.id}`} aria-describedby={unread(g) ? `group-state-${g.id}` : undefined} onClick={() => onToggle(g.id)}>
@@ -71,6 +72,7 @@ function GroupRow({ group: g, expanded, onToggle }) {
         <span className="circle-copy"><span className="circle-name">{g.name}</span></span><ChevronRight size={20} className={`group-row-chevron ${expanded ? 'expanded' : ''}`} />
         {unread(g) && <span id={`group-state-${g.id}`} className="visually-hidden">{g.urgent_unread > 0 ? 'Urgent and unread' : 'Unread'} Nests in this Branch</span>}
       </button>
+      <CalendarButton label={`Open calendar for Branch ${g.name}`} onClick={onCalendar}/>
     </div>
   </div>;
 }
@@ -117,7 +119,7 @@ export default function CommunityHome({ community: c, birdId, search, onModal, o
     const children = item.groups.filter(g => g.pin_position === null && (matches(item) || matches(g)))
       .sort((a,b) => Number(unread(b)) - Number(unread(a)) || alphabetic(a,b));
     return <div className="group-branch" key={`group-${item.id}`}>
-      <GroupRow group={item} expanded={expanded} onToggle={onToggleGroup} />
+      <GroupRow group={item} expanded={expanded} onToggle={onToggleGroup} onCalendar={()=>onModal({kind:"calendar",scope:{type:"branch",id:item.id}})} />
       {expanded && <div className="group-children" id={`group-circles-${item.id}`} role="group" aria-label={`Nests in ${item.name}`}>
         <div className="circle-list">{children.map(circleRow)}</div>
         {!children.length && <p className="list-empty">{item.groups.some(g => g.pin_position !== null) ? 'Your pinned Nests from this Branch are shown above.' : query ? 'No Nests match your search.' : 'No Nests here yet.'}</p>}
@@ -129,7 +131,7 @@ export default function CommunityHome({ community: c, birdId, search, onModal, o
     </div>;
   });
   return <div className="community-home circle-home compact-home">
-    <header className="community-banner"><Avatar name={c.name} id={c.avatar_id} size={56} /><div className="tree-banner-title"><h1>{c.name}</h1><span className="banner-perch"><span className="banner-branch-art" aria-hidden="true"/><PetFeeding key={birdId} birdId={birdId}/></span></div><div className="banner-actions">
+    <header className="community-banner"><Avatar name={c.name} id={c.avatar_id} size={56} /><div className="tree-banner-title"><h1>{c.name}</h1><span className="banner-perch"><span className="banner-branch-art" aria-hidden="true"/><PetFeeding key={birdId} birdId={birdId}/></span></div><div className="banner-actions"><CalendarButton label="Open Tree calendar" onClick={()=>onModal({kind:"calendar",scope:{type:"tree",id:c.id}})}/>
       <button className="icon-button" aria-label="Search Branches and Nests" aria-expanded={searchOpen} onClick={() => { if (searchOpen) setSearch(''); setSearchOpen(!searchOpen); }}><Search size={19} /></button>
       {c.is_admin && <button className="icon-button" aria-label="Tree settings" onClick={() => onModal({kind:'space',type:'community',entity:c})}><Settings2 size={19} /></button>}
     </div></header>

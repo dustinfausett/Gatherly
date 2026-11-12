@@ -96,8 +96,9 @@ export default function SharedLibrary({ conversationId, group, user, version, on
     return cache.current.get(key).promise;
   }, [enabled]);
   useEffect(() => { disposed.current = false; return () => { disposed.current = true; for (const entry of cache.current.values()) if (entry.url) URL.revokeObjectURL(entry.url); cache.current.clear(); }; }, []);
+  useEffect(() => { setLoading(true); setItems([]); setPicture(null); }, [group.id, conversationId, enabled, user.id]);
   useEffect(() => {
-    let current = true; setLoading(true); setError('');
+    let current = true; setError('');
     (async () => {
       const found = []; let before = '', invalid = 0, more;
       do {
