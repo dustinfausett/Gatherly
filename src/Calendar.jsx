@@ -30,7 +30,7 @@ function EventForm({event,nests,initialDate,onSave,onCancel}){
    const startValue=new Date(startLocal),endValue=new Date(endLocal);
    if(localInput(startValue)!==startLocal||localInput(endValue)!==endLocal)throw new Error('That time does not exist in your time zone. Choose another time.');
    if(endValue<=startValue)throw new Error('The end must be after the start. For an overnight event, turn on Multiple days.');
-   const body={...draft,start:startValue.toISOString(),end:endValue.toISOString()};
+   const body={...draft,start:startValue.toISOString(),end:endValue.toISOString(),time_zone:Intl.DateTimeFormat().resolvedOptions().timeZone};
    if(event)await patch(`/calendar/events/${event.id}`,body);else await post('/calendar/events',body);await onSave();
  }catch(e){setError(e.message);}finally{setBusy(false);}}}>
  <h3>{event?'Edit event':'New Nest event'}</h3>

@@ -54,6 +54,7 @@ async function restoreManagedIdentity(name,userId,device,expectedFingerprint,rea
 // Keys and message decryption stay on the phone, including self-managed users.
 self.churpPushPreview=async payload=>{
  const generic={title:payload.title||'Churp',body:payload.body||'You have a new message.'};
+ if(payload.source?.channel==='calendar'&&typeof payload.calendar_start==='string'&&Number.isFinite(Date.parse(payload.calendar_start)))generic.body=new Intl.DateTimeFormat(undefined,{weekday:'short',month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit',timeZoneName:'short'}).format(new Date(payload.calendar_start));
  if(!payload.recipient_id||!['nest','private'].includes(payload.source?.channel))return generic;
  const controller=new AbortController();let endBudget;
  const budget=new Promise(resolve=>{endBudget=resolve;}),timer=setTimeout(()=>{controller.abort();endBudget(null);},8000);

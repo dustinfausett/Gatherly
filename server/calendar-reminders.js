@@ -99,7 +99,9 @@ export function installCalendarReminders({app, db, readEvent, family, notify, no
           const source = {channel: 'calendar', eventId: e.id, eventStart: data.start, reminderKind: unsent.some(c => c.kind === 'personal') ? 'personal' : 'default'};
           if (!canNotify(uid, source)) continue;
           // Several overdue reminders for the same event collapse into a single alert.
-          await notify(uid, {title: 'Calendar reminder', body: 'An activity is coming up. Open Churp for the details.', url: `/?community=${e.community_id}&calendar_event=${e.id}`}, null, source);
+          const show=!!one('SELECT notification_previews FROM users WHERE id=?',uid)?.notification_previews;
+          const date=new Intl.DateTimeFormat('en-US',{timeZone:data.time_zone||'UTC',weekday:'short',month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit',timeZoneName:'short'}).format(new Date(data.start));
+          await notify(uid, {title: show?data.title:'Calendar reminder', body: show?date:'An activity is coming up. Open Churp for the details.', ...(show?{calendar_start:data.start}:{}), url: `/?community=${e.community_id}&calendar_event=${e.id}`}, null, source);
         }
       }
     } finally { working = false; }
