@@ -66,6 +66,10 @@ export function installCalendars({app,db,dataDir,appUrl,membership,visibleCircle
     }for(const key of ['start','end']){if(typeof body[key]!=='string'||!Number.isFinite(Date.parse(body[key])))fail(400,'Choose valid event dates.');result[key]=new Date(body[key]).toISOString();}
     if(result.end<=result.start)fail(400,'The end must be after the start.');
     if(!['public','private'].includes(body.visibility))fail(400,'Choose public or private.');
+    const zone=body.time_zone??'UTC';
+    if(typeof zone!=='string'||zone.length>100)fail(400,'Choose a valid event time zone.');
+    try{new Intl.DateTimeFormat('en-US',{timeZone:zone});}catch{fail(400,'Choose a valid event time zone.');}
+    result.time_zone=zone;
     return result;
   }
   function posting(uid,gid){const g=visibleCircle(uid,gid);if(!joined(uid,gid)||(g.admin_only&&!groupAdmin(uid,g)))fail(403,'Posting permissions are required in this Nest.');return g;}
