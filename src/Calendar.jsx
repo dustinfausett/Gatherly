@@ -6,15 +6,41 @@ import './calendar.css';
 export function CalendarButton({label,onClick}) {return <button type="button" className="icon-button calendar-button" aria-label={label} title={label} onClick={onClick}><img src="/brand/activities/calendar.png" alt="" width="36" height="36"/></button>;}
 const del=path=>api(path,{method:'DELETE'});
 const localInput=d=>{const v=new Date(d);return new Date(v-v.getTimezoneOffset()*60000).toISOString().slice(0,16);};
-function EventForm({event,nests,onSave,onCancel}){
- const [draft,setDraft]=useState(event?{...event,start:localInput(event.start),end:localInput(event.end)}:{group_id:nests[0]?.id||'',title:'',description:'',location:'',start:'',end:'',visibility:'private'}),[error,setError]=useState(''),[busy,setBusy]=useState(false);
+function EventForm({event,nests,initialDate,onSave,onCancel}){
+ const start=event?localInput(event.start):'',end=event?localInput(event.end):'';
+ const [draft,setDraft]=useState(event?{...event}:{group_id:nests[0]?.id||'',title:'',description:'',location:'',visibility:'private'});
+ const [date,setDate]=useState(start.slice(0,10)||initialDate||localInput(Date.now()).slice(0,10)),[endDate,setEndDate]=useState(end.slice(0,10)||initialDate||localInput(Date.now()).slice(0,10));
+ const [startTime,setStartTime]=useState(start.slice(11)),[endTime,setEndTime]=useState(end.slice(11)),[multipleDays,setMultipleDays]=useState(!!event&&start.slice(0,10)!==end.slice(0,10));
+ const [error,setError]=useState(''),[busy,setBusy]=useState(false),initialTimeChosen=useRef(!!event);
  const field=(name,value)=>setDraft(d=>({...d,[name]:value}));
- return <form className="calendar-form" onSubmit={async e=>{e.preventDefault();setBusy(true);setError('');try{const body={...draft,start:new Date(draft.start).toISOString(),end:new Date(draft.end).toISOString()};if(event)await patch(`/calendar/events/${event.id}`,body);else await post('/calendar/events',body);await onSave();}catch(e){setError(e.message);}finally{setBusy(false);}}}>
+ function chooseStart(value){
+   setStartTime(value);
+   if(!value||initialTimeChosen.current)return;
+   initialTimeChosen.current=true;
+   if(endTime)return;
+   const [hours,minutes]=value.split(':').map(Number),total=hours*60+minutes+60;
+   setEndTime(`${String(Math.floor(total/60)%24).padStart(2,'0')}:${String(total%60).padStart(2,'0')}`);
+   if(total>=1440){
+     const next=new Date(`${date||localInput(Date.now()).slice(0,10)}T12:00`);next.setDate(next.getDate()+1);
+     setEndDate(localInput(next).slice(0,10));setMultipleDays(true);
+   }
+ }
+ return <form className="calendar-form" onSubmit={async e=>{e.preventDefault();if(busy)return;setBusy(true);setError('');try{
+   const startLocal=`${date}T${startTime}`,endLocal=`${multipleDays?endDate:date}T${endTime}`;
+   const startValue=new Date(startLocal),endValue=new Date(endLocal);
+   if(localInput(startValue)!==startLocal||localInput(endValue)!==endLocal)throw new Error('That time does not exist in your time zone. Choose another time.');
+   if(endValue<=startValue)throw new Error('The end must be after the start. For an overnight event, turn on Multiple days.');
+   const body={...draft,start:startValue.toISOString(),end:endValue.toISOString()};
+   if(event)await patch(`/calendar/events/${event.id}`,body);else await post('/calendar/events',body);await onSave();
+ }catch(e){setError(e.message);}finally{setBusy(false);}}}>
  <h3>{event?'Edit event':'New Nest event'}</h3>
  <label>Nest<select aria-label="Event Nest" value={draft.group_id} disabled={!!event} onChange={e=>field('group_id',e.target.value)}>{nests.map(n=><option key={n.id} value={n.id}>{n.name}</option>)}</select></label>
  <label>Title<input required maxLength={160} value={draft.title} onChange={e=>field('title',e.target.value)}/></label>
- <label>Starts<input required type="datetime-local" value={draft.start} onChange={e=>field('start',e.target.value)}/></label>
- <label>Ends<input required type="datetime-local" value={draft.end} onChange={e=>field('end',e.target.value)}/></label>
+ <label>{multipleDays?'Start date':'Date'}<input aria-label={multipleDays?'Start date':'Date'} required type="date" value={date} onChange={e=>{setDate(e.target.value);if(!multipleDays)setEndDate(e.target.value);}}/></label>
+ <label className="calendar-multiple-days"><input type="checkbox" checked={multipleDays} onChange={e=>{setMultipleDays(e.target.checked);if(!e.target.checked)setEndDate(date);}}/>Multiple days</label>
+ {multipleDays&&<label>End date<input required type="date" min={date} value={endDate} onChange={e=>setEndDate(e.target.value)}/></label>}
+ <div className="calendar-event-times"><label>Start time<input required type="time" value={startTime} onChange={e=>chooseStart(e.target.value)}/></label>
+ <label>End time<input required type="time" value={endTime} onChange={e=>{initialTimeChosen.current=true;setEndTime(e.target.value);}}/></label></div>
  <p className="small-text">Times use your device’s local time zone ({Intl.DateTimeFormat().resolvedOptions().timeZone}).</p>
  <label>Location<input maxLength={500} value={draft.location} onChange={e=>field('location',e.target.value)}/></label>
  <label>Description<textarea maxLength={5000} value={draft.description} onChange={e=>field('description',e.target.value)}/></label>
@@ -106,7 +132,7 @@ export default function Calendar({community, scope={type:'tree',id:community.id}
       {data.subscriptions.filter(s=>s.scope_type===scope.type&&s.scope_id===scope.id).map((s,i)=><div className="calendar-actions" key={s.id}><span>Subscription {i+1}</span><button type="button" className="text-button danger" onClick={async()=>{try{await del(`/calendar/subscriptions/${s.id}`);if(feed?.id===s.id)setFeed(null);await load();}catch(e){setError(e.message);}}}>Revoke subscription</button></div>)}
     </div>
   </Modal>;
-  if(form) return <Modal key={`form-${form.id||'new'}`} title={form.id?'Edit event':'New event'} onClose={()=>setForm(null)}><EventForm event={form.id?form:null} nests={nests} onCancel={()=>setForm(null)} onSave={async()=>{await load();setForm(null);}}/></Modal>;
+  if(form) return <Modal key={`form-${form.id||'new'}`} title={form.id?'Edit event':'New event'} onClose={()=>setForm(null)}><EventForm event={form.id?form:null} initialDate={day} nests={nests} onCancel={()=>setForm(null)} onSave={async()=>{await load();setForm(null);}}/></Modal>;
   if(eventId) return <Modal key={`event-${eventId}`} title={selectedEvent?.title||'Event unavailable'} onClose={back} wide>
     {error && <p role="alert">{error}</p>}
     {selectedEvent ? <EventDetails event={selectedEvent} offsets={data.notification_offsets||[]} onBack={back} onReload={load} onEdit={()=>setForm(selectedEvent)} onDelete={async()=>{if(!window.confirm('Delete this calendar event?'))return;try{await del(`/calendar/events/${selectedEvent.id}`);await load();back();}catch(e){setError(e.message);}}}/> : <><p>This event was removed or is no longer available to you.</p><button className="text-button" onClick={back}>Back to calendar</button></>}
