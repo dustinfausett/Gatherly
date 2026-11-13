@@ -95,7 +95,7 @@ export function createApp(options = {}) {
     const earned = new Set(all('SELECT bird_id FROM bird_unlocks WHERE user_id=?', userId).map(b => b.bird_id));
     return BIRDS.filter(b => birdAvailable(b,userId)&&(b.free || earned.has(b.id))).map(b => b.id);
   };
-  let family,reports;
+  let family,reports,calendars;
   const publicUser = u => ({ family:family?.summary(u.id),reports:reports?.summary(u.id), has_password:!!u.password,has_google:!!u.google_id,google_email:u.google_email || null,recovery_email:u.email || null,recovery_email_verified:!!u.email_verified_at,pending_recovery_email:u.pending_email || null,notification_previews:!!u.notification_previews,id: u.id, username: u.username, name: u.name, avatar_id: u.avatar_id,
     bird_id: activeBird(u.bird_id,u.id), visible_birds:BIRDS.filter(b=>birdIsVisible(b,birdNow(),b.secret?earnedBirds(u.id):[])).map(b=>b.id), bird_seasons:Object.fromEntries(BIRDS.filter(b=>b.seasonal).map(b=>[b.id,seasonalLabel(b,birdNow())])), avatar_choice:u.avatar_choice, avatar_style: u.avatar_style, unlocked_birds: unlockedBirds(u.id), last_community_id: u.last_community_id });
   const transaction = fn => {
@@ -246,6 +246,7 @@ export function createApp(options = {}) {
   function pushEligible(uid,source){
     if(!family.ready(uid))return false;
     if(!source)return true;
+    if(source.channel==='calendar')return !!calendars?.canNotify(uid,source);
     if(source.channel==='family-review'){const m=one('SELECT conversation_id FROM private_messages WHERE id=? AND intro=1',source.messageId),c=m&&one('SELECT * FROM private_conversations WHERE id=?',m.conversation_id);return !!c&&(family.guardian(uid,c.user_low)||family.guardian(uid,c.user_high));}
     if(source.channel==='phone-draft')return phoneDrafts.canNotify(uid,source.messageId);
     if(source.channel==='nest'){
@@ -327,7 +328,7 @@ export function createApp(options = {}) {
   const privateMessages=installPrivateMessages({app,db,encryption,family,transaction,refreshUser,group,groupAdmin,testing:options.testing,notifyIntro:(c,id)=>{for(const parent of new Set([...family.parents(c.user_low),...family.parents(c.user_high)].map(p=>p.parent_id)))notifyDevice(parent,{title:'New message request',body:'Review a first message in Family & youth protection.',url:'/'},null,{channel:'family-review',messageId:id});},notifyPrivate:(uid,id,context)=>notifyDevice(uid,{title:'New private message on Churp',body:'You have a private message.',url:`/?conversation=${id}`},encryptedPreview(uid,context,'private'),{channel:'private',messageId:context.id})});
   installReactions({app,db,encryption,encryptionRequired,family,visibleCircle,joined,transaction,refresh,refreshUser,testing:options.testing});
   installPolls({app,db,encryption,encryptionRequired,visibleCircle,joined,groupAdmin,transaction,refresh,testing:options.testing});
-  installCalendars({app,db,dataDir,appUrl,membership,visibleCircle,joined,groupAdmin,refresh,family});
+  calendars=installCalendars({app,db,dataDir,appUrl,membership,visibleCircle,joined,groupAdmin,refresh,family,now:options.calendarNow||Date.now,autoProcess:!(options.testing&&options.calendarAutoProcess===false),notify:(...args)=>Promise.allSettled([push.notify(...args),nativePush.notify(...args)])});
   installRsvps({app,db,encryption,encryptionRequired,visibleCircle,joined,groupAdmin,transaction,refresh,testing:options.testing});
   const assignments=installAssignments({app,db,encryption,encryptionRequired,visibleCircle,joined,groupAdmin,transaction,refresh,testing:options.testing});
   app.post('/api/me/birds/unlock', rateLimit({ windowMs: 15 * 60 * 1000, limit: options.testing ? 1000 : 10,
@@ -787,7 +788,7 @@ export function createApp(options = {}) {
   }
   app.post('/api/groups/:id/messages', rateLimit({windowMs:60000,limit:options.testing?1000:90,keyGenerator:req=>req.user.id,message:{error:'Please slow down and try again in a moment.'}}),async(req,res)=>res.status(201).json(await sendNestMessage(req)));
 
-  const scheduling=installScheduling({app,db,dataDir,encryption,family,transaction,refreshUser,sendNest:sendNestMessage,sendPrivate:privateMessages.send,sms,invitations,testing:options.testing,autoProcess:!(options.testing&&options.schedulingAutoProcess===false),now:options.schedulingNow||(()=>Date.now()),notifyHold:uid=>notifyDevice(uid,{title:'A scheduled send needs review',body:'Open Scheduled messages in Your corner to review it.',url:'/?scheduled=1'})});
+  const scheduling=installScheduling({app,db,dataDir,encryption,family,transaction,refreshUser,sendNest:sendNestMessage,sendPrivate:privateMessages.send,sms,invitations,testing:options.testing,autoProcess:!(options.testing&&options.schedulingAutoProcess===false),now:options.schedulingNow||(()=>Date.now()),notifyHold:(uid,entry)=>{const g=entry?.channel==='nest'?one('SELECT community_id FROM groups WHERE id=?',entry.target_id):null;notifyDevice(uid,{title:'A scheduled send needs review',body:'Open its conversation to review the scheduled message.',url:entry?.channel==='private'?`/?conversation=${entry.target_id}`:g?`/?community=${g.community_id}&group=${entry.target_id}`:'/'});}});
   app.patch('/api/messages/:id', (req, res) => {
     const m = one('SELECT * FROM messages WHERE id=? AND deleted=0', req.params.id) || fail(404, 'Message not found.');
     const g = visibleCircle(req.user.id, m.group_id);
@@ -942,5 +943,5 @@ export function createApp(options = {}) {
     app.use(express.static(resolve('dist'), { setHeaders: (res, path) => { if (path.endsWith('/index.html') || path.endsWith('/sw.js') || path.endsWith('/push-preview.js')) res.setHeader('Cache-Control','no-store'); } }));
     app.get('/{*path}', (req, res) => { res.setHeader('Cache-Control','no-store'); res.sendFile(resolve('dist/index.html')); });
   }
-  return { app, db, sms, phoneDrafts, scheduling, push, close: () => { nativePush.close();accountDeletion.close();phoneDrafts.close();push.close();scheduling.close();sms.close(); for (const set of streams.values()) for (const res of set) res.end(); db.close(); } };
+  return { app, db, sms, phoneDrafts, scheduling, calendars, push, close: () => { calendars.close(); nativePush.close();accountDeletion.close();phoneDrafts.close();push.close();scheduling.close();sms.close(); for (const set of streams.values()) for (const res of set) res.end(); db.close(); } };
 }

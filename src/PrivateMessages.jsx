@@ -7,7 +7,7 @@ import MessageFocus from './MessageFocus';
 import {isMobileMessagingDevice,messageEnterKey} from './message-keyboard';
 import MessageReactions,{ReactionsProvider} from './MessageReactions';
 import MessageText from './MessageText';
-import {ScheduleButton,ScheduledMessagesButton} from './ScheduleControls';
+import {ScheduleButton} from './ScheduleControls';
 import ScheduledMessages from './ScheduledMessages';
 import React,{useEffect,useRef,useState} from 'react';
 import {ArrowLeft,Plus,Send,Paperclip,ShieldCheck,MoreHorizontal,Pin,PinOff,ArrowUp,ArrowDown,Pencil,Trash2,CheckCheck,Ban} from 'lucide-react';
@@ -43,7 +43,7 @@ export default function PrivateMessages({user,version,conversationId,onConversat
  async function deleteMessage(m){await api(`/private/messages/${m.id}`,{method:'DELETE'});refresh();}
  if(channel==='phone')return <PhoneDrafts version={version} initialId={phoneDraftId} onOpened={()=>setPhoneDraftId(null)} onBack={()=>setChannel('churp')} onNew={()=>{setChannel('churp');onCompose({kind:'individual',phone:true});}}/>;
  return <ReactionsProvider key={conversationId||'none'} channel="private" messages={messages} user={user} version={`${version}:${revision}`} canReact={!!enabled&&!blocked&&!current?.inactive&&!current?.parent_blocked&&!current?.approval_required}><div className={`private-page ${conversationId?'private-open':''}`}>
- <section className="private-list"><ScheduledMessagesButton/><div className="personal-heading"><div><span className="eyebrow">JUST BETWEEN YOU</span><h1>Messages</h1><p>Private, one-to-one conversations.</p>{!user.family?.protected&&<button className="text-button" aria-label="Phone drafts" onClick={()=>{setPhoneDraftId(null);setChannel('phone');}}>Phone drafts</button>}</div><NavigationArt kind="messages"/></div>
+ <section className="private-list"><div className="personal-heading"><div><span className="eyebrow">JUST BETWEEN YOU</span><h1>Messages</h1><p>Private, one-to-one conversations.</p>{!user.family?.protected&&<button className="text-button" aria-label="Phone drafts" onClick={()=>{setPhoneDraftId(null);setChannel('phone');}}>Phone drafts</button>}</div><NavigationArt kind="messages"/></div>
  <button type="button" className={`private-row private-self-notes ${selfChat?.id===conversationId?'selected':''}`} aria-label="Open Notes to self" onClick={async()=>{if(selfChat)onConversation(selfChat.id);else try{await start({self:true});}catch{}}}><Avatar name={user.name} id={user.avatar_id} portrait={user.avatar_style!=='photo'?user.avatar_choice:undefined}/><span className="private-row-copy"><strong>Notes to self</strong><small>{user.family?.protected?'Notes and reminders · parent-supervised':'Your notes, uploads and reminders'}</small></span>{!!selfChat?.unread&&<span className="private-count">{selfChat.unread}</span>}</button>
  <button className="button primary private-compose" onClick={()=>onCompose({kind:'menu'})}><Plus size={18}/>Compose</button>
  <section className="private-chat-section" aria-label="Pinned conversations"><h2><Pin size={14}/>Pinned</h2>{pinned.map(conversationRow)}{!pinned.length&&<p className="small-text muted private-pin-hint">Pin a chat from its options to keep it here.</p>}</section>

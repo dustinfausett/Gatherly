@@ -64,8 +64,9 @@ export function installScheduling({app,db,dataDir,encryption,family,transaction,
   try{for(const series of all("SELECT * FROM scheduled_sends s WHERE next_at>0 AND NOT EXISTS(SELECT 1 FROM scheduled_parts p WHERE p.send_id=s.id AND p.state<>'sent') LIMIT 100"))advanceSeries(series);for(let n=0;n<10&&!closed;n++){
    const part=one("SELECT p.*,s.owner_id,s.device_id,s.packet_cipher,s.send_at,s.next_at FROM scheduled_parts p JOIN scheduled_sends s ON s.id=p.send_id WHERE p.state='pending' AND COALESCE(s.next_at,s.send_at)<=? ORDER BY COALESCE(s.next_at,s.send_at),p.position LIMIT 1",now());if(!part)break;
    run("UPDATE scheduled_parts SET state='sending' WHERE id=? AND state='pending'",part.id);
+   let destination;
    try{
-    family.requireReady(part.owner_id);const packet=open(part.send_id,part.packet_cipher),entry=packet.entries[part.position],ctx=context(part,entry);encryption.device(ctx);if(packet.recurrence)ctx.recurringDelivery=`${part.send_id}:${part.next_at||part.send_at}`;
+    family.requireReady(part.owner_id);const packet=open(part.send_id,part.packet_cipher),entry=packet.entries[part.position],ctx=context(part,entry);destination=entry;encryption.device(ctx);if(packet.recurrence)ctx.recurringDelivery=`${part.send_id}:${part.next_at||part.send_at}`;
     ctx.scheduledStored=receipt=>run("UPDATE scheduled_parts SET state='sent',receipt=?,error=NULL WHERE id=? AND state='sending'",JSON.stringify(receipt),part.id);
     let receipt;
     if(entry.channel==='nest')receipt=await sendNest(ctx);
@@ -78,7 +79,7 @@ export function installScheduling({app,db,dataDir,encryption,family,transaction,
      ctx.body={...entry.request,...delivery};if(!sms.preview(part.owner_id,ctx.body).rows.some(r=>r.eligible))fail(403,'Recipients no longer have permission to receive these phone texts.');receipt=sms.queue(ctx);
     }
     if(one('SELECT state FROM scheduled_parts WHERE id=?',part.id)?.state==='sending')ctx.scheduledStored(receipt);
-   }catch(error){if(one('SELECT state FROM scheduled_parts WHERE id=?',part.id)?.state==='sending'){run("UPDATE scheduled_parts SET state='held',error=? WHERE id=?",(error.status&&error.status<500?String(error.message):'Delivery paused unexpectedly. Review and reschedule this send.').slice(0,300),part.id);notifyHold?.(part.owner_id);}}
+   }catch(error){if(one('SELECT state FROM scheduled_parts WHERE id=?',part.id)?.state==='sending'){run("UPDATE scheduled_parts SET state='held',error=? WHERE id=?",(error.status&&error.status<500?String(error.message):'Delivery paused unexpectedly. Review and reschedule this send.').slice(0,300),part.id);notifyHold?.(part.owner_id,destination);}}
    advanceSeries(one('SELECT * FROM scheduled_sends WHERE id=?',part.send_id));
    refreshUser(part.owner_id);
   }}finally{working=false;}

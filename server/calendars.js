@@ -1,3 +1,4 @@
+import {installCalendarReminders} from './calendar-reminders.js';
 import { randomBytes, randomUUID, createHash } from 'node:crypto';
 import { keyVault } from './key-vault.js';
 
@@ -23,7 +24,7 @@ export function verifyCalendarVault(db,dataDir) {
   const saved=db.prepare('SELECT id,payload FROM calendar_events LIMIT 1').get();
   if(saved)keyVault(dataDir,true).open('calendar',saved.id,saved.payload);
 }
-export function installCalendars({app,db,dataDir,appUrl,membership,visibleCircle,joined,groupAdmin,refresh,family}) {
+export function installCalendars({app,db,dataDir,appUrl,membership,visibleCircle,joined,groupAdmin,refresh,family,notify,now=Date.now,autoProcess=true}) {
   db.exec(`CREATE TABLE IF NOT EXISTS calendar_events (
     id TEXT PRIMARY KEY, group_id TEXT NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
     user_id TEXT NOT NULL REFERENCES users(id), visibility TEXT NOT NULL CHECK(visibility IN ('public','private')),
@@ -38,6 +39,7 @@ export function installCalendars({app,db,dataDir,appUrl,membership,visibleCircle
       community_id TEXT NOT NULL REFERENCES communities(id) ON DELETE CASCADE, scope_type TEXT NOT NULL, scope_id TEXT NOT NULL);`);
   const one=(s,...a)=>db.prepare(s).get(...a), all=(s,...a)=>db.prepare(s).all(...a), run=(s,...a)=>db.prepare(s).run(...a);
   const vault=keyVault(dataDir,!!one('SELECT 1 FROM calendar_events LIMIT 1'));
+  const reminders=installCalendarReminders({app,db,readEvent:e=>JSON.parse(vault.open('calendar',e.id,e.payload)),family,notify,now,autoProcess});
   function color(id) {
     if(!id)return branchColor(null);
     let row=one('SELECT hue FROM calendar_branch_colors WHERE branch_id=?',id);
@@ -56,7 +58,7 @@ export function installCalendars({app,db,dataDir,appUrl,membership,visibleCircle
   function events(uid,cid,type='tree',id=cid){scope(uid,cid,type,id);
     return all(`SELECT e.*,g.subcommunity_id AS branch_id,g.name AS nest_name FROM calendar_events e JOIN groups g ON g.id=e.group_id WHERE g.community_id=?`,cid)
       .filter(e=>(type!=='branch'||e.branch_id===id)&&(type!=='nest'||e.group_id===id)&&(e.visibility==='public'||!!joined(uid,e.group_id)))
-      .map(e=>{const {payload,...row}=e;return {...row,...JSON.parse(vault.open('calendar',e.id,payload)),color:color(e.branch_id),can_manage:!!joined(uid,e.group_id)&&(e.user_id===uid||!!groupAdmin(uid,visibleCircle(uid,e.group_id)))};})
+      .map(e=>{const {payload,...row}=e;return {...row,...JSON.parse(vault.open('calendar',e.id,payload)),color:color(e.branch_id),reminder:reminders.personal(uid,e),can_manage:!!joined(uid,e.group_id)&&(e.user_id===uid||!!groupAdmin(uid,visibleCircle(uid,e.group_id)))};})
       .sort((a,b)=>a.start.localeCompare(b.start));
   }
   function validate(body){const result={};for(const [key,max] of [['title',160],['description',5000],['location',500]]){
@@ -70,15 +72,15 @@ export function installCalendars({app,db,dataDir,appUrl,membership,visibleCircle
   app.get('/api/calendar/trees/:cid',(req,res)=>{const cid=req.params.cid;tree(req.user.id,cid);
     const branches=all('SELECT id,name FROM subcommunities WHERE community_id=? ORDER BY name,id',cid).map(b=>({...b,color:color(b.id)}));
     const nests=all('SELECT * FROM groups WHERE community_id=? ORDER BY name,id',cid).filter(g=>{try{visibleCircle(req.user.id,g.id);return true;}catch{return false;}}).map(g=>({id:g.id,name:g.name,branch_id:g.subcommunity_id,can_post:!!joined(req.user.id,g.id)&&(!g.admin_only||!!groupAdmin(req.user.id,g))}));
-    res.json({events:events(req.user.id,cid),branches,nests,filters:JSON.parse(one('SELECT filters FROM calendar_preferences WHERE user_id=? AND community_id=?',req.user.id,cid)?.filters||'null'),subscriptions:all('SELECT id,scope_type,scope_id FROM calendar_subscriptions WHERE user_id=? AND community_id=?',req.user.id,cid)});
+    res.json({events:events(req.user.id,cid),branches,nests,notification_offsets:reminders.settings(req.user.id).offsets,filters:JSON.parse(one('SELECT filters FROM calendar_preferences WHERE user_id=? AND community_id=?',req.user.id,cid)?.filters||'null'),subscriptions:all('SELECT id,scope_type,scope_id FROM calendar_subscriptions WHERE user_id=? AND community_id=?',req.user.id,cid)});
   });
   app.put('/api/calendar/trees/:cid/filters',(req,res)=>{tree(req.user.id,req.params.cid);const {branches,nests}=req.body;
     if(![branches,nests].every(a=>Array.isArray(a)&&a.length<=1000&&a.every(x=>typeof x==='string'&&x.length<=80)))fail(400,'Choose valid calendar filters.');
     run('INSERT INTO calendar_preferences VALUES (?,?,?) ON CONFLICT(user_id,community_id) DO UPDATE SET filters=excluded.filters',req.user.id,req.params.cid,JSON.stringify({branches:[...new Set(branches)],nests:[...new Set(nests)]}));res.json({ok:true});});
   app.post('/api/calendar/events',(req,res)=>{const g=posting(req.user.id,req.body.group_id),data=validate(req.body),id=randomUUID();
-    run('INSERT INTO calendar_events VALUES (?,?,?,?,?,?)',id,g.id,req.user.id,req.body.visibility,vault.seal('calendar',id,JSON.stringify(data)),new Date().toISOString());refresh(g.community_id);res.status(201).json({id});});
+    run('INSERT INTO calendar_events VALUES (?,?,?,?,?,?)',id,g.id,req.user.id,req.body.visibility,vault.seal('calendar',id,JSON.stringify(data)),new Date(now()).toISOString());refresh(g.community_id);res.status(201).json({id});});
   function manage(req){const e=one('SELECT * FROM calendar_events WHERE id=?',req.params.id)||fail(404,'Event not found.');const g=posting(req.user.id,e.group_id);if(e.user_id!==req.user.id&&!groupAdmin(req.user.id,g))fail(403,'Only the creator or a Nest admin can change this event.');return {e,g};}
-  app.patch('/api/calendar/events/:id',(req,res)=>{const {e,g}=manage(req),data=validate(req.body);run('UPDATE calendar_events SET visibility=?,payload=?,updated_at=? WHERE id=?',req.body.visibility,vault.seal('calendar',e.id,JSON.stringify(data)),new Date().toISOString(),e.id);refresh(g.community_id);res.json({ok:true});});
+  app.patch('/api/calendar/events/:id',(req,res)=>{const {e,g}=manage(req),data=validate(req.body);run('UPDATE calendar_events SET visibility=?,payload=?,updated_at=? WHERE id=?',req.body.visibility,vault.seal('calendar',e.id,JSON.stringify(data)),new Date(now()).toISOString(),e.id);refresh(g.community_id);res.json({ok:true});});
   app.delete('/api/calendar/events/:id',(req,res)=>{const {e,g}=manage(req);run('DELETE FROM calendar_events WHERE id=?',e.id);refresh(g.community_id);res.json({ok:true});});
   app.post('/api/calendar/trees/:cid/subscriptions',(req,res)=>{const {scope_type:type,scope_id:id}=req.body;scope(req.user.id,req.params.cid,type,id);const token=randomBytes(32).toString('base64url'),sid=randomUUID();
     run('INSERT INTO calendar_subscriptions VALUES (?,?,?,?,?,?)',sid,digest(token),req.user.id,req.params.cid,type,id);res.status(201).json({id:sid,url:`${appUrl.replace(/\/$/,'')}/calendar/feeds/${token}.ics`});});
@@ -87,5 +89,5 @@ export function installCalendars({app,db,dataDir,appUrl,membership,visibleCircle
     const s=one('SELECT s.* FROM calendar_subscriptions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=? AND u.deleted_at IS NULL',digest(req.params.token));if(!s)fail(404,'Subscription not found.');
     family.requireReady(s.user_id);const list=events(s.user_id,s.community_id,s.scope_type,s.scope_id);res.type('text/calendar').send(calendarIcs(list,'Churp calendar'));
   });
-  return {events};
+  return {events,...reminders};
 }
