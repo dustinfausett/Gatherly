@@ -59,8 +59,8 @@ test('phone-only drafts support reminder scheduling, editing, cancellation and d
   await d.getByRole('button', { name: 'Review', exact: true }).click(); await d.getByRole('button', { name: 'Schedule messages & phone reminders', exact: true }).click(); await expect(d).toContainText('Phone reminder scheduled');
   await d.getByRole('button', { name: 'Open phone drafts', exact: true }).click(); await expect(d.getByRole('button', { name: 'Review phone text', exact: true })).toBeDisabled();
   await d.getByRole('button', { name: 'Edit or reschedule', exact: true }).click(); await d.getByLabel('Phone draft message', { exact: true }).fill('An updated phone reminder'); await d.getByRole('button', { name: 'Save phone drafts', exact: true }).click(); await expect(d).toContainText('An updated phone reminder');
-  await d.getByRole('button', { name: 'Close dialog', exact: true }).click(); await page.getByRole('button', { name: 'Edit your profile', exact: true }).click(); await page.getByRole('button', { name: 'Scheduled messages', exact: true }).click();
-  await expect(page.getByRole('dialog').locator('.phone-draft-card')).toContainText('An updated phone reminder'); await page.getByRole('dialog').locator('.phone-draft-card').click(); d = page.getByRole('dialog');
+  await d.getByRole('button', { name: 'Close dialog', exact: true }).click();
+  await expect(page.locator('.phone-draft-card')).toContainText('An updated phone reminder'); await page.locator('.phone-draft-card').click(); d = page.getByRole('dialog');
   await d.getByRole('button', { name: 'Cancel remaining drafts', exact: true }).click(); await expect(d).toContainText('This draft was cancelled');
   const rows = (await (await page.request.get('/api/phone-drafts')).json()).drafts; expect(rows[0].status).toBe('cancelled'); expect(await page.evaluate(async () => (await (await import('/src/api.js')).api('/scheduled')).sends)).toHaveLength(0);
 });

@@ -36,3 +36,6 @@ xcuserdata/
 /android/app/src/main/assets/public
 *.p8
 *.mobileprovision
+
+# Task scratch files
+/work/

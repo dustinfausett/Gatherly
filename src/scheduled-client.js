@@ -19,7 +19,7 @@ export async function queueScheduled(entries,draft,when,existing=null){
  const recurrence=normalizeRecurrence(when.recurrence);
  const cacheId=`${self.userId}:${when.requestId||client_id}:${existing?.version??'new'}`,logical=await enc.digest(enc.canonical({draft,intent:intent(entries),send_at,time_zone,recurrence}));
  let cached=requests.get(cacheId);
- if(cached&&cached.logical!==logical)throw new Error('A previous scheduling request may have been saved. Check Scheduled messages before creating another.');
+ if(cached&&cached.logical!==logical)throw new Error('A previous scheduling request may have been saved. Check the scheduled message in its conversation before creating another.');
  if(!cached){
   const value={kind:'churp-scheduled-draft',senderId:self.userId,clientId:client_id,sendAt:send_at,recurrence,intent:intent(entries),draft};
   const draft_ciphertext=await enc.seal(self.privateKey,[self.publicKey],value),packet={client_id,send_at,time_zone,entries,draft_ciphertext,...(recurrence?{recurrence}:{})};

@@ -39,6 +39,7 @@ export function installAccountDeletion({app,db,uploadDir,transaction,family,refr
    for(const tree of trees){if(tree.members.length){run('UPDATE communities SET owner_id=? WHERE id=?',transfers[tree.id],tree.id);run("UPDATE community_members SET role='owner' WHERE community_id=? AND user_id=?",tree.id,transfers[tree.id]);}else{run('UPDATE communities SET archived_at=? WHERE id=?',now,tree.id);run('DELETE FROM invitations WHERE community_id=?',tree.id);run('DELETE FROM nest_invitations WHERE group_id IN (SELECT id FROM groups WHERE community_id=?)',tree.id);}}
    // Keep shared history and its public signing keys. Remove all future work,
    // credentials, private address-book data and access permissions.
+   for(const table of ['calendar_notification_settings','calendar_event_reminders','calendar_reminder_deliveries','calendar_preferences','calendar_subscriptions'])run(`DELETE FROM ${table} WHERE user_id=?`,u.id);
    run('DELETE FROM scheduled_sends WHERE owner_id=?',u.id);run('DELETE FROM phone_drafts WHERE owner_id=?',u.id);run('DELETE FROM phone_draft_series WHERE owner_id=?',u.id);
    run('DELETE FROM sms_threads WHERE owner_id=?',u.id);run('DELETE FROM sms_jobs WHERE owner_id=?',u.id);run('DELETE FROM sms_usage WHERE owner_id=?',u.id);
    run('DELETE FROM personal_contacts WHERE owner_id=?',u.id);run('DELETE FROM birdhouses WHERE owner_id=?',u.id);
