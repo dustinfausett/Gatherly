@@ -33,3 +33,9 @@ The worker checks due reminders every 30 seconds. It rechecks account, family re
 Calendar details remain encrypted; personal reminder times and interval preferences are scheduling metadata stored in SQLite. Account deletion removes personal calendar preferences, subscriptions, reminder settings, personal reminders and delivery receipts. Event deletion removes its reminders and receipts automatically.
 
 Scheduled messages are managed only through their previews in the relevant Nest or private conversation (and phone drafts through their existing phone draft screens). The settings entry and global message outbox links have been removed. Held-send notifications direct the sender to the originating conversation.
+
+## Event date and time entry
+
+New events start with one date and separate start/end time fields. The date defaults to the day selected on the calendar, or the device’s current date if no day is selected. The first start-time choice suggests an end one hour later. Later start-time changes leave the end unchanged; entering an end time first also preserves it. Editing an existing event never recalculates its end automatically.
+
+Enable **Multiple days** to choose a separate end date. A first start-time choice near midnight automatically carries the one-hour suggestion into the following day and exposes that end date. An end earlier than the start is rejected without changing either field. Dates and times use the device’s local time zone and are saved as UTC instants.

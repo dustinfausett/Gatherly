@@ -44,3 +44,5 @@
 .calendar-reminder-row input,.calendar-reminder-row select{width:100%;min-width:0;padding:9px;box-sizing:border-box}
 @media(max-width:420px){.calendar-actions{gap:8px}.calendar-actions .button{font-size:13px;padding:9px 12px}.calendar-reminder-row{gap:5px}.calendar-reminder-row .text-button{font-size:12px}.calendar-filter-children{padding-left:24px}}
 @media(max-width:640px){.compact-home .community-banner{padding-top:12px;padding-bottom:12px}}
+
+.calendar-form .calendar-multiple-days{display:flex;align-items:center;gap:8px}.calendar-multiple-days input[type=checkbox]{width:18px;height:18px;margin:0;accent-color:#487132}.calendar-event-times{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
